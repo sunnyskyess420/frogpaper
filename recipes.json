@@ -1,0 +1,92 @@
+{
+  "recipes": [
+    {
+      "name": "Cinematic Landscape (Copy)",
+      "description": "Beautiful landscape with cinematic quality",
+      "recipe_type": "template",
+      "template_text": "a {mood} {landscape_type} landscape in {style} style, with {lighting} and {color} tones, {weather} weather",
+      "variables": {
+        "mood": [
+          "serene",
+          "dramatic",
+          "mysterious",
+          "peaceful",
+          "majestic"
+        ],
+        "landscape_type": [
+          "mountain",
+          "ocean",
+          "forest",
+          "desert",
+          "valley"
+        ],
+        "style": [
+          "photorealistic",
+          "cinematic",
+          "digital art",
+          "oil painting",
+          "watercolor"
+        ],
+        "lighting": [
+          "golden hour",
+          "blue hour",
+          "moonlight",
+          "sunrise",
+          "sunset"
+        ],
+        "color": [
+          "warm",
+          "cool",
+          "vibrant",
+          "muted",
+          "pastel"
+        ],
+        "weather": [
+          "clear",
+          "cloudy",
+          "foggy",
+          "stormy",
+          "snowy"
+        ]
+      },
+      "last_values": {},
+      "is_builtin": false,
+      "style_mode": "stylized",
+      "negative_prompt": "",
+      "quick_fields": {
+        "subject": "",
+        "style": "",
+        "lighting": "",
+        "mood": "",
+        "color": "",
+        "count": 5,
+        "subject_lock": true
+      },
+      "created_at": "2026-05-15T15:09:39.449767",
+      "modified_at": "2026-05-15T15:09:39.449788"
+    },
+    {
+      "name": "Crumbling Clocktower Dark Fantasy Epic",
+      "description": "Epic crumbling clocktower in dark fantasy style with practical light sources lighting with swirling fog atmosphere.",
+      "recipe_type": "quick",
+      "template_text": "",
+      "variables": {},
+      "last_values": {},
+      "is_builtin": false,
+      "style_mode": "dark-fantasy",
+      "negative_prompt": "text, watermark, logo, signature, blurry, low quality, cropped, low resolution, pixelated, grainy, noisy, jpeg artifacts, bad anatomy, deformed, malformed, mutated, disfigured",
+      "quick_fields": {
+        "subject": "crumbling clocktower",
+        "style": "dark fantasy",
+        "lighting": "practical light sources",
+        "mood": "epic",
+        "color": "vivid charcoal",
+        "count": 5,
+        "subject_lock": true,
+        "atmosphere": "swirling fog"
+      },
+      "created_at": "2026-05-25T20:29:33.790904",
+      "modified_at": "2026-05-25T20:29:33.790924"
+    }
+  ]
+}

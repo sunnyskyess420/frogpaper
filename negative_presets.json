@@ -1,0 +1,73 @@
+{
+  "presets": {
+    "minimal_clutter": {
+      "name": "Minimal Clutter",
+      "description": "Reduce busy backgrounds and distractions",
+      "negatives": "busy background, distracting objects, multiple subjects, clutter, messy, crowded"
+    },
+    "no_text": {
+      "name": "No Text",
+      "description": "Remove all text and logos",
+      "negatives": "text, watermark, logo, signature, labels, captions, writing, typography, words, letters"
+    },
+    "photorealistic_clean": {
+      "name": "Photorealistic Clean",
+      "description": "Exclude stylized and painted looks",
+      "negatives": "cartoon, illustration, stylized, painting, drawn, sketch, anime, comic"
+    },
+    "high_detail": {
+      "name": "High Detail",
+      "description": "Prevent low-quality artifacts and AI structural deformations",
+      "negatives": "low quality, blurry, pixelated, compression artifacts, blocky, fuzzy, muddy, soft focus, deformed, malformed, amorphous, morphed, misshapen, warped, distorted, low resolution, grainy, noisy, overexposed, underexposed, lack of detail, undefined edges, melting, fused shapes, indistinct, vague, abstract smear"
+    },
+    "product_photo": {
+      "name": "Product Photo",
+      "description": "Clean product shots without people",
+      "negatives": "people, faces, hands, humans, figures, crowds, background clutter, text, watermark"
+    },
+    "portrait_focus": {
+      "name": "Portrait Focus",
+      "description": "Clean portrait without background distractions",
+      "negatives": "background, landscape, scenery, objects, clutter, multiple people, crowd"
+    },
+    "landscape_focus": {
+      "name": "Landscape Focus",
+      "description": "Wide scenic view without subjects",
+      "negatives": "people, characters, figures, humans, animals, structures, buildings"
+    },
+    "none": {
+      "name": "None (Custom Only)",
+      "description": "Use only your custom negative prompt",
+      "negatives": ""
+    }
+  },
+  "smart_keywords": {
+    "bong": ["broken glass", "cracks", "damage", "shattered", "chips"],
+    "rig": ["broken glass", "cracks", "damage", "shattered", "chips"],
+    "space": ["land", "ground", "earth", "terrain", "buildings", "architecture"],
+    "planet": ["cities", "humans", "civilization"],
+    "portrait": ["crowd", "multiple people", "background people", "scenery", "landscape"],
+    "close-up": ["background", "landscape", "scenery", "distant"],
+    "face": ["crowd", "multiple faces", "background people"],
+    "minimalist": ["clutter", "busy", "crowded", "ornate", "detailed", "intricate"],
+    "simple": ["complex", "busy", "ornate", "detailed", "intricate"],
+    "clean": ["dirty", "messy", "chaotic", "cluttered"],
+    "forest": ["desert", "urban", "city", "buildings", "concrete"],
+    "desert": ["forest", "trees", "water", "vegetation"],
+    "underwater": ["land", "sky", "air", "mountain"],
+    "underwater": ["land", "sky", "air", "mountain"],
+    "night": ["daylight", "bright", "sunny", "noon"],
+    "day": ["night", "dark", "nighttime"],
+    "product": ["people", "text", "watermark", "background"],
+    "macro": ["background", "distant", "landscape", "wide"],
+    "action": ["static", "still", "motionless", "calm"],
+    "calm": ["action", "dynamic", "chaotic", "intense"]
+  },
+  "style_defaults": {
+    "_universal": "blurry, low resolution, pixelated, grainy, deformed, malformed, amorphous, undefined edges, lack of detail, low quality, compression artifacts",
+    "stylized": "cartoon, anime, drawn, sketch, blurry, low resolution, pixelated, grainy, deformed, malformed, amorphous, undefined edges, lack of detail, low quality",
+    "realistic": "cartoon, illustration, stylized, painting, drawn, anime, blurry, low resolution, pixelated, grainy, deformed, malformed, undefined edges, lack of detail, low quality, compression artifacts",
+    "product-photo": "people, faces, hands, background clutter, text, watermark, blurry, low resolution, deformed, malformed, lack of detail, noisy, grainy",
+    "surreal": "photorealistic, mundane, ordinary, plain, realistic, blurry, low resolution, pixelated, grainy, deformed, malformed, undefined edges, lack of detail, low quality"
+  }
+}

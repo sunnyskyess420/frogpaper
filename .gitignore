@@ -47,6 +47,11 @@ desktop/dist/
 desktop/build/
 desktop/
 
+# Build output (installers, EXEs)
+installer_output/
+dist/
+build/
+
 # Personal images & exports
 favorites_migrated/
 logs/history_exports/

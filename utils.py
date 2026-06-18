@@ -54,10 +54,14 @@ def seed_bundled_files() -> None:
 
 
 def load_json_list(path: Path) -> list:
+    base_real = os.path.realpath(BASE_DIR)
+    target_real = os.path.realpath(path)
+    if os.path.commonpath([base_real, target_real]) != base_real:
+        raise Exception("Invalid file path")
     if not path.exists():
         return []
     try:
-        with open(path, "r", encoding="utf-8") as f:
+        with open(target_real, "r", encoding="utf-8") as f:
             data = json.load(f)
         return data if isinstance(data, list) else []
     except Exception:

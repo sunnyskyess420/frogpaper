@@ -5,6 +5,7 @@ Provides reusable prompt patterns with variables for faster iterative work.
 """
 
 import json
+import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any
@@ -651,7 +652,11 @@ class TemplateManager:
             return False
         
         try:
-            with open(export_path, 'w', encoding='utf-8') as f:
+            base_real = os.path.realpath(TEMPLATES_DIR)
+            target_real = os.path.realpath(export_path)
+            if os.path.commonpath([base_real, target_real]) != base_real:
+                raise Exception("Invalid file path")
+            with open(target_real, 'w', encoding='utf-8') as f:
                 json.dump(template.to_dict(), f, indent=2)
             return True
         except Exception as e:
@@ -661,7 +666,11 @@ class TemplateManager:
     def import_template(self, import_path: Path) -> bool:
         """Import a template from a JSON file."""
         try:
-            with open(import_path, 'r', encoding='utf-8') as f:
+            base_real = os.path.realpath(TEMPLATES_DIR)
+            target_real = os.path.realpath(import_path)
+            if os.path.commonpath([base_real, target_real]) != base_real:
+                raise Exception("Invalid file path")
+            with open(target_real, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             
             template = Template.from_dict(data)

@@ -6,6 +6,7 @@ Provides history cleanup, pruning policies, backup, and export functionality.
 
 import json
 import csv
+import os
 from pathlib import Path
 from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
@@ -173,7 +174,11 @@ class HistoryManager:
             True if successful
         """
         try:
-            with open(backup_file, 'r', encoding='utf-8') as f:
+            base_real = os.path.realpath(BACKUP_DIR)
+            target_real = os.path.realpath(backup_file)
+            if os.path.commonpath([base_real, target_real]) != base_real:
+                raise Exception('Invalid file path')
+            with open(target_real, 'r', encoding='utf-8') as f:
                 backup_entries = json.load(f)
             
             # Add restored entries to history

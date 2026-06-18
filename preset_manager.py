@@ -5,6 +5,7 @@ Manage preset bundles that include input fields, generated themes, and prompts.
 """
 
 import json
+import os
 import uuid
 from pathlib import Path
 from datetime import datetime
@@ -149,7 +150,11 @@ def export_preset(preset_id: str, export_path: str | Path) -> bool:
 def import_preset(import_path: str | Path) -> str | None:
     """Import a preset from a JSON file. Returns the preset ID if successful."""
     try:
-        with open(import_path, "r", encoding="utf-8") as f:
+        base_real = os.path.realpath(BASE_DIR)
+        target_real = os.path.realpath(import_path)
+        if os.path.commonpath([base_real, target_real]) != base_real:
+            raise Exception("Invalid file path")
+        with open(target_real, "r", encoding="utf-8") as f:
             preset = json.load(f)
         if not isinstance(preset, dict):
             return None
@@ -170,7 +175,11 @@ def export_all_presets(export_path: str | Path) -> bool:
         presets = load_presets()
         export_path = Path(export_path)
         export_path.parent.mkdir(parents=True, exist_ok=True)
-        with open(export_path, "w", encoding="utf-8") as f:
+        base_real = os.path.realpath(BASE_DIR)
+        target_real = os.path.realpath(export_path)
+        if os.path.commonpath([base_real, target_real]) != base_real:
+            raise Exception("Invalid file path")
+        with open(target_real, "w", encoding="utf-8") as f:
             json.dump(presets, f, indent=2, ensure_ascii=False)
         return True
     except Exception:

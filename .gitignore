@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+env/
+.venv/
+
+# Secrets / local config
+.env
+config.json
+
+# Logs & generated data (contain local paths, personal prompts, history)
+logs/*.json
+logs/*.txt
+logs/*.log
+logs/*
+!logs/.gitkeep
+
+# Gallery metadata (contains absolute local file paths)
+gallery_tags.json
+
+# Wallpapers (large files — store locally, don't commit)
+wallpapers/manual/*
+wallpapers/generated/*
+wallpapers/styled/*
+wallpapers/favorites/*
+
+# Keep folder structure
+!wallpapers/manual/.gitkeep
+!wallpapers/generated/.gitkeep
+!wallpapers/styled/.gitkeep
+!wallpapers/favorites/.gitkeep
+!logs/.gitkeep
+
+# Desktop app (Electron build files - don't commit node_modules)
+desktop/node_modules/
+desktop/dist/
+desktop/build/
+desktop/
+
+# Build output (installers, EXEs)
+installer_output/
+dist/
+build/
+
+# Personal images & exports
+favorites_migrated/
+logs/history_exports/
+FrogPaper/
+
+# VS Code
+.vscode/
+*.code-workspace
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+.aider*

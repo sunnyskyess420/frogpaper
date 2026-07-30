@@ -6883,13 +6883,16 @@ class FrogPaperApp:
                 if getattr(sys, 'frozen', False):
                     # Running as PyInstaller EXE
                     exe_path = Path(sys.executable).resolve()
+                    # Use quotes to handle paths with spaces
                     target = f'"{exe_path}"'
+                    logger.info(f"[Startup] Setting startup for EXE at: {target}")
                 else:
                     # Running as script — launch via python
                     import __main__
                     script_path = Path(getattr(__main__, '__file__', 'app.py')).resolve()
                     python_exe = Path(sys.executable).resolve()
                     target = f'"{python_exe}" "{script_path}"'
+                    logger.info(f"[Startup] Setting startup for script at: {target}")
                 
                 # Check for existing entry to avoid duplicates
                 try:
@@ -6906,16 +6909,20 @@ class FrogPaperApp:
                 # Set the new value
                 winreg.SetValueEx(key, "FrogPaper", 0, winreg.REG_SZ, target)
                 logger.info(f"[Startup] Registry entry added successfully: {target}")
+                self.status_var.set("Run on startup enabled.")
             else:
                 # Remove the registry entry
                 try:
                     existing_value = winreg.QueryValueEx(key, "FrogPaper")[0]
                     winreg.DeleteValue(key, "FrogPaper")
                     logger.info(f"[Startup] Registry entry removed successfully: {existing_value}")
+                    self.status_var.set("Run on startup disabled.")
                 except FileNotFoundError:
                     logger.info("[Startup] No registry entry found to remove.")
+                    self.status_var.set("Run on startup disabled (was not enabled).")
                 except Exception as e:
                     logger.error(f"[Startup] Error removing registry entry: {e}")
+                    self.status_var.set(f"Error disabling startup: {e}")
                     raise
             
             winreg.CloseKey(key)

@@ -16,17 +16,29 @@ if not exist "dist\FrogPaper.exe" (
 )
 
 REM Check if Inno Setup compiler is installed
+set "INNO_PATH=C:\Program Files\Inno Setup 7\ISCC.exe"
+if exist "%INNO_PATH%" goto :found_inno
+set "INNO_PATH=C:\Program Files (x86)\Inno Setup 7\ISCC.exe"
+if exist "%INNO_PATH%" goto :found_inno
 where iscc >nul 2>&1
-if errorlevel 1 (
-    echo Inno Setup compiler (iscc.exe) not found in PATH.
-    echo Please install Inno Setup from: https://jrsoftware.org/isdl.php
-    pause
-    exit /b 1
+if not errorlevel 1 (
+    set "INNO_PATH=iscc"
+    goto :found_inno
 )
+echo Inno Setup compiler (iscc.exe) not found.
+echo Please install Inno Setup from: https://jrsoftware.org/isdl.php
+pause
+exit /b 1
+
+:found_inno
 
 echo.
 echo Creating installer...
 echo.
+
+REM Create output directory if it doesn't exist
+if not exist "installer_output" mkdir "installer_output"
+
 
 REM Create a comprehensive Inno Setup script
 (
@@ -37,7 +49,7 @@ echo AppPublisher=FrogPaper
 echo AppPublisherURL=https://github.com/sunnyskyess420/frogpaper
 echo AppSupportURL=https://github.com/sunnyskyess420/frogpaper/issues
 echo AppUpdatesURL=https://github.com/sunnyskyess420/frogpaper/releases
-echo DefaultDirName={commonpf}\FrogPaper
+echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
 echo OutputBaseFilename=FrogPaper-Setup-1.0.2
 echo Compression=lzma2
@@ -52,6 +64,7 @@ echo OutputDir=installer_output
 echo UsePreviousAppDir=no
 echo DirExistsWarning=no
 echo AppendDefaultDirName=no
+echo PrivilegesRequired=lowest
 echo.
 echo [Languages]
 echo Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -82,6 +95,10 @@ echo Source: "user_thesaurus.json"; DestDir: "{app}"; Flags: ignoreversion onlyi
 echo Source: "user_thesaurus.json.bak"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "keyword_expansion.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo.
+echo [Dirs]
+echo Name: "{app}\wallpapers"
+echo Name: "{app}\logs"
+echo.
 echo [Icons]
 echo Name: "{group}\FrogPaper"; Filename: "{app}\FrogPaper.exe"; IconFilename: "{app}\frogpaper.ico"
 echo Name: "{group}\Uninstall FrogPaper"; Filename: "{uninstallexe}"
@@ -96,24 +113,28 @@ echo [Run]
 echo Filename: "{app}\FrogPaper.exe"; Description: "Launch FrogPaper"; Flags: nowait postinstall skipifsilent
 echo.
 echo [UninstallDelete]
-echo Type: filesandordirs; Name: "{app}\wallpapers"
-echo Type: filesandordirs; Name: "{app}\logs"
 echo Type: filesandordirs; Name: "{app}\__pycache__"
+echo Type: filesandordirs; Name: "{app}\wallpapers\manual"
+echo Type: filesandordirs; Name: "{app}\wallpapers\generated"
+echo Type: filesandordirs; Name: "{app}\wallpapers\styled"
+echo Type: filesandordirs; Name: "{app}\wallpapers\favorites"
 ) > frogpaper_installer.iss
 
 REM Compile the installer
-iscc frogpaper_installer.iss
+"%INNO_PATH%" frogpaper_installer.iss
 
 if errorlevel 1 (
     echo.
     echo ERROR: Installer build failed!
-    del frogpaper_installer.iss
-    pause
+    if exist frogpaper_installer.iss del frogpaper_installer.iss
+    echo.
+    echo Press any key to exit...
+    pause >nul
     exit /b 1
 )
 
 REM Clean up temporary script
-del frogpaper_installer.iss
+if exist frogpaper_installer.iss del frogpaper_installer.iss
 
 echo.
 echo ========================================
@@ -122,4 +143,5 @@ echo ========================================
 echo.
 echo Installer location: installer_output\FrogPaper-Setup-1.0.2.exe
 echo.
-pause
+echo Press any key to exit...
+pause >nul

@@ -45,6 +45,7 @@ echo Source: "dist\FrogPaper.exe"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "sounds\*"; DestDir: "{app}\sounds"; Flags: ignoreversion recursesubdirs createallsubdirs
 echo Source: "frogpaper.ico"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "FrogPaperLogo.png"; DestDir: "{app}"; Flags: ignoreversion
+echo Source: "sidebar_logo.png"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "config.json"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "keywords.json"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "presets.json"; DestDir: "{app}"; Flags: ignoreversion

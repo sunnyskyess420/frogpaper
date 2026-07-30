@@ -43,19 +43,28 @@ def _subject_anchor(subject: str) -> str:
     """
     subject = clean_text(subject)
     if not subject:
-        return (
-            "Single clear subject, fully visible and centered, "
-            "not cropped, not obscured by other elements, "
-            "subject must be clearly recognizable and identifiable"
-        )
+        import random
+        subject_positions = [
+            "Single clear subject, fully visible and centered, not cropped, not obscured by other elements, subject must be clearly recognizable and identifiable",
+            "Single clear subject, fully visible with dynamic positioning, not cropped, not obscured by other elements, subject must be clearly recognizable and identifiable",
+            "Single clear subject, fully visible with rule-of-thirds placement, not cropped, not obscured by other elements, subject must be clearly recognizable and identifiable",
+            "Single clear subject, fully visible with off-center composition, not cropped, not obscured by other elements, subject must be clearly recognizable and identifiable"
+        ]
+        return random.choice(subject_positions)
+    
+    import random
     cap = subject.capitalize()
-    return (
-        f"Single main subject: {subject}. "
-        f"{cap} is fully visible, centered, and not cropped. "
-        f"{cap} is the dominant focal point with sharp detail. "
-        f"{cap} must be clearly recognizable and unmistakably identifiable as {subject}. "
-        f"Nothing obscures or competes with {subject}"
-    )
+    
+    # Add variety to subject positioning while maintaining visibility
+    subject_positions = [
+        f"Single main subject: {subject}. {cap} is fully visible, centered, and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
+        f"Single main subject: {subject}. {cap} is fully visible with dynamic positioning and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
+        f"Single main subject: {subject}. {cap} is fully visible with rule-of-thirds placement and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
+        f"Single main subject: {subject}. {cap} is fully visible with off-center composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
+        f"Single main subject: {subject}. {cap} is fully visible with asymmetric composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}"
+    ]
+    
+    return random.choice(subject_positions)
 
 
 _CREATURE_CHARACTER_KEYWORDS = {
@@ -87,32 +96,47 @@ def _composition_anchor(subject: str, scenic_mode: bool, custom_composition: str
         return custom_composition
 
     is_living = _is_creature_or_character(subject)
+    import random
 
-    if scenic_mode and "frog" in subject.lower():
-        # Add variety to frog positioning - not always centered
-        import random
-        frog_positions = [
+    if scenic_mode:
+        # Add significant variety to scenic composition for all subjects
+        scenic_positions = [
             f"Wide cinematic 16:9, {label} positioned dynamically in immersive environment",
             f"Wide cinematic 16:9, {label} off-center with environmental storytelling",
             f"Wide cinematic 16:9, {label} at varying angles within immersive environment",
             f"Wide cinematic 16:9, {label} naturally placed in environmental context",
-            f"Wide cinematic 16:9, {label} with asymmetric composition in immersive environment"
+            f"Wide cinematic 16:9, {label} with asymmetric composition in immersive environment",
+            f"Wide cinematic 16:9, {label} with rule-of-thirds placement",
+            f"Wide cinematic 16:9, {label} with dynamic diagonal composition",
+            f"Wide cinematic 16:9, {label} with layered depth and environmental context",
+            f"Wide cinematic 16:9, {label} positioned for visual flow and movement",
+            f"Wide cinematic 16:9, {label} with golden ratio composition placement"
         ]
-        return random.choice(frog_positions)
-    elif scenic_mode:
-        return (
-            f"Wide cinematic 16:9 panoramic framing; "
-            f"{label} anchors the composition with clear breathing room on all sides"
-        )
+        return random.choice(scenic_positions)
     elif is_living:
-        return (
-            f"16:9 desktop wallpaper framing; {label} centered, "
-            f"facing camera or 3/4 angle, background fully separated from subject"
-        )
-    return (
-        f"16:9 desktop wallpaper framing; {label} centred with clear breathing room, "
-        f"background fully separated from subject"
-    )
+        # Add variety to living subject positioning
+        living_positions = [
+            f"16:9 desktop wallpaper framing; {label} positioned dynamically, facing camera at varying angles",
+            f"16:9 desktop wallpaper framing; {label} off-center with environmental context",
+            f"16:9 desktop wallpaper framing; {label} with rule-of-thirds placement, background fully separated",
+            f"16:9 desktop wallpaper framing; {label} centered but with dynamic pose variation",
+            f"16:9 desktop wallpaper framing; {label} positioned asymmetrically with environmental storytelling",
+            f"16:9 desktop wallpaper framing; {label} with diagonal composition and dynamic angles",
+            f"16:9 desktop wallpaper framing; {label} with layered depth and background separation"
+        ]
+        return random.choice(living_positions)
+    else:
+        # Add variety to non-living subject positioning
+        object_positions = [
+            f"16:9 desktop wallpaper framing; {label} positioned dynamically with clear breathing room",
+            f"16:9 desktop wallpaper framing; {label} off-center with environmental context",
+            f"16:9 desktop wallpaper framing; {label} with rule-of-thirds placement",
+            f"16:9 desktop wallpaper framing; {label} centered but with dynamic angles",
+            f"16:9 desktop wallpaper framing; {label} with asymmetric composition",
+            f"16:9 desktop wallpaper framing; {label} with diagonal composition",
+            f"16:9 desktop wallpaper framing; {label} with layered depth"
+        ]
+        return random.choice(object_positions)
 
 
 # ---------------------------------------------------------------------------

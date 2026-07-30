@@ -556,6 +556,33 @@ class SettingsTab:
         if hasattr(app, 'wallpaper_quality_var'):
             app.wallpaper_quality_var.set(config.get('wallpaper_quality', 'High'))
 
+        # Always restore negative prompt selections (user preference)
+        neg_preset_selections = config.get("last_neg_preset_selections", {})
+        neg_custom_terms = config.get("last_neg_custom_terms", "")
+        
+        if neg_preset_selections and hasattr(app, '_neg_preset_vars'):
+            for key, selected in neg_preset_selections.items():
+                if key in app._neg_preset_vars:
+                    if hasattr(app._neg_preset_vars[key], 'set'):
+                        try:
+                            app._neg_preset_vars[key].set(selected)
+                        except Exception:
+                            pass
+        
+        if neg_custom_terms and hasattr(app, '_neg_custom_var'):
+            if hasattr(app._neg_custom_var, 'set'):
+                try:
+                    app._neg_custom_var.set(neg_custom_terms)
+                except Exception:
+                    pass
+        
+        # Rebuild the combined negative prompt from restored selections
+        if hasattr(app, '_rebuild_neg_combined'):
+            try:
+                app._rebuild_neg_combined()
+            except Exception:
+                pass
+
         # Only restore remembered settings if auto-generate on startup is disabled
         # When auto-generate is enabled, we want random variables each time
         if config.get("remember_settings", False) and not config.get("auto_generate_on_startup", False):
@@ -805,6 +832,27 @@ class SettingsTab:
             config["last_atmosphere"] = app.get_active_atmosphere()
 
             config["last_subject_lock"] = app.get_active_subject_lock()
+
+        # Always save negative prompt selections (user preference)
+        neg_preset_selections = {}
+        if hasattr(app, '_neg_preset_vars'):
+            for key, var in app._neg_preset_vars.items():
+                if hasattr(var, 'get'):
+                    try:
+                        neg_preset_selections[key] = var.get()
+                    except Exception:
+                        neg_preset_selections[key] = False
+        
+        neg_custom_terms = ""
+        if hasattr(app, '_neg_custom_var'):
+            if hasattr(app._neg_custom_var, 'get'):
+                try:
+                    neg_custom_terms = app._neg_custom_var.get()
+                except Exception:
+                    neg_custom_terms = ""
+        
+        config["last_neg_preset_selections"] = neg_preset_selections
+        config["last_neg_custom_terms"] = neg_custom_terms
 
         # Always persist wallpaper output format and quality
         config['wallpaper_format'] = app.wallpaper_format_var.get()

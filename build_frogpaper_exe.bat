@@ -7,6 +7,20 @@ echo FrogPaper - Building Executable
 echo ========================================
 echo.
 
+REM Clean up old build artifacts to prevent caching issues
+echo Cleaning old build files...
+if exist build rmdir /s /q build
+if exist dist rmdir /s /q dist
+if exist __pycache__ rmdir /s /q __pycache__
+echo Cleanup complete.
+echo.
+
+REM Clean PyInstaller cache in temp directory
+echo Cleaning PyInstaller cache...
+for /d %%i in ("%TEMP%\PyInstaller\*") do rmdir /s /q "%%i" 2>nul
+echo PyInstaller cache cleaned.
+echo.
+
 REM Check if PyInstaller is installed
 python -c "import PyInstaller" 2>nul
 if errorlevel 1 (
@@ -19,8 +33,8 @@ echo Building FrogPaper.exe...
 echo This may take a few minutes...
 echo.
 
-REM Build the executable
-pyinstaller --onefile --windowed --name FrogPaper --icon=frogpaper.ico --add-data "sounds;sounds" --add-data "frogpaper.ico;." --add-data "FrogPaperLogo.png;." --hidden-import=PIL._tkinter_finder app.py
+REM Build the executable using the spec file
+pyinstaller --clean FrogPaper.spec
 
 if errorlevel 1 (
     echo.

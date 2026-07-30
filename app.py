@@ -1,6 +1,18 @@
-import tkinter as tk
-
+import sys
 import os
+
+# Ensure local modules are found regardless of working directory
+# In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
+if getattr(sys, 'frozen', False):
+    # Running as PyInstaller bundle — use the extraction temp dir
+    os.environ['FROGPAPER_ROOT'] = sys._MEIPASS
+else:
+    # Running as normal python script — add script's directory to path
+    _script_dir = os.path.dirname(os.path.abspath(__file__))
+    sys.path.insert(0, _script_dir)
+    os.environ['FROGPAPER_ROOT'] = _script_dir
+
+import tkinter as tk
 
 import shutil
 
@@ -58,14 +70,22 @@ try:
 except ImportError:
     KEYBOARD_AVAILABLE = False
 
+try:
+    from ui_effects import (
+        RoundedButton, create_shadow_image, ThemeTransition,
+    )
+    UI_EFFECTS_AVAILABLE = True
+except ImportError:
+    UI_EFFECTS_AVAILABLE = False
+    RoundedButton = None
+    create_shadow_image = None
+    ThemeTransition = None
+
 
 
 from theme_mixer import generate_themes
-
 from prompt_builder import build_all_prompts
-
 from slideshow import SlideshowManager
-
 from keyword_expander import warmup_keyword_expander
 
 
@@ -73,77 +93,45 @@ from keyword_expander import warmup_keyword_expander
 
 
 from gallery_manager import (
-
     add_tags_to_image,
-
     add_tags_to_paths,
-
     get_tags_for_image,
-
     remove_tag_from_image,
-
     get_all_tags,
-
     get_images_by_tag,
-
     organize_image_into_folder,
-
     rename_image,
-
     get_folder_structure,
-
     delete_image_and_tags,
-
     save_prompt_parameters,
-
     get_prompt_parameters,
-
 )
 
 from preset_manager import (
-
     load_presets,
-
     save_bundle_preset,
-
     get_preset_by_id,
-
     get_preset_by_name,
-
     delete_preset,
-
     export_preset,
-
     import_preset,
-
     export_all_presets,
-
 )
 
 from utils import (
-
     load_json_list,
-
     save_json_list,
-
     load_config,
-
     save_config,
-
     get_huggingface_token,
-
     has_huggingface_token,
-
     get_app_dir,
-
     seed_bundled_files,
-
 )
 
 seed_bundled_files()
 
 from setup_scheduler import create_task
-
 from session_manager import SessionManager
 from tray_manager import TrayManager
 from settings_tab import SettingsTab
@@ -1044,6 +1032,15 @@ THEMES = {
         "warning_color":"#e6a020",
         "tag_fg":      "#7dd49e",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Light Mist / Lily ─────────────────────────────────────────────
@@ -1075,6 +1072,15 @@ THEMES = {
         "warning_color":"#ef6c00",
         "tag_fg":      "#2e7d32",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Frog Neon / Toxic Swamp ──────────────────────────────────
@@ -1105,6 +1111,15 @@ THEMES = {
         "warning_color":"#ffe000",
         "tag_fg":      "#39ff14",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Clear Sky ─────────────────────────────────────────────────────
@@ -1136,6 +1151,15 @@ THEMES = {
         "warning_color":"#ef6c00",
         "tag_fg":      "#0277bd",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Ember Dark ────────────────────────────────────────────────────
@@ -1166,6 +1190,15 @@ THEMES = {
         "warning_color":"#ffd54f",
         "tag_fg":      "#ff8a65",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Warm Linen ────────────────────────────────────────────────────
@@ -1197,6 +1230,15 @@ THEMES = {
         "warning_color":"#fdd835",
         "tag_fg":      "#e65100",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Pitch Dark ────────────────────────────────────────────────────
@@ -1227,6 +1269,15 @@ THEMES = {
         "warning_color":"#ffcc00",
         "tag_fg":      "#cccccc",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Clean White ───────────────────────────────────────────────────
@@ -1258,6 +1309,15 @@ THEMES = {
         "warning_color":"#cc7700",
         "tag_fg":      "#333333",
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Neon Cyber ────────────────────────────────────────────────────
@@ -1288,6 +1348,15 @@ THEMES = {
         "warning_color":"#ffee00",
         "tag_fg":      "#dd66ff",
         "heading_font_size": 12, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Warm Paper ────────────────────────────────────────────────────
@@ -1319,6 +1388,15 @@ THEMES = {
         "warning_color":"#e65100",
         "tag_fg":      "#6d4c41",
         "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Studio Neutral ────────────────────────────────────────────────
@@ -1349,6 +1427,15 @@ THEMES = {
         "warning_color":"#ffe082",
         "tag_fg":      "#aaaaaa",
         "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Dark Glass ────────────────────────────────────────────────────
@@ -1379,6 +1466,15 @@ THEMES = {
         "warning_color":"#f0b030",
         "tag_fg":      "#80b8e0",
         "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
     # ── Frog Swamp — maximum frog energy ──────────────────────────────────
@@ -1409,6 +1505,214 @@ THEMES = {
         "warning_color":"#f0d020",   # golden poison frog yellow
         "tag_fg":       "#a8f060",   # bright frog-spot green
         "heading_font_size": 11, "label_font_weight": "bold",
+        # Special effects for FrogSwamp
+        "glow_color":   "#5dda2a",   # bioluminescent glow color
+        "glow_intensity": 15,        # glow shadow blur radius
+        "hover_transition": "#7ae845", # water ripple hover color
+        "focus_color":  "#5dda2a",   # frog-eye focus indicator
+        "focus_shape":  "oval",      # frog-eye oval shape
+        "button_radius": 8,          # lily pad moderate rounding
+        "mist_color":   "#0a1a08",   # mist overlay color
+        "mist_alpha":   0.3,         # mist transparency
+    },
+
+    # ── Frog Swamp Light — misty morning swamp ─────────────────────────────
+    "frogswamp_light": {
+        "bg":          "#e8f5e0",   # misty morning swamp
+        "panel":       "#d4ebd0",   # light lily pad
+        "panel2":      "#c0e0b8",   # lighter swamp green
+        "surface":     "#f0f8ec",   # pond surface reflection
+        "text":        "#1a3d10",   # deep forest green
+        "muted":       "#4a7a35",   # mid swamp green
+        "entrybg":     "#f4fcf0",   # near-white water
+        "entryfg":     "#1a3d10",   # dark frog green
+        "tabbg":       "#c8e0c0",   # tab bar light
+        "tabsel":      "#7ab860",   # selected tab — bright frog
+        "accent":      "#3d8c20",   # vibrant lime
+        "progress":    "#2e7a18",   # frog tongue green
+        "actions":     ["#2e7a18","#3d8c20","#4a9c30","#5aac40","#6abc50","#7acc60"],
+        "button_fg":   "#1a3d10",
+        "button_hover": "#2e7a18",
+        "button_hover_fg": "#ffffff",
+        "scrollbar_bg":"#d4ebd0",
+        "scrollbar_fg":"#3d8c20",
+        "selected_bg": "#7ab860",
+        "selected_fg": "#ffffff",
+        "border_color":"#8ab870",
+        "separator":   "#c0e0b8",
+        "success_color":"#3d8c20",
+        "error_color": "#c0392b",
+        "warning_color":"#e6a020",
+        "tag_fg":      "#2e7a18",
+        "heading_font_size": 11, "label_font_weight": "bold",
+        # Special effects for FrogSwamp Light
+        "glow_color":   "#3d8c20",   # bioluminescent glow color
+        "glow_intensity": 12,        # glow shadow blur radius
+        "hover_transition": "#5aac40", # water ripple hover color
+        "focus_color":  "#3d8c20",   # frog-eye focus indicator
+        "focus_shape":  "oval",      # frog-eye oval shape
+        "button_radius": 8,          # lily pad moderate rounding
+        "mist_color":   "#e8f5e0",   # mist overlay color
+        "mist_alpha":   0.4,         # mist transparency
+    },
+
+    # ── Neon Cyber Light — daytime cyberpunk ───────────────────────────────
+    "neoncyber_light": {
+        "bg":          "#f5e8ff",   # light purple background
+        "panel":       "#e8d0f5",   # light purple panel
+        "panel2":      "#d8b8e8",   # lighter purple
+        "surface":     "#faf4ff",   # near-white surface
+        "text":        "#2a1040",   # deep purple text
+        "muted":       "#6a30a0",   # mid purple
+        "entrybg":     "#fcf8ff",   # near-white entry
+        "entryfg":     "#2a1040",   # dark purple text
+        "tabbg":       "#d8c0e8",   # tab bar light
+        "tabsel":      "#b070e0",   # selected tab — bright purple
+        "accent":      "#0088cc",   # cyan accent
+        "progress":    "#0066aa",   # blue progress
+        "actions":     ["#0055aa","#0066cc","#0077ee","#0088ff","#0099ff","#00aaff"],
+        "button_fg":   "#2a1040",
+        "button_hover": "#0066cc",
+        "button_hover_fg": "#ffffff",
+        "scrollbar_bg":"#e8d0f5",
+        "scrollbar_fg":"#0066cc",
+        "selected_bg": "#b070e0",
+        "selected_fg": "#ffffff",
+        "border_color":"#c090d0",
+        "separator":   "#d8b8e8",
+        "success_color":"#0088cc",
+        "error_color": "#cc0044",
+        "warning_color":"#cc8800",
+        "tag_fg":      "#0066cc",
+        "heading_font_size": 12, "label_font_weight": "bold",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
+    },
+
+    # ── Warm Paper Dark — candlelight reading ───────────────────────────────
+    "warmpaper_dark": {
+        "bg":          "#1a1410",   # dark brown background
+        "panel":       "#241c14",   # dark brown panel
+        "panel2":      "#302420",   # lighter brown
+        "surface":     "#3c3028",   # brown surface
+        "text":        "#e8d8c0",   # warm beige text
+        "muted":       "#a08060",   # mid brown
+        "entrybg":     "#201810",   # dark entry
+        "entryfg":     "#e0d0b8",   # light beige text
+        "tabbg":       "#2c2018",   # tab bar dark
+        "tabsel":      "#504030",   # selected tab — brown
+        "accent":      "#c08040",   # amber accent
+        "progress":    "#a06030",   # brown progress
+        "actions":     ["#403020","#504030","#605040","#706050","#807060","#908070"],
+        "button_fg":   "#f0e8d8",
+        "button_hover": "#a06030",
+        "scrollbar_bg":"#241c14",
+        "scrollbar_fg":"#a06030",
+        "selected_bg": "#504030",
+        "selected_fg": "#ffffff",
+        "border_color":"#403020",
+        "separator":   "#302420",
+        "success_color":"#80a040",
+        "error_color": "#c04040",
+        "warning_color":"#c09030",
+        "tag_fg":      "#c08040",
+        "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
+    },
+
+    # ── Studio Neutral Light — professional clean ───────────────────────────
+    "studioneutral_light": {
+        "bg":          "#f0f0f0",   # light gray background
+        "panel":       "#e0e0e0",   # light gray panel
+        "panel2":      "#d0d0d0",   # lighter gray
+        "surface":     "#f8f8f8",   # near-white surface
+        "text":        "#202020",   # dark gray text
+        "muted":       "#606060",   # mid gray
+        "entrybg":     "#fcfcfc",   # near-white entry
+        "entryfg":     "#202020",   # dark gray text
+        "tabbg":       "#d8d8d8",   # tab bar light
+        "tabsel":      "#a0a0a0",   # selected tab — gray
+        "accent":      "#508060",   # muted green accent
+        "progress":    "#406050",   # green progress
+        "actions":     ["#303030","#404040","#505050","#606060","#707070","#808080"],
+        "button_fg":   "#202020",
+        "button_hover": "#406050",
+        "button_hover_fg": "#ffffff",
+        "scrollbar_bg":"#e0e0e0",
+        "scrollbar_fg":"#406050",
+        "selected_bg": "#a0a0a0",
+        "selected_fg": "#ffffff",
+        "border_color":"#b0b0b0",
+        "separator":   "#d0d0d0",
+        "success_color":"#406050",
+        "error_color": "#c04040",
+        "warning_color":"#c08030",
+        "tag_fg":      "#406050",
+        "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
+    },
+
+    # ── Dark Glass Light — frosted glass daylight ───────────────────────────
+    "darkglass_light": {
+        "bg":          "#e8f0f8",   # light blue-gray background
+        "panel":       "#d0e0f0",   # light blue panel
+        "panel2":      "#b8d0e8",   # lighter blue
+        "surface":     "#f0f8fc",   # near-white surface
+        "text":        "#102030",   # dark blue text
+        "muted":       "#406080",   # mid blue
+        "entrybg":     "#f4f8fc",   # near-white entry
+        "entryfg":     "#102030",   # dark blue text
+        "tabbg":       "#c8dce8",   # tab bar light
+        "tabsel":      "#80b0d0",   # selected tab — blue
+        "accent":      "#2060a0",   # blue accent
+        "progress":    "#185090",   # blue progress
+        "actions":     ["#104070","#185090","#2060a0","#2870b0","#3080c0","#3890d0"],
+        "button_fg":   "#102030",
+        "button_hover": "#185090",
+        "button_hover_fg": "#ffffff",
+        "scrollbar_bg":"#d0e0f0",
+        "scrollbar_fg":"#185090",
+        "selected_bg": "#80b0d0",
+        "selected_fg": "#ffffff",
+        "border_color":"#a0c0d8",
+        "separator":   "#b8d0e8",
+        "success_color":"#185090",
+        "error_color": "#c04050",
+        "warning_color":"#c08030",
+        "tag_fg":      "#2060a0",
+        "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
     },
 
 }
@@ -1449,31 +1753,33 @@ UI = {
 
 THEME_DISPLAY_NAMES = {
 
-    "darkforest":     "Dark Forest Green",
+    # Forest Greens
+    "darkforest":     "🌲 Dark Forest Green",
+    "lightforest":    "🌿 Light Forest Green",
+    "frogswamp":      "🐸 Frog Swamp (dark)",
+    "frogswamp_light": "🐸 Frog Swamp (light)",
 
-    "lightforest":    "Light Forest Green",
+    # Ocean Blues
+    "darkocean":      "🌊 Frog Neon (dark)",
+    "lightocean":     "💧 Ocean Blue (light)",
+    "darkglass":      "🔮 Dark Glass (dark)",
+    "darkglass_light": "🔮 Dark Glass (light)",
 
-    "darkocean":      "Frog Neon (dark)",
+    # Warm Tones
+    "darksunset":     "🌅 Sunset Orange (dark)",
+    "lightsunset":    "🌅 Sunset Orange (light)",
+    "warmpaper":      "📜 Warm Paper (light)",
+    "warmpaper_dark": "📜 Warm Paper (dark)",
 
-    "lightocean":     "Ocean Blue (light)",
+    # Neon/Cyber
+    "neoncyber":      "⚡ Neon Cyber (dark)",
+    "neoncyber_light": "⚡ Neon Cyber (light)",
 
-    "darksunset":     "Sunset Orange (dark)",
-
-    "lightsunset":    "Sunset Orange (light)",
-
-    "darkcontrast":   "High Contrast (dark)",
-
-    "lightcontrast":  "High Contrast (light)",
-
-    "neoncyber":      "Neon Cyber",
-
-    "warmpaper":      "Warm Paper",
-
-    "studioneutral":  "Studio Neutral",
-
-    "darkglass":      "Dark Glass",
-
-    "frogswamp":      "🐸 Frog Swamp",
+    # Neutral
+    "darkcontrast":   "◼️ High Contrast (dark)",
+    "lightcontrast":  "◻️ High Contrast (light)",
+    "studioneutral":  "🎨 Studio Neutral (dark)",
+    "studioneutral_light": "🎨 Studio Neutral (light)",
 
 }
 
@@ -1593,6 +1899,23 @@ class ThemedDialog:
         dlg.resizable(True, True)
         dlg.grab_set()
 
+        # ── Glassmorphism overlay for ThemedDialog ──
+        if UI_EFFECTS_AVAILABLE:
+            try:
+                apply_glass_to_dialog(dlg, width=w, height=h,
+                                      corner_radius=16, bg_color=pal["bg"])
+            except Exception:
+                pass
+
+        # Mist/fog overlay effect for FrogSwamp themes
+        mist_color = pal.get("mist_color")
+        mist_alpha = pal.get("mist_alpha", 0)
+        if mist_color and mist_alpha > 0:
+            # Create a semi-transparent overlay frame (simulated with lighter color)
+            mist_frame = tk.Frame(dlg, bg=mist_color)
+            mist_frame.place(relx=0, rely=0, relwidth=1, relheight=1)
+            mist_frame.lower()  # Put behind content
+
         # Center over parent
         dlg.update_idletasks()
         pw = self._app.root.winfo_width()
@@ -1647,14 +1970,23 @@ class ThemedDialog:
             is_primary = (i == 0)
             bg = accent if is_primary else pal["panel2"]
             fg = pal["button_fg"]
-            btn = tk.Button(
-                btn_row, text=label, bg=bg, fg=fg,
-                activebackground=pal["button_hover"], activeforeground=fg,
-                relief="flat", padx=16, pady=5, cursor="hand2",
-                font=("Segoe UI", 9, "bold" if is_primary else "normal"),
-                command=make_cmd(label),
-            )
-            btn.pack(side="right", padx=(6, 0))
+            if UI_EFFECTS_AVAILABLE and is_primary:
+                btn = RoundedButton(
+                    btn_row, text=label, width=80, height=30,
+                    fill_color=accent, text_color=fg,
+                    radius=8, font=("Segoe UI", 9, "bold"),
+                    command=make_cmd(label), use_gradient=True,
+                )
+                btn.pack(side="right", padx=(6, 0))
+            else:
+                btn = tk.Button(
+                    btn_row, text=label, bg=bg, fg=fg,
+                    activebackground=pal["button_hover"], activeforeground=fg,
+                    relief="flat", padx=16, pady=5, cursor="hand2",
+                    font=("Segoe UI", 9, "bold" if is_primary else "normal"),
+                    command=make_cmd(label),
+                )
+                btn.pack(side="right", padx=(6, 0))
 
         dlg.bind("<Return>", lambda e: make_cmd(buttons[0])())
         dlg.bind("<Escape>", lambda e: make_cmd(buttons[-1])())
@@ -1782,7 +2114,7 @@ class FrogPaperApp:
             value=config.get("startup_subject", "frog"))
 
         # Initialize status variables early for slideshow
-        self.statusvar = tk.StringVar(value="Ready.")
+        self.statusvar = tk.StringVar(value="Starting up...")
         self.status_var = self.statusvar
 
         # Slideshow tracking
@@ -1883,6 +2215,7 @@ class FrogPaperApp:
         _t2 = time.perf_counter()
         self.load_presets()
         self.load_slideshow_settings()
+        # Load remembered settings after UI is built
         self.load_remembered_settings()
         logger.info(f"config/presets/settings: {time.perf_counter()-_t2:.2f}s")
 
@@ -1893,7 +2226,7 @@ class FrogPaperApp:
         # Keyboard shortcuts for common actions
         self.root.bind("<Control-g>", lambda e: self._switch_to_tab("gallery"))
         self.root.bind("<Control-s>", lambda e: self._open_settings_window())
-        self.root.bind("<Control-p>", lambda e: self._switch_to_tab("prompt_builder"))
+        # Ctrl+P removed — Prompt Builder tab no longer accessible via shortcut
         self.root.bind("<Control-n>", lambda e: self.generate_image())
         self.root.bind("<Escape>", lambda e: self._handle_escape())
 
@@ -1909,7 +2242,7 @@ class FrogPaperApp:
         logger.info(f"apply_theme: {time.perf_counter()-_t3:.2f}s")
         logger.info(f"total sync init: {time.perf_counter()-_t0:.2f}s")
 
-        self.status_var.set("Loading gallery…")
+        self.status_var.set("Loading gallery and warming up prompt engine…")
         self.root.after(1, self._deferred_startup_load)
 
         # Start tray icon on initialization so it's available when window closes
@@ -1965,9 +2298,12 @@ class FrogPaperApp:
 
         def _bg_work():
             _t = time.perf_counter()
-            # 0. Skip keyword warmup to prevent system freezes
-            # The keyword expander will lazy-load on first use instead
-            logger.info(f"keyword warmup skipped (lazy-load enabled): {time.perf_counter()-_t:.2f}s")
+            # 0. Warm up keyword expander and theme generation in background
+            try:
+                warmup_keyword_expander()
+                logger.info(f"keyword warmup completed: {time.perf_counter()-_t:.2f}s")
+            except Exception as e:
+                logger.warning(f"keyword warmup failed: {e}")
 
             # 1. migrate saved image paths (rglob scan — was blocking main thread)
             try:
@@ -2019,9 +2355,9 @@ class FrogPaperApp:
             # Trigger the UI-only part of load_gallery (clear old cards + build placeholders)
             self.load_gallery()
             logger.info(f"gallery UI populate: {time.perf_counter()-_t:.2f}s")
-            # Skip theme generation warmup to prevent system freezes
-            # Theme generation will lazy-load on first use instead
-            self.status_var.set("Ready.")
+            # Start theme generation warmup to ensure fast prompt generation
+            self.status_var.set("Warming up prompt engine...")
+            self._warmup_theme_generation()
 
         # Cache the current sort choice before leaving the main thread
         self._startup_sort = getattr(self, 'sort_combo_var', None)
@@ -2034,13 +2370,26 @@ class FrogPaperApp:
         def warmup_thread():
             try:
                 warmup_start = time.perf_counter()
+                # Warm up keyword expander (NLTK data loading)
+                from keyword_expander import warmup_keyword_expander
                 warmup_keyword_expander()
+                
+                # Warm up theme generation by generating a sample theme
                 keywords = ["frog"]
                 start = time.perf_counter()
                 themes = generate_themes(count=1, user_keywords=keywords)
                 elapsed = time.perf_counter() - start
                 warmup_total = time.perf_counter() - warmup_start
                 logger.debug(f"Theme generation warmup complete: {warmup_total:.2f}s (theme gen: {elapsed:.2f}s)")
+                
+                # Warm up prompt builder by building a sample prompt
+                if themes:
+                    from prompt_builder import build_prompt
+                    prompt_start = time.perf_counter()
+                    build_prompt(themes[0], style_mode="stylized")
+                    prompt_elapsed = time.perf_counter() - prompt_start
+                    logger.debug(f"Prompt builder warmup complete: {prompt_elapsed:.2f}s")
+                
                 self.root.after(0, lambda: self.status_var.set("Ready — prompt engine warm."))
             except Exception as e:
                 logger.debug(f"Warmup error: {e}")
@@ -2190,7 +2539,25 @@ class FrogPaperApp:
 
         internal_name = THEME_INTERNAL_NAMES.get(display_name, "darkforest")
 
-        self.apply_theme(internal_name)
+        # ── Animated theme transition ──
+        if UI_EFFECTS_AVAILABLE and hasattr(self, 'current_theme_name'):
+            old_pal = THEMES.get(self.current_theme_name, THEMES["darkforest"])
+            new_pal = THEMES.get(internal_name, THEMES["darkforest"])
+            bg_widgets = {"bg": [self._sidebar_outer] if hasattr(self, "_sidebar_outer") else []}
+            try:
+                if hasattr(self, '_center_panel'):
+                    bg_widgets["panel"] = [self._center_panel]
+                if hasattr(self, '_right_panel'):
+                    bg_widgets["panel2"] = [self._right_panel]
+            except Exception:
+                pass
+            old_colors = {k: old_pal.get(k, old_pal["bg"]) for k in bg_widgets}
+            new_colors = {k: new_pal.get(k, new_pal["bg"]) for k in bg_widgets}
+            transition = ThemeTransition(self.root)
+            transition.start(old_colors, new_colors, bg_widgets,
+                             callback=lambda: self.apply_theme(internal_name))
+        else:
+            self.apply_theme(internal_name)
 
         self.status_var.set(f"Theme switched to {display_name}")
 
@@ -2296,7 +2663,7 @@ class FrogPaperApp:
         self.root.configure(bg=pal["bg"])
         style = ttk.Style(self.root)
 
-        _LIGHT_THEMES = {"lightforest", "lightocean", "lightsunset", "lightcontrast", "warmpaper"}
+        _LIGHT_THEMES = {"lightforest", "lightocean", "lightsunset", "lightcontrast", "warmpaper", "frogswamp_light", "neoncyber_light", "studioneutral_light", "darkglass_light"}
         if SV_TTK_AVAILABLE:
             sv_mode = "light" if theme_name in _LIGHT_THEMES else "dark"
             sv_ttk.set_theme(sv_mode, self.root)
@@ -2321,6 +2688,9 @@ class FrogPaperApp:
         style.configure("Inner.TFrame", background=pal["bg"])
         style.configure("Surface.TFrame", background=surface)
         style.configure("Card.TFrame", background=pal["panel"], relief="flat", borderwidth=0)
+        # Card styling with subtle border for depth
+        style.configure("Card.TFrame", background=pal["panel"], relief="groove",
+                         borderwidth=1, bordercolor=pal.get("border_color", pal["panel2"]))
 
         style.configure("TLabelframe",
             background=pal["bg"],
@@ -2338,6 +2708,11 @@ class FrogPaperApp:
         style.configure("TLabel", background=pal["bg"], foreground=pal["text"])
         style.configure("Muted.TLabel", background=pal["bg"], foreground=pal["muted"])
 
+        # Apply FrogSwamp special effects
+        button_radius = pal.get("button_radius", 0)
+        hover_color = pal.get("hover_transition", "") or pal["button_hover"]
+        focus_color = pal.get("focus_color", "") or accent
+        
         style.configure("TButton",
             background=pal["panel2"],
             foreground=pal["button_fg"],
@@ -2345,12 +2720,16 @@ class FrogPaperApp:
             borderwidth=0,
             padding=(8, 5),
             focusthickness=1,
-            focuscolor=accent,
+            focuscolor=focus_color,
+            # Lily pad rounded corners (simulated with border)
+            bordercolor=border if button_radius == 0 else pal.get("glow_color", accent),
         )
+        hover_fg = pal.get("button_hover_fg", pal["button_fg"])
         style.map("TButton",
-            background=[("active", pal["button_hover"]), ("pressed", pal["tabsel"])],
-            foreground=[("active", pal.get("button_hover_fg", pal["button_fg"]))],
-            relief=[("active", "flat"), ("pressed", "flat")],
+            background=[("active", hover_color), ("hover", hover_color), ("pressed", pal["tabsel"])],
+            foreground=[("active", hover_fg), ("hover", hover_fg), ("pressed", hover_fg)],
+            relief=[("active", "flat"), ("hover", "flat"), ("pressed", "flat")],
+            bordercolor=[("focus", focus_color)],
         )
 
         style.configure("Accent.TButton",
@@ -2361,7 +2740,8 @@ class FrogPaperApp:
             padding=(8, 5),
         )
         style.map("Accent.TButton",
-            background=[("active", self._lighten_color(accent, 20)), ("pressed", self._darken_color(accent, 20))],
+            background=[("active", self._lighten_color(accent, 20)), ("hover", self._lighten_color(accent, 20)), ("pressed", self._darken_color(accent, 20))],
+            foreground=[("active", pal["button_fg"]), ("hover", pal["button_fg"]), ("pressed", pal["button_fg"])],
         )
 
         style.configure("Active.TButton",
@@ -2372,9 +2752,14 @@ class FrogPaperApp:
             padding=(8, 5),
         )
         style.map("Active.TButton",
-            background=[("active", self._lighten_color(pal["progress"], 20)), ("pressed", self._darken_color(pal["progress"], 20))],
+            background=[("active", self._lighten_color(pal["progress"], 20)), ("hover", self._lighten_color(pal["progress"], 20)), ("pressed", self._darken_color(pal["progress"], 20))],
+            foreground=[("active", pal["button_fg"]), ("hover", pal["button_fg"]), ("pressed", pal["button_fg"])],
         )
 
+        # Bioluminescent glow effect for FrogSwamp themes
+        glow_color = pal.get("glow_color", accent)
+        glow_intensity = pal.get("glow_intensity", 0)
+        
         style.configure("TEntry",
             fieldbackground=pal["entrybg"],
             foreground=pal["entryfg"],
@@ -2387,9 +2772,10 @@ class FrogPaperApp:
         )
         style.map("TEntry",
             fieldbackground=[("focus", surface)],
-            bordercolor=[("focus", accent)],
+            bordercolor=[("focus", glow_color if glow_intensity > 0 else accent)],
         )
 
+        # Frog-eye focus indicators and water ripple hover effects
         style.configure("TCombobox",
             fieldbackground=pal["entrybg"],
             foreground=pal["entryfg"],
@@ -2398,11 +2784,13 @@ class FrogPaperApp:
             relief="flat",
             borderwidth=1,
             padding=(4, 3),
+            focuscolor=focus_color,
         )
         style.map("TCombobox",
-            fieldbackground=[("readonly", pal["entrybg"])],
+            fieldbackground=[("focus", surface), ("readonly", pal["entrybg"])],
             foreground=[("readonly", pal["entryfg"])],
-            selectbackground=[("readonly", pal["tabsel"])],
+            bordercolor=[("focus", glow_color if glow_intensity > 0 else accent)],
+            selectbackground=[("active", hover_color), ("readonly", pal["tabsel"])],
         )
 
         style.configure("TCheckbutton",
@@ -2497,8 +2885,8 @@ class FrogPaperApp:
             focuscolor=accent,
         )
         style.map("Icon.TButton",
-            background=[("active", pal["button_hover"]), ("pressed", pal["tabsel"])],
-            foreground=[("active", pal.get("button_hover_fg", pal["button_fg"]))],
+            background=[("active", pal["button_hover"]), ("hover", pal["button_hover"]), ("pressed", pal["tabsel"])],
+            foreground=[("active", pal.get("button_hover_fg", pal["button_fg"])), ("hover", pal.get("button_hover_fg", pal["button_fg"]))],
         )
 
         # ── Separator spacing ──
@@ -2662,6 +3050,10 @@ class FrogPaperApp:
                 except Exception:
                     pass
 
+        # ── UI Effects: Gradient backgrounds, shadows, glassmorphism ──
+        if UI_EFFECTS_AVAILABLE:
+            self._apply_ui_effects(pal, accent, border)
+
         if hasattr(self, "themelist"):
             self.themelist.configure(
                 bg=pal["entrybg"],
@@ -2672,11 +3064,13 @@ class FrogPaperApp:
 
         # Theme the new sidebar elements (tk.Frame / tk.Label widgets)
         if hasattr(self, "_sidebar_outer"):
-            self._sidebar_outer.configure(bg=pal["panel"])
+            self._sidebar_outer.configure(bg=pal["panel"], highlightthickness=0, bd=0)
         if hasattr(self, "_sidebar_canvas"):
-            self._sidebar_canvas.configure(bg=pal["panel"])
+            self._sidebar_canvas.configure(bg=pal["panel"], highlightthickness=0)
         if hasattr(self, "_sidebar"):
             self._sidebar.configure(bg=pal["panel"])
+        if hasattr(self, "_sidebar_logo_label") and self._sidebar_logo_label:
+            self._sidebar_logo_label.configure(bg=pal["panel"])
         for attr in ("title_label",
                       "_sidebar_mode_lbl",
                       "_sidebar_lighting_lbl", "_sidebar_color_lbl",
@@ -2687,21 +3081,50 @@ class FrogPaperApp:
             if w and isinstance(w, tk.Label):
                 w.configure(bg=pal["panel"], fg=pal["text"])
         if hasattr(self, "_generate_btn"):
-            self._generate_btn.configure(
-                bg=accent, fg=pal["button_fg"],
-                activebackground=pal["button_hover"],
-                activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
-            )
+            if UI_EFFECTS_AVAILABLE and hasattr(self, '_rounded_gen_btn') and self._rounded_gen_btn:
+                # RoundedButton — re-render via _apply_ui_effects
+                pass
+            else:
+                self._generate_btn.configure(
+                    bg=accent, fg=pal["button_fg"],
+                    activebackground=pal["button_hover"],
+                    activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
+                )
         if hasattr(self, "_generate_prompt_btn"):
-            self._generate_prompt_btn.configure(
-                bg=accent, fg=pal["button_fg"],
-                activebackground=pal["button_hover"],
-                activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
-            )
+            if UI_EFFECTS_AVAILABLE and hasattr(self, '_rounded_prompt_btn') and self._rounded_prompt_btn:
+                pass
+            else:
+                self._generate_prompt_btn.configure(
+                    bg=accent, fg=pal["button_fg"],
+                    activebackground=pal["button_hover"],
+                    activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
+                )
 
         config = load_config()
         config["app_theme"] = theme_name
         save_config(config)
+
+    def _apply_ui_effects(self, pal, accent, border):
+        """Apply visual enhancements (rounded buttons, shadows, etc.)."""
+        try:
+            # ── Re-render sidebar buttons with theme accent color ──
+            if hasattr(self, '_generate_btn') and hasattr(self, '_rounded_gen_btn'):
+                self._rounded_gen_btn.fill_color = accent
+                self._rounded_gen_btn.text_color = pal["button_fg"]
+                w = self._generate_btn.winfo_width() or 140
+                h = self._generate_btn.winfo_height() or 38
+                self._rounded_gen_btn._render_images(w, h)
+                self._rounded_gen_btn._on_leave()
+            if hasattr(self, '_generate_prompt_btn') and hasattr(self, '_rounded_prompt_btn'):
+                self._rounded_prompt_btn.fill_color = accent
+                self._rounded_prompt_btn.text_color = pal["button_fg"]
+                w = self._generate_prompt_btn.winfo_width() or 140
+                h = self._generate_prompt_btn.winfo_height() or 38
+                self._rounded_prompt_btn._render_images(w, h)
+                self._rounded_prompt_btn._on_leave()
+
+        except Exception as e:
+            logger.debug(f"UI effects apply error: {e}")
 
 
 
@@ -2741,16 +3164,19 @@ class FrogPaperApp:
 
         self.main = ttk.Frame(self.root, padding=0)
         self.main.pack(fill="both", expand=True)
+        # Store reference for gradient effects
+        self._main_frame = self.main
 
-        # ── Three-column layout ──────────────────────────────────────────────
+        # ── Three-column layout with subtle spacing ────────────────────────
         self.main.columnconfigure(0, weight=0, minsize=300)  # left sidebar
         self.main.columnconfigure(1, weight=3)                # center preview
         self.main.columnconfigure(2, weight=2, minsize=280)  # right gallery
         self.main.rowconfigure(0, weight=1)
+        self.main.configure(padding=4)
 
         # ═══════════════════════ LEFT SIDEBAR ═══════════════════════════════
-        sidebar_outer = tk.Frame(self.main)
-        sidebar_outer.grid(row=0, column=0, sticky="nsew")
+        sidebar_outer = tk.Frame(self.main, bd=0, highlightthickness=0)
+        sidebar_outer.grid(row=0, column=0, sticky="nsew", padx=(0, 4), pady=(4, 4))
         sidebar_outer.rowconfigure(0, weight=1)
         sidebar_outer.columnconfigure(0, weight=1)
         self._sidebar_outer = sidebar_outer
@@ -2787,24 +3213,77 @@ class FrogPaperApp:
                 pass
         self._bind_sidebar_wheel_recursive = _bind_sidebar_wheel_recursive
 
+        # ── Sidebar logo ──
+        self._sidebar_logo_ref = None  # prevent GC
+        try:
+            from PIL import Image as _PILImg, ImageTk as _PILTk
+            from utils import get_bundle_dir
+            _logo_path = get_bundle_dir() / 'sidebar_logo.png'
+            if _logo_path.exists():
+                _logo_img = _PILImg.open(_logo_path).convert('RGBA')
+                _sidebar_w = 260
+                _ratio = _sidebar_w / _logo_img.width
+                _logo_h = int(_logo_img.height * _ratio)
+                _logo_img = _logo_img.resize((_sidebar_w, _logo_h), _PILImg.LANCZOS)
+                self._sidebar_logo_ref = _PILTk.PhotoImage(_logo_img)
+                _logo_label = tk.Label(left, image=self._sidebar_logo_ref,
+                                       anchor='center')
+                _logo_label.pack(pady=(0, 8))
+                self._sidebar_logo_label = _logo_label
+        except Exception:
+            self._sidebar_logo_label = None
+
         # ── Primary actions: Generate Prompt + Generate Image ──
         gen_row = ttk.Frame(left)
         gen_row.pack(fill="x", pady=(0, 4))
         gen_row.columnconfigure(0, weight=1)
         gen_row.columnconfigure(1, weight=1)
 
-        gen_prompt_btn = tk.Button(gen_row, text="Generate Prompt", cursor="hand2",
-                                   relief="flat", bd=0, padx=10, pady=8,
-                                   command=self.generate_prompt_only)
-        gen_prompt_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
-        gen_prompt_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), ipady=3)
-        self._generate_prompt_btn = gen_prompt_btn
+        # Use RoundedButton with gradient if ui_effects is available
+        if UI_EFFECTS_AVAILABLE:
+            accent_preview = THEMES.get(
+                load_config().get("app_theme", "darkforest"),
+                THEMES["darkforest"]
+            ).get("accent", "#4a9eff")
 
-        gen_img_btn = tk.Button(gen_row, text="Generate Image", cursor="hand2",
-                                relief="flat", bd=0, padx=10, pady=8,
-                                command=self.generate)
-        gen_img_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
-        gen_img_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0), ipady=3)
+            self._rounded_prompt_btn = RoundedButton(
+                gen_row, text="Generate Prompt", width=140, height=38,
+                fill_color=accent_preview, text_color="#ffffff",
+                radius=10, font=("Segoe UI", 10, "bold"),
+                command=self.generate_prompt_only, use_gradient=True,
+            )
+            self._rounded_prompt_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 0))
+            # Keep a reference to an invisible tk.Button for compatibility
+            gen_prompt_btn = tk.Button(gen_row, text="", width=0, height=0, bd=0)
+            gen_prompt_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
+            gen_prompt_btn.grid_forget()
+
+            self._rounded_gen_btn = RoundedButton(
+                gen_row, text="Generate Image", width=140, height=38,
+                fill_color=accent_preview, text_color="#ffffff",
+                radius=10, font=("Segoe UI", 10, "bold"),
+                command=self.generate, use_gradient=True,
+            )
+            self._rounded_gen_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0), pady=(0, 0))
+            gen_img_btn = tk.Button(gen_row, text="", width=0, height=0, bd=0)
+            gen_img_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
+            gen_img_btn.grid_forget()
+        else:
+            gen_prompt_btn = tk.Button(gen_row, text="Generate Prompt", cursor="hand2",
+                                       relief="flat", bd=0, padx=10, pady=8,
+                                       command=self.generate_prompt_only)
+            gen_prompt_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
+            gen_prompt_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), ipady=3)
+            self._rounded_prompt_btn = None
+
+            gen_img_btn = tk.Button(gen_row, text="Generate Image", cursor="hand2",
+                                    relief="flat", bd=0, padx=10, pady=8,
+                                    command=self.generate)
+            gen_img_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
+            gen_img_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0), ipady=3)
+            self._rounded_gen_btn = None
+
+        self._generate_prompt_btn = gen_prompt_btn
         self._generate_btn = gen_img_btn
 
         # ── Utility bar: Random · Cancel / Settings ──
@@ -2930,6 +3409,7 @@ class FrogPaperApp:
             negs = val.get("negatives", "")
             term_count = len([t for t in negs.split(",") if t.strip()])
             self._neg_preset_info.append((key, dname, desc, negs, term_count))
+            # Initialize with False, will be restored by load_remembered_settings
             self._neg_preset_vars[key] = tk.BooleanVar(value=False)
         # Keep _neg_preset_key_map for backward compat (display_name -> key)
         self._neg_preset_key_map = {info[1]: info[0] for info in self._neg_preset_info}
@@ -3019,8 +3499,8 @@ class FrogPaperApp:
         self._bind_sidebar_wheel_recursive(left)
 
         # ═══════════════════════ CENTER PANEL ═══════════════════════════════
-        center = ttk.Frame(self.main, padding=(8, 8))
-        center.grid(row=0, column=1, sticky="nsew")
+        center = ttk.Frame(self.main, padding=(8, 8), style="Card.TFrame")
+        center.grid(row=0, column=1, sticky="nsew", padx=4, pady=(4, 4))
         center.rowconfigure(1, weight=1)
         center.columnconfigure(0, weight=1)
         self._center_panel = center
@@ -3050,8 +3530,8 @@ class FrogPaperApp:
         self._center_style_btn.pack(side="right", padx=(6, 0))
 
         # Image preview area
-        preview_card = ttk.Frame(center)
-        preview_card.grid(row=1, column=0, sticky="nsew")
+        preview_card = ttk.Frame(center, style="Card.TFrame")
+        preview_card.grid(row=1, column=0, sticky="nsew", padx=2, pady=2)
         preview_card.rowconfigure(0, weight=1)
         preview_card.columnconfigure(0, weight=1)
 
@@ -3096,9 +3576,9 @@ class FrogPaperApp:
         self.generation_progress.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.5, relheight=0.1)
         self.generation_progress.place_forget()  # Hide initially
 
-        # Prompt preview (below progress bars)
-        preview_frame = ttk.LabelFrame(center, text="Prompt Preview", padding=(8, 4))
-        preview_frame.grid(row=4, column=0, sticky="ew", pady=(6, 0))
+        # Prompt preview (below progress bars) — styled as a card
+        preview_frame = ttk.LabelFrame(center, text=" Prompt Preview ", padding=(8, 4))
+        preview_frame.grid(row=4, column=0, sticky="ew", pady=(6, 0), padx=2)
         preview_frame.columnconfigure(0, weight=1)
 
         badge_frame = ttk.Frame(preview_frame)
@@ -3143,7 +3623,9 @@ class FrogPaperApp:
         ttk.Button(button_frame, text=" Open Folder", width=18,
                    command=self._open_wallpapers_folder).pack(side="left", padx=(0, 4))
         ttk.Button(button_frame, text=" Refresh Gallery", width=18,
-                   command=self.load_gallery).pack(side="left")
+                   command=self.load_gallery).pack(side="left", padx=(0, 4))
+        ttk.Button(button_frame, text=" Auto-Tag All", width=18,
+                   command=self._gallery_tab._bulk_auto_tag).pack(side="left")
 
         # Gallery content — delegate to existing builder
         gallery_content = ttk.Frame(right, padding=(0, 0))
@@ -3151,7 +3633,7 @@ class FrogPaperApp:
         self._build_gallery_tab(gallery_content)
 
         # ═══════════════════════ BOTTOM STATUS BAR ══════════════════════════
-        bottom = ttk.Frame(self.main)
+        bottom = ttk.Frame(self.main, style="Surface.TFrame")
         bottom.grid(row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=(4, 4))
         self.bottom_bar = bottom
 
@@ -4874,10 +5356,20 @@ class FrogPaperApp:
         )
 
     def generate_prompt_only(self):
-        """Generate prompt text from sidebar choices without generating the image."""
+        """Generate prompt text from sidebar choices without generating the image.
+        
+        Non-blocking implementation with threading to prevent UI freeze.
+        Shows busy feedback, prevents overlapping requests, and safely updates UI from background thread.
+        """
         logger.debug("generate_prompt_only called")
+        
+        # Prevent overlapping requests
+        if hasattr(self, '_is_generating_prompt') and self._is_generating_prompt:
+            self._dialog.info("Please wait", "Prompt generation is already in progress.")
+            return
+        
         if self.is_generating:
-            self._dialog.info("Please wait", "Generation is already in progress.")
+            self._dialog.info("Please wait", "Image generation is already in progress.")
             return
 
         # Read from sidebar widgets (what the user is actually using)
@@ -4992,23 +5484,43 @@ class FrogPaperApp:
         if hasattr(self, 'template_var'):
             self.template_var.set("")
 
+        # Set flag to prevent overlapping requests
+        self._is_generating_prompt = True
+        
+        # Show busy feedback
+        original_status = self.status_var.get()
         self.status_var.set("Generating prompt...")
+        
+        # Disable the generate button temporarily
+        if hasattr(self, '_btn_qb_generate') and self._btn_qb_generate is not None:
+            self._btn_qb_generate.config(state="disabled")
+        
+        # Run prompt generation in background thread
+        import threading
+        thread = threading.Thread(
+            target=self._generate_prompt_thread,
+            args=(subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit, original_status),
+            daemon=True
+        )
+        thread.start()
 
-        # Generate prompt only
-        keywords = [w for w in f"{subject} {setting} {style} {lighting} {mood} {color} {atmosphere}".split() if w]
-
-        ui_values = {
-            "subject": subject,
-            "style": style,
-            "lighting": lighting,
-            "mood": mood,
-            "color": color,
-            "mode": mode,
-            "atmosphere": atmosphere,
-            "setting": setting
-        }
-
+    def _generate_prompt_thread(self, subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit, original_status):
+        """Background thread for prompt generation to prevent UI freeze."""
         try:
+            # Generate prompt only
+            keywords = [w for w in f"{subject} {setting} {style} {lighting} {mood} {color} {atmosphere}".split() if w]
+
+            ui_values = {
+                "subject": subject,
+                "style": style,
+                "lighting": lighting,
+                "mood": mood,
+                "color": color,
+                "mode": mode,
+                "atmosphere": atmosphere,
+                "setting": setting
+            }
+
             themes = generate_themes(
                 count=1,
                 user_keywords=keywords,
@@ -5028,15 +5540,43 @@ class FrogPaperApp:
                 if prompts:
                     prompt_data = prompts[0]
                     text = f"{prompt_data['theme_sentence']}\n\nPROMPT:\n\n{prompt_data['prompt']}\n\nNegative prompt: {prompt_data.get('negative', '(none)')}"
-                    self.set_prompt_text(text)
-                    self.status_var.set("Prompt generated successfully.")
+                    # Safely update UI from main thread
+                    self.root.after(0, lambda: self._on_prompt_generated_success(text))
                 else:
-                    self.status_var.set("Failed to generate prompt.")
+                    self.root.after(0, lambda: self._on_prompt_generated_error("Failed to generate prompt."))
             else:
-                self.status_var.set("Failed to generate themes.")
+                self.root.after(0, lambda: self._on_prompt_generated_error("Failed to generate themes."))
         except Exception as e:
-            self.status_var.set(f"Error generating prompt: {e}")
-            self._dialog.error("Error", f"Failed to generate prompt:\n\n{e}")
+            logger.error(f"Error in prompt generation thread: {e}")
+            self.root.after(0, lambda: self._on_prompt_generated_error(f"Error generating prompt: {e}"))
+        finally:
+            # Reset flag
+            self._is_generating_prompt = False
+
+    def _on_prompt_generated_success(self, text):
+        """Callback for successful prompt generation - runs on main thread."""
+        try:
+            self.set_prompt_text(text)
+            self.status_var.set("Prompt generated successfully.")
+        except Exception as e:
+            logger.error(f"Error updating UI with generated prompt: {e}")
+            self.status_var.set("Error displaying generated prompt.")
+        finally:
+            # Re-enable the generate button
+            if hasattr(self, '_btn_qb_generate') and self._btn_qb_generate is not None:
+                self._btn_qb_generate.config(state="normal")
+
+    def _on_prompt_generated_error(self, error_message):
+        """Callback for prompt generation error - runs on main thread."""
+        try:
+            self.status_var.set(error_message)
+            self._dialog.error("Error", error_message)
+        except Exception as e:
+            logger.error(f"Error showing prompt generation error: {e}")
+        finally:
+            # Re-enable the generate button
+            if hasattr(self, '_btn_qb_generate') and self._btn_qb_generate is not None:
+                self._btn_qb_generate.config(state="normal")
 
 
 
@@ -5360,14 +5900,14 @@ class FrogPaperApp:
 
 
 
-    def load_favorites(self):
-        return self._gallery_tab.load_favorites()
+    def load_favorites(self, tag_filter=None):
+        return self._gallery_tab.load_favorites(tag_filter=tag_filter)
 
 
 
 
-    def load_styled(self):
-        return self._gallery_tab.load_styled()
+    def load_styled(self, tag_filter=None):
+        return self._gallery_tab.load_styled(tag_filter=tag_filter)
 
 
 
@@ -5378,8 +5918,8 @@ class FrogPaperApp:
 
 
 
-    def load_manual(self):
-        return self._gallery_tab.load_manual()
+    def load_manual(self, tag_filter=None):
+        return self._gallery_tab.load_manual(tag_filter=tag_filter)
 
 
     def load_gallery_by_ratio(self, ratio_mode, tag_filter=None):
@@ -5579,6 +6119,21 @@ class FrogPaperApp:
                         save_prompt_parameters(image_path, ui_values)
                     except Exception as e:
                         logger.error(f"[ERROR] Failed to save prompt parameters: {e}")
+
+                # Auto-tag from filename: SUBJECT_STYLE_YYYYMMDD_N.png
+                if image_path and subject:
+                    try:
+                        from gallery_manager import add_tags_to_image
+                        auto_tags = [subject]
+                        if art_style and art_style.lower() != subject.lower():
+                            auto_tags.append(art_style)
+                        # Also extract mode from UI values if present
+                        mode = (ui_values or {}).get("mode", "")
+                        if mode and mode.lower() not in [t.lower() for t in auto_tags]:
+                            auto_tags.append(mode)
+                        add_tags_to_image(image_path, auto_tags)
+                    except Exception as e:
+                        logger.error(f"[ERROR] Failed to auto-tag image: {e}")
 
                 self.root.after(0, self._on_generation_complete, image_path, auto_set_wallpaper, None)
 
@@ -5835,12 +6390,19 @@ class FrogPaperApp:
         return self._tray_mgr._tray_open_gallery(icon, item)
 
 
+    def _tray_open_folder(self, icon=None, item=None):
+        return self._tray_mgr._tray_open_folder(icon, item)
+
+
     def _tray_generate_prompt(self, icon=None, item=None):
         return self._tray_mgr._tray_generate_prompt(icon, item)
 
 
     def _tray_open_settings(self, icon=None, item=None):
         return self._tray_mgr._tray_open_settings(icon, item)
+
+    def _tray_show_about(self, icon=None, item=None):
+        return self._tray_mgr._tray_show_about(icon, item)
 
 
     def _tray_random_wallpaper(self, icon=None, item=None):
@@ -5861,24 +6423,56 @@ class FrogPaperApp:
 
     def _show_about_dialog(self, icon=None, item=None):
         """Show About dialog from tray menu."""
-        self.root.after(0, self._show_about_popup)
+        return self._tray_mgr._tray_show_about(icon, item)
 
     def _show_toast(self, message, duration=3000, message_type="info"):
-        """Show a toast notification message."""
+        """Show a toast notification message with glassmorphism and shadow."""
         if self._toast_frame is None:
             self._init_toast_system()
 
-        toast = tk.Frame(self._toast_frame, bg="#333333", relief="flat", bd=0)
-        toast.pack(side="bottom", fill="x", padx=20, pady=10)
+        # Theme-aware colors
+        pal = THEMES.get(self.current_theme_name, THEMES["darkforest"])
+        toast_bg = pal.get("panel2", "#2a2a3e")
+        toast_fg = pal.get("text", "#ffffff")
+        muted_fg = pal.get("muted", "#888888")
 
         # Color based on message type
         colors = {
-            "info": "#4a90e2",
-            "success": "#2ecc71",
-            "warning": "#f39c12",
-            "error": "#e74c3c"
+            "info": pal.get("accent", "#4a90e2"),
+            "success": pal.get("success_color", "#2ecc71"),
+            "warning": pal.get("warning_color", "#f39c12"),
+            "error": pal.get("error_color", "#e74c3c")
         }
-        bg_color = colors.get(message_type, "#4a90e2")
+        bg_color = colors.get(message_type, pal.get("accent", "#4a90e2"))
+
+        # Shadow frame behind the toast
+        toast_shadow = tk.Frame(self._toast_frame, bg="", relief="flat", bd=0)
+        toast_shadow.pack(side="bottom", fill="x", padx=20, pady=(0, 4))
+
+        # Glassmorphism-style toast
+        toast = tk.Frame(toast_shadow, bg=toast_bg, relief="flat", bd=0,
+                         highlightbackground=pal.get("border_color", "#333"), highlightthickness=1)
+        toast.pack(side="bottom", fill="x", padx=0, pady=0)
+
+        # Add shadow image if ui_effects is available
+        if UI_EFFECTS_AVAILABLE:
+            try:
+                toast_shadow.update_idletasks()
+                tw = max(toast_shadow.winfo_width(), 320)
+                shadow_img = create_shadow_image(
+                    tw, 50, shadow_color="#000000",
+                    offset_x=0, offset_y=3, blur_radius=12,
+                    corner_radius=10, opacity=0.4
+                )
+                shadow_photo = ImageTk.PhotoImage(shadow_img)
+                shadow_canvas = tk.Canvas(toast_shadow, highlightthickness=0, bd=0,
+                                         height=shadow_img.height)
+                shadow_canvas.create_image(0, 0, anchor="nw", image=shadow_photo)
+                shadow_canvas.image = shadow_photo
+                shadow_canvas.pack(side="bottom", fill="x")
+                toast.pack(in_=shadow_canvas, side="bottom", fill="x", padx=2, pady=0)
+            except Exception:
+                pass
 
         # Left accent bar
         accent = tk.Frame(toast, bg=bg_color, width=4)
@@ -5888,8 +6482,8 @@ class FrogPaperApp:
         label = tk.Label(
             toast,
             text=message,
-            bg="#333333",
-            fg="#ffffff",
+            bg=toast_bg,
+            fg=toast_fg,
             font=self.smallfont,
             padx=15,
             pady=8,
@@ -5901,8 +6495,8 @@ class FrogPaperApp:
         close_btn = tk.Label(
             toast,
             text="✕",
-            bg="#333333",
-            fg="#888888",
+            bg=toast_bg,
+            fg=muted_fg,
             font=self.tinyfont,
             padx=8,
             pady=8,
@@ -5919,11 +6513,8 @@ class FrogPaperApp:
         try:
             if tab_name == "gallery":
                 self.notebook.select(self.gallery_tab)
-            elif tab_name == "prompt_builder":
-                self.notebook.select(self.prompt_builder_tab)
             elif tab_name == "settings":
                 self._open_settings_window()
-            # Note: Favorites is integrated into Gallery tab
         except Exception:
             pass
 
@@ -5932,7 +6523,7 @@ class FrogPaperApp:
         if hasattr(self, "_settings_win") and self._settings_win and self._settings_win.winfo_exists():
             self._settings_win.destroy()
         else:
-            self._show_toast("Press Ctrl+G for Gallery, Ctrl+P for Prompt Builder, Ctrl+S for Settings", message_type="info")
+            self._show_toast("Press Ctrl+G for Gallery, Ctrl+S for Settings, Ctrl+N to Generate", message_type="info")
 
     def _init_toast_system(self):
         """Initialize the toast notification container."""
@@ -5940,11 +6531,52 @@ class FrogPaperApp:
         self._toast_frame.place(relx=1.0, rely=1.0, anchor="se", x=-10, y=-10)
         self._toast_frame.lift()
 
-    def _dismiss_toast(self, toast):
-        """Dismiss a toast notification with fade effect."""
+        # Set transparent bg so toasts float over content
         try:
-            toast.destroy()
-        except:
+            self._toast_frame.configure(bg="")
+        except Exception:
+            pass
+
+    def _dismiss_toast(self, toast):
+        """Dismiss a toast notification with smooth fade-out animation."""
+        try:
+            # Animate opacity fade-out over ~200ms (10 steps x 20ms)
+            def _fade_step(widget, step=0, max_steps=10):
+                if step >= max_steps or not widget.winfo_exists():
+                    try:
+                        widget.destroy()
+                    except Exception:
+                        pass
+                    return
+                try:
+                    # Simulate fade by blending fg toward bg
+                    alpha = 1.0 - (step / max_steps)
+                    widget.configure(bg=self._blend_alpha(widget.cget("bg"), "#000000", alpha * 0.3 + 0.7))
+                except Exception:
+                    pass
+                self.root.after(20, lambda: _fade_step(widget, step + 1, max_steps))
+            # Also try to destroy the shadow parent
+            parent = toast.master
+            _fade_step(toast)
+            self.root.after(250, lambda: self._safe_destroy(parent))
+        except Exception:
+            pass
+
+    def _blend_alpha(self, fg_hex, bg_hex, alpha):
+        """Blend fg over bg with alpha. Fallback for toast fade."""
+        if not UI_EFFECTS_AVAILABLE:
+            return fg_hex
+        try:
+            return lerp_color(fg_hex, bg_hex, 1.0 - alpha)
+        except Exception:
+            return fg_hex
+
+    def _safe_destroy(self, widget):
+        """Safely destroy a widget, ignoring errors."""
+        try:
+            if widget and widget.winfo_exists():
+                widget.destroy()
+        except Exception:
             pass
 
     def _show_about_popup(self):
@@ -5972,6 +6604,17 @@ class FrogPaperApp:
         # Apply full theme styling
         pal = THEMES.get(self.current_theme_name, THEMES["darkforest"])
         about_window.configure(bg=pal["panel"])
+
+        # ── Glassmorphism backdrop for About dialog ──
+        glass_overlay = None
+        if UI_EFFECTS_AVAILABLE:
+            try:
+                glass_overlay = apply_glass_to_dialog(
+                    about_window, width=400, height=260,
+                    corner_radius=20, bg_color=pal["bg"]
+                )
+            except Exception:
+                pass
 
         # Main container with fixed bottom button bar
         main_frame = tk.Frame(about_window, bg=pal["panel"])
@@ -6029,20 +6672,30 @@ class FrogPaperApp:
         btn_bar.grid_propagate(False)
         btn_bar.columnconfigure(0, weight=1)
 
-        ok_btn = tk.Button(
-            btn_bar,
-            text="OK",
-            command=about_window.destroy,
-            width=14,
-            font=("Segoe UI", 10),
-            bg=pal.get("accent", pal["progress"]),
-            fg=pal["text"],
-            activebackground=pal.get("surface", pal["panel"]),
-            activeforeground=pal["text"],
-            relief="flat",
-            cursor="hand2"
-        )
-        ok_btn.place(relx=0.5, rely=0.5, anchor="center")
+        if UI_EFFECTS_AVAILABLE:
+            ok_btn = RoundedButton(
+                btn_bar, text="OK", width=100, height=32,
+                fill_color=pal.get("accent", pal["progress"]),
+                text_color=pal.get("button_fg", "#ffffff"),
+                radius=8, font=("Segoe UI", 10),
+                command=about_window.destroy, use_gradient=True,
+            )
+            ok_btn.place(relx=0.5, rely=0.5, anchor="center")
+        else:
+            ok_btn = tk.Button(
+                btn_bar,
+                text="OK",
+                command=about_window.destroy,
+                width=14,
+                font=("Segoe UI", 10),
+                bg=pal.get("accent", pal["progress"]),
+                fg=pal["text"],
+                activebackground=pal.get("surface", pal["panel"]),
+                activeforeground=pal["text"],
+                relief="flat",
+                cursor="hand2"
+            )
+            ok_btn.place(relx=0.5, rely=0.5, anchor="center")
 
 
 
@@ -6209,34 +6862,67 @@ class FrogPaperApp:
             return False
 
     def _set_startup_registry(self, enable: bool):
-        """Add or remove FrogPaper from the Windows startup registry key."""
+        """Add or remove FrogPaper from the Windows startup registry key.
+        
+        Handles both source and EXE modes, quoted paths with spaces, avoids duplicates,
+        removes cleanly when disabled, and logs failures clearly.
+        """
         try:
             import winreg
             import sys
+            from pathlib import Path
+            
             key = winreg.OpenKey(
                 winreg.HKEY_CURRENT_USER,
                 r"Software\Microsoft\Windows\CurrentVersion\Run",
                 0, winreg.KEY_SET_VALUE
             )
+            
             if enable:
-                exe_path = sys.executable if getattr(sys, 'frozen', False) else sys.executable
+                # Determine the correct launch command based on execution mode
                 if getattr(sys, 'frozen', False):
                     # Running as PyInstaller EXE
-                    target = f'"{sys.executable}"'
+                    exe_path = Path(sys.executable).resolve()
+                    target = f'"{exe_path}"'
                 else:
                     # Running as script — launch via python
                     import __main__
-                    script = getattr(__main__, '__file__', None) or 'app.py'
-                    target = f'"{sys.executable}" "{script}"'
-                winreg.SetValueEx(key, "FrogPaper", 0, winreg.REG_SZ, target)
-            else:
+                    script_path = Path(getattr(__main__, '__file__', 'app.py')).resolve()
+                    python_exe = Path(sys.executable).resolve()
+                    target = f'"{python_exe}" "{script_path}"'
+                
+                # Check for existing entry to avoid duplicates
                 try:
-                    winreg.DeleteValue(key, "FrogPaper")
+                    existing_value = winreg.QueryValueEx(key, "FrogPaper")[0]
+                    if existing_value == target:
+                        logger.info("[Startup] Registry entry already exists with correct value, skipping.")
+                        winreg.CloseKey(key)
+                        return
+                    else:
+                        logger.info(f"[Startup] Updating existing registry entry. Old: {existing_value}, New: {target}")
                 except FileNotFoundError:
-                    pass
+                    logger.info("[Startup] No existing registry entry found, creating new one.")
+                
+                # Set the new value
+                winreg.SetValueEx(key, "FrogPaper", 0, winreg.REG_SZ, target)
+                logger.info(f"[Startup] Registry entry added successfully: {target}")
+            else:
+                # Remove the registry entry
+                try:
+                    existing_value = winreg.QueryValueEx(key, "FrogPaper")[0]
+                    winreg.DeleteValue(key, "FrogPaper")
+                    logger.info(f"[Startup] Registry entry removed successfully: {existing_value}")
+                except FileNotFoundError:
+                    logger.info("[Startup] No registry entry found to remove.")
+                except Exception as e:
+                    logger.error(f"[Startup] Error removing registry entry: {e}")
+                    raise
+            
             winreg.CloseKey(key)
         except Exception as e:
             logger.error(f"[Startup] Registry error: {e}")
+            self.status_var.set(f"Failed to {'enable' if enable else 'disable'} startup: {e}")
+            raise
 
     def _on_run_on_startup_changed(self):
         """Handle run-on-startup toggle."""

@@ -110,6 +110,8 @@ if Base is not None:
         mode = Column(Text, nullable=True)
         subject_lock = Column(Boolean, default=True)
         negative_prompt = Column(Text, nullable=True)
+        neg_preset_selections = Column(Text, nullable=True)  # JSON blob of preset selections
+        neg_custom_terms = Column(Text, nullable=True)  # Custom negative terms
         pb_view = Column(Text, nullable=True)
         selected_template = Column(Text, nullable=True)
         template_variable_values = Column(Text, nullable=True)
@@ -217,6 +219,9 @@ def init_db():
             _migrate_json_to_db()
             MIGRATION_MARKER.touch()
             logger.info("Database migration from JSON completed.")
+        else:
+            # Handle schema updates for existing databases
+            _add_missing_columns()
 
     logger.info("Database initialized at %s", DB_PATH)
 
@@ -267,6 +272,28 @@ def _migrate_json_to_db():
         session.close()
 
     _backup_json_files()
+
+
+def _add_missing_columns():
+    """Add new columns to existing database tables for schema updates."""
+    try:
+        # Check if sessions table has the new columns using raw SQL
+        with _engine.connect() as conn:
+            result = conn.execute(text("PRAGMA table_info(sessions)")).fetchall()
+            existing_columns = [row[1] for row in result]
+            
+            if 'neg_preset_selections' not in existing_columns:
+                conn.execute(text("ALTER TABLE sessions ADD COLUMN neg_preset_selections TEXT"))
+                conn.commit()
+                logger.info("Added neg_preset_selections column to sessions table")
+            
+            if 'neg_custom_terms' not in existing_columns:
+                conn.execute(text("ALTER TABLE sessions ADD COLUMN neg_custom_terms TEXT"))
+                conn.commit()
+                logger.info("Added neg_custom_terms column to sessions table")
+        
+    except Exception as e:
+        logger.warning("Failed to add missing columns: %s", e)
 
 
 def _safe_load_json(path: Path) -> dict | list | None:
@@ -333,6 +360,8 @@ def _migrate_sessions(session: ORMSession):
             mode=state.get("mode", ""),
             subject_lock=state.get("subject_lock", True),
             negative_prompt=state.get("negative_prompt", ""),
+            neg_preset_selections=json.dumps(state.get("neg_preset_selections", {}), ensure_ascii=False) if state.get("neg_preset_selections") else None,
+            neg_custom_terms=state.get("neg_custom_terms", ""),
             pb_view=state.get("pb_view", ""),
             selected_template=state.get("selected_template", ""),
             template_variable_values=json.dumps(

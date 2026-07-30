@@ -31,6 +31,25 @@ class SessionManager:
                 except Exception:
                     pass
 
+        # Collect negative prompt preset selections
+        neg_preset_selections = {}
+        if hasattr(app, '_neg_preset_vars'):
+            for key, var in app._neg_preset_vars.items():
+                if hasattr(var, 'get'):
+                    try:
+                        neg_preset_selections[key] = var.get()
+                    except Exception:
+                        neg_preset_selections[key] = False
+
+        # Collect negative prompt custom terms
+        neg_custom_terms = ""
+        if hasattr(app, '_neg_custom_var'):
+            if hasattr(app._neg_custom_var, 'get'):
+                try:
+                    neg_custom_terms = app._neg_custom_var.get()
+                except Exception:
+                    neg_custom_terms = ""
+
         return {
             "subject": app.get_active_subject(),
             "style": app.get_active_style(),
@@ -41,6 +60,8 @@ class SessionManager:
             "mode": app.get_active_mode(),
             "subject_lock": app.get_active_subject_lock(),
             "negative_prompt": app.get_active_negative_prompt(),
+            "neg_preset_selections": neg_preset_selections,
+            "neg_custom_terms": neg_custom_terms,
             "pb_view": getattr(app, "prompt_builder_mode_var", tk.StringVar()).get(),
             "selected_template": app.template_var.get() if hasattr(app, "template_var") else "",
             "template_variable_values": template_var_values,
@@ -63,6 +84,33 @@ class SessionManager:
         neg = state.get("negative_prompt", "")
         if neg:
             app.set_active_negative_prompt(neg)
+
+        # Restore negative prompt preset selections
+        neg_preset_selections = state.get("neg_preset_selections", {})
+        if neg_preset_selections and hasattr(app, '_neg_preset_vars'):
+            for key, selected in neg_preset_selections.items():
+                if key in app._neg_preset_vars:
+                    if hasattr(app._neg_preset_vars[key], 'set'):
+                        try:
+                            app._neg_preset_vars[key].set(selected)
+                        except Exception:
+                            pass
+
+        # Restore negative prompt custom terms
+        neg_custom_terms = state.get("neg_custom_terms", "")
+        if neg_custom_terms and hasattr(app, '_neg_custom_var'):
+            if hasattr(app._neg_custom_var, 'set'):
+                try:
+                    app._neg_custom_var.set(neg_custom_terms)
+                except Exception:
+                    pass
+
+        # Rebuild the combined negative prompt from restored selections
+        if hasattr(app, '_rebuild_neg_combined'):
+            try:
+                app._rebuild_neg_combined()
+            except Exception:
+                pass
 
         # Restore Prompt Builder view mode
         pb_view = state.get("pb_view", "")
@@ -119,6 +167,8 @@ class SessionManager:
                         "mode": row.mode or "",
                         "subject_lock": row.subject_lock if row.subject_lock is not None else True,
                         "negative_prompt": row.negative_prompt or "",
+                        "neg_preset_selections": json.loads(row.neg_preset_selections) if row.neg_preset_selections else {},
+                        "neg_custom_terms": row.neg_custom_terms or "",
                         "pb_view": row.pb_view or "",
                         "selected_template": row.selected_template or "",
                         "template_variable_values": tvv or {},
@@ -158,6 +208,8 @@ class SessionManager:
                     existing.mode = state_dict.get("mode", "")
                     existing.subject_lock = state_dict.get("subject_lock", True)
                     existing.negative_prompt = state_dict.get("negative_prompt", "")
+                    existing.neg_preset_selections = json.dumps(state_dict.get("neg_preset_selections", {}), ensure_ascii=False) if state_dict.get("neg_preset_selections") else None
+                    existing.neg_custom_terms = state_dict.get("neg_custom_terms", "")
                     existing.pb_view = state_dict.get("pb_view", "")
                     existing.selected_template = state_dict.get("selected_template", "")
                     existing.template_variable_values = tvv
@@ -173,6 +225,8 @@ class SessionManager:
                         mode=state_dict.get("mode", ""),
                         subject_lock=state_dict.get("subject_lock", True),
                         negative_prompt=state_dict.get("negative_prompt", ""),
+                        neg_preset_selections=json.dumps(state_dict.get("neg_preset_selections", {}), ensure_ascii=False) if state_dict.get("neg_preset_selections") else None,
+                        neg_custom_terms=state_dict.get("neg_custom_terms", ""),
                         pb_view=state_dict.get("pb_view", ""),
                         selected_template=state_dict.get("selected_template", ""),
                         template_variable_values=tvv,
@@ -294,9 +348,30 @@ class SessionManager:
     def save_current_settings_for_memory(self):
 
         app = self.app
+        
+        # Always save negative prompt selections (user preference)
+        neg_preset_selections = {}
+        if hasattr(app, '_neg_preset_vars'):
+            for key, var in app._neg_preset_vars.items():
+                if hasattr(var, 'get'):
+                    try:
+                        neg_preset_selections[key] = var.get()
+                    except Exception:
+                        neg_preset_selections[key] = False
+        
+        neg_custom_terms = ""
+        if hasattr(app, '_neg_custom_var'):
+            if hasattr(app._neg_custom_var, 'get'):
+                try:
+                    neg_custom_terms = app._neg_custom_var.get()
+                except Exception:
+                    neg_custom_terms = ""
+        
+        config = load_config()
+        config["last_neg_preset_selections"] = neg_preset_selections
+        config["last_neg_custom_terms"] = neg_custom_terms
+        
         if app.remember_settings_var.get():
-
-            config = load_config()
 
             config["last_style_mode"] = app.get_active_mode()
 
@@ -311,7 +386,7 @@ class SessionManager:
 
             config["last_color"] = app.get_active_color()
 
-            save_config(config)
+        save_config(config)
 
 
     def save_session(self):

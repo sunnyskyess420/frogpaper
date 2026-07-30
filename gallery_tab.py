@@ -69,6 +69,7 @@ class GalleryTab:
                 if hasattr(btn, 'configure') and icon_name:
                     _img = get_icon(icon_name, size=14, color=accent)
                     btn.configure(image=_img, compound="left")
+                    btn._icon_ref = _img  # prevent GC
         except Exception:
             pass  # Graceful fallback — buttons still work with text-only
 
@@ -254,7 +255,7 @@ class GalleryTab:
         app.sort_combo_var = tk.StringVar(value="Date Newest")
 
         app.sort_combo = ttk.Combobox(ctrl_row, textvariable=app.sort_combo_var,
-                                        values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Resolution Largest"],
+                                        values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
                                         state="readonly", width=18)
         app.sort_combo.pack(side='left', padx=(0, 8))
         app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
@@ -262,9 +263,30 @@ class GalleryTab:
         app.sort_combo.bind("<Button-4>", lambda e: "break")
         app.sort_combo.bind("<Button-5>", lambda e: "break")
 
-        
+        # --- Tag filter ---
+        ttk.Label(ctrl_row, text="Tag:").pack(side='left', padx=(8, 4))
+        app.gallery_tag_var = tk.StringVar(value='All tags')
+        app.gallery_tag_combo = ttk.Combobox(ctrl_row, textvariable=app.gallery_tag_var,
+                                              values=['All tags'] + get_all_tags(),
+                                              state="readonly", width=16)
+        app.gallery_tag_combo.pack(side='left', padx=(0, 4))
+        app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
+        app.gallery_tag_combo.bind("<MouseWheel>", lambda e: "break")
+        app.gallery_tag_combo.bind("<Button-4>", lambda e: "break")
+        app.gallery_tag_combo.bind("<Button-5>", lambda e: "break")
+        app.gallery_tag_var.trace_add('write', lambda *a: app._on_tag_var_changed())
 
-        
+        _btn_tag = ttk.Button(ctrl_row, text=" Tag Image", command=app._gallery_tag_selected)
+        _btn_tag.pack(side='left', padx=(0, 4))
+
+        # Auto-Tag All is in the gallery header beside Open Folder / Refresh Gallery
+        # (see app.py _build_ui)
+
+        app.delete_tag_btn = ttk.Button(ctrl_row, text=" Delete Tag", command=self._confirm_delete_tag)
+        # Hidden by default — shown only when a specific tag is selected
+        # (see _on_tag_var_changed)
+
+
 
         # Thumbnails
 
@@ -350,18 +372,9 @@ class GalleryTab:
                 widget.destroy()
             app.gallery_cards.clear()
 
-            # Build gallery cards
-            pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
-            border = pal.get("border_color", pal["panel2"])
-
-            for idx, img_path in enumerate(app.gallery_images):
-                cols = min(3, max(1, app.gallery_canvas.winfo_width() // 260))
-                row, col = idx // cols, idx % cols
-                app.create_gallery_card(img_path, row, col, idx)
-
             # Empty-state message
             if not app.gallery_images:
-                # Friendly label for the ratio mode
+                pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
                 ratio_labels = {
                     "Ratio 16:9": "16:9 widescreen",
                     "Ratio 9:16": "Portrait (9:16)",
@@ -378,15 +391,145 @@ class GalleryTab:
                     bg=pal["panel"], fg=pal["text"], font=app.small_font,
                     pady=30,
                 ).grid(row=0, column=0, sticky="ew")
+                app.gallery_canvas.configure(
+                    scrollregion=app.gallery_canvas.bbox("all") or (0, 0, 1, 1)
+                )
+                app.status_var.set(f'{ratio_mode}: 0 images')
+                return
+
+            # Create placeholder cards first for immediate UI response
+            pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+            border = pal.get("border_color", pal["panel2"])
+
+            for idx, img_path in enumerate(app.gallery_images):
+                cols = min(3, max(1, app.gallery_canvas.winfo_width() // 260))
+                row, col = idx // cols, idx % cols
+                self._create_placeholder_card(img_path, row, col, idx, pal, border)
 
             app.gallery_canvas.configure(
                 scrollregion=app.gallery_canvas.bbox("all") or (0, 0, 1, 1)
             )
-            app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images')
+            app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images (loading thumbnails...)')
+
+            # Load thumbnails in background to prevent UI freeze
+            threading.Thread(target=self._load_thumbnails_lazy, args=(ratio_mode,), daemon=True).start()
 
         except Exception as e:
             app.status_var.set(f'Error building ratio gallery: {e}')
 
+
+    def _create_placeholder_card(self, img_path, row, col, index, pal, border):
+        """Create a placeholder card without loading the thumbnail (for lazy loading)."""
+        app = self.app
+        card = tk.Frame(app.gallery_inner, bg=pal["panel"],
+                        highlightthickness=1, highlightbackground=border, bd=0)
+        card.grid(row=row, column=col, padx=6, pady=6, sticky='nsew')
+        card.columnconfigure(0, weight=1)
+
+        # Placeholder label
+        placeholder = tk.Label(card, text="Loading...", bg=pal["panel"], fg=pal["muted"],
+                             font=app.small_font, width=30, height=8)
+        placeholder.grid(row=0, column=0, pady=(4, 4), padx=4)
+
+        # Name label
+        name_label = tk.Label(card, text=img_path.name,
+                             wraplength=220, height=2, font=app.small_font,
+                             bg=pal["panel"], fg=pal["text"],
+                             anchor="w", justify="left", padx=6, pady=2)
+        name_label.grid(row=1, column=0, sticky='ew')
+
+        # Store placeholder reference for later replacement
+        app.gallery_cards[str(img_path)] = (card, placeholder, name_label, row, col, index)
+
+        # Bind click events to card
+        card.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+        card.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
+        placeholder.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+        placeholder.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
+        name_label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+
+    def _load_thumbnails_lazy(self, ratio_mode):
+        """Load thumbnails in background thread and update UI on main thread."""
+        app = self.app
+        try:
+            from PIL import Image, ImageTk
+
+            for idx, img_path in enumerate(app.gallery_images):
+                # Check if view changed during loading
+                if app.gallery_view_var.get() not in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
+                    return
+
+                path_str = str(img_path)
+                card_data = app.gallery_cards.get(path_str)
+
+                if not card_data:
+                    continue
+
+                card, placeholder, name_label, row, col, index = card_data
+
+                # Check if thumbnail is already cached
+                if path_str in app.thumb_cache:
+                    thumb = app.thumb_cache[path_str]
+                else:
+                    try:
+                        img = Image.open(img_path)
+                        img.thumbnail((240, 135), Image.Resampling.LANCZOS)
+                        thumb = ImageTk.PhotoImage(img)
+                        if len(app.thumb_cache) > 200:
+                            app.thumb_cache.clear()
+                        app.thumb_cache[path_str] = thumb
+                    except Exception as e:
+                        logger.error(f"Thumbnail loading error for {img_path}: {e}")
+                        continue
+
+                # Update UI on main thread
+                def update_card():
+                    try:
+                        # Replace placeholder with actual thumbnail
+                        placeholder.destroy()
+                        label = tk.Label(card, image=thumb, bg=pal["panel"])
+                        label.image = thumb
+                        label.grid(row=0, column=0, pady=(4, 4), padx=4)
+
+                        try:
+                            self._fade_in_thumb(label, thumb, steps=4, interval=35)
+                        except Exception:
+                            pass
+
+                        # Rebind events
+                        label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+                        label.bind('<Double-Button-1>', lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p))
+                        label.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
+
+                        # Add file size + resolution info
+                        try:
+                            size_bytes = img_path.stat().st_size
+                            size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
+                            with Image.open(img_path) as _im:
+                                w_px, h_px = _im.size
+                            info_text = f"{w_px}×{h_px}  •  {size_str}"
+                        except Exception:
+                            info_text = ""
+
+                        info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
+                                            bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
+                        info_label.grid(row=2, column=0, sticky='ew')
+                        info_label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+
+                        # Update card data
+                        app.gallery_cards[path_str] = (card, name_label)
+
+                    except Exception as e:
+                        logger.error(f"UI update error for {img_path}: {e}")
+
+                pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+                app.root.after(0, update_card)
+
+            # Update status when done
+            app.root.after(0, lambda: app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images'))
+
+        except Exception as e:
+            app.root.after(0, lambda: app.status_var.set(f'Error loading thumbnails: {e}'))
 
     def _confirm_delete_tag(self):
         """Delete the selected tag after user confirmation."""
@@ -434,6 +577,58 @@ class GalleryTab:
             app.status_var.set("Prompt copied to clipboard!")
         else:
             app.status_var.set("No prompt to copy.")
+
+    def _bulk_auto_tag(self):
+        """Scan all generated images and auto-tag from filenames.
+
+        Filename format: SUBJECT_STYLE_YYYYMMDD_N.png
+        Extracts subject and style as tags for any untagged image.
+        """
+        import re as _re
+        app = self.app
+        try:
+            from set_wallpaper import MANUAL_DIR, GENERATED_DIR
+        except ImportError:
+            app.status_var.set('Auto-tag: could not find wallpaper directories.')
+            return
+
+        app.status_var.set('Auto-tagging images from filenames...')
+        app.root.update_idletasks()
+
+        # Pattern: SUBJECT_STYLE_YYYYMMDD_N.ext
+        filename_re = _re.compile(r'^([a-z0-9_]+)_([a-z0-9]+)_\d{8}_\d+\.', _re.IGNORECASE)
+
+        tagged_count = 0
+        skipped_count = 0
+        error_count = 0
+
+        for search_dir in [GENERATED_DIR, MANUAL_DIR]:
+            if not search_dir.exists():
+                continue
+            for img_file in search_dir.iterdir():
+                if not img_file.is_file() or img_file.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
+                    continue
+                m = filename_re.match(img_file.name)
+                if not m:
+                    skipped_count += 1
+                    continue
+                raw_subject = m.group(1).replace('_', ' ')
+                raw_style = m.group(2).replace('_', ' ')
+                # Skip generic filenames
+                if raw_subject.lower() in ('wallpaper', 'unknown', 'image'):
+                    skipped_count += 1
+                    continue
+                tags = [raw_subject]
+                if raw_style.lower() != raw_subject.lower():
+                    tags.append(raw_style)
+                try:
+                    add_tags_to_image(img_file, tags)
+                    tagged_count += 1
+                except Exception:
+                    error_count += 1
+
+        app._refresh_gallery_tag_filter()
+        app.status_var.set(f'Auto-tag complete: {tagged_count} tagged, {skipped_count} skipped, {error_count} errors')
 
 
     def _create_manual_card(self, img_path, index, pal, border):
@@ -616,9 +811,9 @@ class GalleryTab:
             app.gallery_sort_mode = "date"
         elif current_sort in ["Name A-Z", "Name Z-A"]:
             app.gallery_sort_mode = "name"
-        elif current_sort in ["Size Largest"]:
+        elif current_sort in ["Size Largest", "Size Smallest"]:
             app.gallery_sort_mode = "size"
-        elif current_sort in ["Resolution Largest"]:
+        elif current_sort in ["Resolution Largest", "Resolution Smallest"]:
             app.gallery_sort_mode = "resolution"
         else:
             app.gallery_sort_mode = "date"  # Default fallback
@@ -1280,19 +1475,22 @@ class GalleryTab:
             app._gallery_fav_scroll.pack(side='right', fill='y')
             # Favorites: Wallpaper | Add Text | Delete
             _repack([_btn_wallpaper_ref, _btn_text_ref, _btn_delete_ref])
-            app.load_favorites()
+            tag_filter = app.get_active_tag()
+            app.load_favorites(tag_filter=tag_filter)
         elif mode == "Styled":
             app.gallery_styled_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_styled_scroll.pack(side='right', fill='y')
             # Styled: Wallpaper | Save to Fav | Delete  (Apply Style hidden — already styled)
             _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_delete_ref])
-            app.load_styled()
+            tag_filter = app.get_active_tag()
+            app.load_styled(tag_filter=tag_filter)
         elif mode == "Manual":
             app.gallery_manual_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_manual_scroll.pack(side='right', fill='y')
             # Manual: Wallpaper | Save to Fav | Add Text | Delete
             _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref])
-            app.load_manual()
+            tag_filter = app.get_active_tag()
+            app.load_manual(tag_filter=tag_filter)
         elif mode in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
@@ -1342,6 +1540,10 @@ class GalleryTab:
             app.load_manual(tag_filter=tag_filter)
             filter_desc = f" with tag '{current_tag}'" if tag_filter else ""
             app.status_var.set(f'Manual reloaded{filter_desc}.')
+        elif view_mode in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
+            app.status_var.set(f'Loading {view_mode} images...')
+            app.root.update_idletasks()
+            threading.Thread(target=app.load_gallery_by_ratio, args=(view_mode, tag_filter), daemon=True).start()
 
         # Return focus to the active canvas so mousewheel scrolling works
         # immediately after tag selection without needing an extra click.
@@ -1351,6 +1553,9 @@ class GalleryTab:
                 "Favorites": app.gallery_fav_canvas,
                 "Styled": app.gallery_styled_canvas,
                 "Manual": app.gallery_manual_canvas,
+                "Ratio 16:9": app.gallery_canvas,
+                "Ratio 9:16": app.gallery_canvas,
+                "Ratio 1:1": app.gallery_canvas,
             }
             target = canvas_map.get(view_mode, app.gallery_canvas)
             target.focus_set()
@@ -1688,7 +1893,7 @@ class GalleryTab:
         current_tag = app.gallery_tag_var.get()
 
         # Rebuild tag dropdown from current storage
-        tags = ['All tags'] + get_all_tags()
+        tags = ['All tags', 'Untagged'] + get_all_tags()
         app.gallery_tag_combo['values'] = tags
 
         # Restore or reset selection — always call set() so the combobox
@@ -1701,6 +1906,9 @@ class GalleryTab:
         # Determine effective filter after potential selection change
         effective_tag = app.gallery_tag_var.get()
         tag_filter = effective_tag if effective_tag != 'All tags' else None
+        # Special handling for 'Untagged' - pass it as-is to indicate untagged filter
+        if effective_tag == 'Untagged':
+            tag_filter = 'Untagged'
 
         # Reload current view
         view_mode = app._gallery_view_mode()
@@ -2615,7 +2823,30 @@ class GalleryTab:
                     except Exception:
                         return 0
                 sorted_favs.sort(key=_fav_size, reverse=True)
+            elif current_sort == "Size Smallest":
+                def _fav_size(x):
+                    p = _fav_path(x)
+                    try:
+                        return os.path.getsize(p) if p else 0
+                    except Exception:
+                        return 0
+                sorted_favs.sort(key=_fav_size, reverse=False)
             elif current_sort == "Resolution Largest":
+                try:
+                    from PIL import Image as PILImg
+                    def _fav_resolution(x):
+                        p = _fav_path(x)
+                        try:
+                            img = PILImg.open(p)
+                            res = img.width * img.height
+                            img.close()
+                            return res
+                        except Exception:
+                            return 0
+                    sorted_favs.sort(key=_fav_resolution, reverse=True)
+                except Exception:
+                    pass
+            elif current_sort == "Resolution Smallest":
                 try:
                     from PIL import Image as PILImg
                     def _fav_resolution(x):
@@ -2628,10 +2859,24 @@ class GalleryTab:
                                 return w * h
                         except Exception:
                             return 0
-                    sorted_favs.sort(key=_fav_resolution, reverse=True)
+                    sorted_favs.sort(key=_fav_resolution, reverse=False)
                 except Exception:
                     sorted_favs.sort(key=lambda x: Path(_fav_path(x)).name.lower())
             display_items = sorted_favs
+
+        # Apply tag filter
+        if tag_filter:
+            def _fav_path(x):
+                return x.get("image_path") or x.get("copied_image_path") or ""
+            if tag_filter == 'Untagged':
+                # Show images with no tags
+                display_items = [item for item in display_items
+                                if not get_tags_for_image(_fav_path(item))]
+            else:
+                # Show images with specific tag
+                display_items = [item for item in display_items
+                                if tag_filter in get_tags_for_image(_fav_path(item))]
+
         app._populate_visual_grid(app.gallery_favorites_ui, display_items, "favorites")
 
 
@@ -2692,15 +2937,22 @@ class GalleryTab:
 
                 try:
 
-                    images_with_size = [(img, os.path.getsize(img)) for img in raw_images]
-
-                    images_with_size.sort(key=lambda x: x[1], reverse=True)
-
-                    raw_images = [x[0] for x in images_with_size]
+                    raw_images.sort(key=lambda x: x.stat().st_size, reverse=True)
 
                 except OSError:
 
-                    # Fallback to name sort if size fails
+                    raw_images.sort(key=lambda x: str(x.name).lower())
+
+
+            elif current_sort == "Size Smallest":
+
+                # Sort by file size ascending (smallest first)
+
+                try:
+
+                    raw_images.sort(key=lambda x: x.stat().st_size, reverse=False)
+
+                except OSError:
 
                     raw_images.sort(key=lambda x: str(x.name).lower())
 
@@ -2710,27 +2962,56 @@ class GalleryTab:
 
                 try:
 
-                    from PIL import Image as PILImage
+                    from PIL import Image as PILImg
 
-                    def _img_resolution(path):
+                    def _img_res(path):
 
                         try:
 
-                            with PILImage.open(path) as img:
+                            img = PILImg.open(path)
 
-                                w, h = img.size
+                            res = img.width * img.height
 
-                                return w * h
+                            img.close()
+
+                            return res
 
                         except Exception:
 
                             return 0
 
-                    images_with_res = [(img, _img_resolution(img)) for img in raw_images]
+                    raw_images.sort(key=_img_res, reverse=True)
 
-                    images_with_res.sort(key=lambda x: x[1], reverse=True)
+                except Exception:
 
-                    raw_images = [x[0] for x in images_with_res]
+                    raw_images.sort(key=lambda x: str(x.name).lower())
+
+
+            elif current_sort == "Resolution Smallest":
+
+                # Sort by image resolution (width * height) ascending
+
+                try:
+
+                    from PIL import Image as PILImg
+
+                    def _img_res(path):
+
+                        try:
+
+                            img = PILImg.open(path)
+
+                            res = img.width * img.height
+
+                            img.close()
+
+                            return res
+
+                        except Exception:
+
+                            return 0
+
+                    raw_images.sort(key=_img_res, reverse=False)
 
                 except Exception:
 
@@ -2757,6 +3038,16 @@ class GalleryTab:
                 raw_images += [p for p in ordered.values() if str(p) not in order_strs]
 
             app.gallery_images = raw_images
+
+            # Apply tag filter
+            tag_filter = app.get_active_tag()
+            if tag_filter:
+                if tag_filter == 'Untagged':
+                    # Show images with no tags
+                    app.gallery_images = [img for img in app.gallery_images if not get_tags_for_image(img)]
+                else:
+                    # Show images with specific tag
+                    app.gallery_images = [img for img in app.gallery_images if tag_filter in get_tags_for_image(img)]
 
             app.slideshow.load_gallery(app.gallery_images)
 
@@ -2876,7 +3167,12 @@ class GalleryTab:
 
             # Apply tag filter if specified
             if tag_filter:
-                filtered_images = [img for img in filtered_images if app._image_has_tag(img, tag_filter)]
+                if tag_filter == 'Untagged':
+                    # Show images with no tags
+                    filtered_images = [img for img in filtered_images if not get_tags_for_image(img)]
+                else:
+                    # Show images with specific tag
+                    filtered_images = [img for img in filtered_images if tag_filter in get_tags_for_image(img)]
 
             # Apply sorting
             current_sort = app.sort_combo_var.get() if hasattr(app, 'sort_combo_var') else "Date Newest"
@@ -2891,6 +3187,11 @@ class GalleryTab:
             elif current_sort == "Size Largest":
                 try:
                     filtered_images.sort(key=lambda f: f.stat().st_size, reverse=True)
+                except OSError:
+                    filtered_images.sort(key=lambda f: f.name.lower())
+            elif current_sort == "Size Smallest":
+                try:
+                    filtered_images.sort(key=lambda f: f.stat().st_size, reverse=False)
                 except OSError:
                     filtered_images.sort(key=lambda f: f.name.lower())
             elif current_sort == "Resolution Largest":
@@ -2935,6 +3236,8 @@ class GalleryTab:
                 manual_files.sort(key=lambda f: f.name.lower(), reverse=True)
             elif current_sort == "Size Largest":
                 manual_files.sort(key=lambda f: f.stat().st_size, reverse=True)
+            elif current_sort == "Size Smallest":
+                manual_files.sort(key=lambda f: f.stat().st_size, reverse=False)
             elif current_sort == "Resolution Largest":
                 try:
                     from PIL import Image as PILImg
@@ -2947,8 +3250,29 @@ class GalleryTab:
                     manual_files.sort(key=_manual_res, reverse=True)
                 except Exception:
                     manual_files.sort(key=lambda f: f.name.lower())
+            elif current_sort == "Resolution Smallest":
+                try:
+                    from PIL import Image as PILImg
+                    def _manual_res(path):
+                        try:
+                            with PILImg.open(path) as img:
+                                return img.size[0] * img.size[1]
+                        except Exception:
+                            return 0
+                    manual_files.sort(key=_manual_res, reverse=False)
+                except Exception:
+                    manual_files.sort(key=lambda f: f.name.lower())
 
             app.gallery_manual_images = manual_files
+
+            # Apply tag filter
+            if tag_filter:
+                if tag_filter == 'Untagged':
+                    # Show images with no tags
+                    app.gallery_manual_images = [img for img in app.gallery_manual_images if not get_tags_for_image(img)]
+                else:
+                    # Show images with specific tag
+                    app.gallery_manual_images = [img for img in app.gallery_manual_images if tag_filter in get_tags_for_image(img)]
 
             # Clear existing manual cards
             for widget in app.gallery_manual_inner.winfo_children():
@@ -3099,6 +3423,8 @@ class GalleryTab:
                 styled_files.sort(key=lambda f: f.name.lower(), reverse=True)
             elif current_sort == "Size Largest":
                 styled_files.sort(key=lambda f: f.stat().st_size, reverse=True)
+            elif current_sort == "Size Smallest":
+                styled_files.sort(key=lambda f: f.stat().st_size, reverse=False)
             elif current_sort == "Resolution Largest":
                 try:
                     from PIL import Image as PILImg
@@ -3111,8 +3437,29 @@ class GalleryTab:
                     styled_files.sort(key=_styled_res, reverse=True)
                 except Exception:
                     styled_files.sort(key=lambda f: f.name.lower())
+            elif current_sort == "Resolution Smallest":
+                try:
+                    from PIL import Image as PILImg
+                    def _styled_res(path):
+                        try:
+                            with PILImg.open(path) as img:
+                                return img.size[0] * img.size[1]
+                        except Exception:
+                            return 0
+                    styled_files.sort(key=_styled_res, reverse=False)
+                except Exception:
+                    styled_files.sort(key=lambda f: f.name.lower())
 
             app.gallery_styled_images = styled_files
+
+            # Apply tag filter
+            if tag_filter:
+                if tag_filter == 'Untagged':
+                    # Show images with no tags
+                    app.gallery_styled_images = [img for img in app.gallery_styled_images if not get_tags_for_image(img)]
+                else:
+                    # Show images with specific tag
+                    app.gallery_styled_images = [img for img in app.gallery_styled_images if tag_filter in get_tags_for_image(img)]
 
             # Clear existing styled cards
             for widget in app.gallery_styled_inner.winfo_children():
@@ -3658,16 +4005,50 @@ class GalleryTab:
         """Show right-click context menu for gallery images."""
         app = self.app
         context_menu = tk.Menu(app.root, tearoff=0)
+        context_menu.add_command(label="Tag Image", command=lambda: (setattr(app, 'selected_gallery_path', Path(path)), app._gallery_tag_selected()))
         context_menu.add_command(label="Load Prompt to Sidebar", command=lambda: app.load_prompt_from_history(path))
         context_menu.add_command(label="Set as Wallpaper", command=lambda: app.set_gallery_image_as_wallpaper(path))
         context_menu.add_separator()
         context_menu.add_command(label="Copy Path", command=lambda: app.copy_to_clipboard(str(path)))
         
+        # Show existing tags for this image
+        existing = get_tags_for_image(path)
+        if existing:
+            context_menu.add_separator()
+            tags_label = f"Tags: {', '.join(existing)}"
+            context_menu.add_command(label=tags_label, state='disabled')
+            # Add option to remove all tags
+            context_menu.add_command(label="Remove All Tags", 
+                                     command=lambda: self._remove_all_tags(path))
+
         try:
             context_menu.tk_popup(event.x_root, event.y_root)
         finally:
             context_menu.grab_release()
 
+
+    def _remove_all_tags(self, path):
+        """Remove all tags from a specific image."""
+        app = self.app
+        try:
+            from gallery_manager import get_tags_for_image, remove_tag_from_image
+            existing_tags = get_tags_for_image(path)
+            if not existing_tags:
+                app._dialog.info("No Tags", "This image has no tags to remove.")
+                return
+            
+            if not app._dialog.ask('Remove All Tags', f'Remove all tags from this image?\n\nTags: {", ".join(existing_tags)}'):
+                return
+            
+            # Remove each tag
+            for tag in existing_tags:
+                remove_tag_from_image(path, tag)
+            
+            app._refresh_gallery_tag_filter()
+            app.status_var.set(f'Removed all tags from image.')
+        except Exception as e:
+            app.status_var.set(f'Error removing tags: {e}')
+            app._dialog.error("Error", f"Failed to remove tags:\n\n{e}")
 
     def sort_gallery(self, event=None):
         """Handle sort dropdown selection - deferred to avoid app.UI freeze."""
@@ -3685,8 +4066,109 @@ class GalleryTab:
             pass
 
 
+    def _show_tag_dialog(self, title):
+        """Show a custom tag dialog with existing tags as selectable options.
+        
+        Allows users to select from existing tags or manually enter new tags.
+        Returns a list of selected/entered tags, or None if cancelled.
+        """
+        app = self.app
+        from gallery_manager import get_all_tags
+        
+        # Create dialog window
+        dialog = tk.Toplevel(app.root)
+        dialog.title(title)
+        dialog.geometry("500x400")
+        dialog.transient(app.root)
+        dialog.grab_set()
+        
+        # Center the dialog
+        dialog.update_idletasks()
+        x = app.root.winfo_x() + (app.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = app.root.winfo_y() + (app.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Get existing tags
+        existing_tags = get_all_tags()
+        
+        # Result storage
+        result = []
+        cancelled = True
+        
+        # Create UI
+        main_frame = ttk.Frame(dialog, padding=15)
+        main_frame.pack(fill="both", expand=True)
+        
+        # Instructions
+        ttk.Label(main_frame, text="Select existing tags or type new tags (comma-separated):",
+                 wraplength=450).pack(anchor="w", pady=(0, 10))
+        
+        # Existing tags listbox with scrollbar
+        list_frame = ttk.Frame(main_frame)
+        list_frame.pack(fill="both", expand=True, pady=(0, 10))
+        
+        scrollbar = ttk.Scrollbar(list_frame)
+        scrollbar.pack(side="right", fill="y")
+        
+        tag_listbox = tk.Listbox(list_frame, selectmode="multiple", 
+                                 yscrollcommand=scrollbar.set,
+                                 height=8, exportselection=False)
+        tag_listbox.pack(side="left", fill="both", expand=True)
+        scrollbar.config(command=tag_listbox.yview)
+        
+        # Populate with existing tags
+        for tag in existing_tags:
+            tag_listbox.insert(tk.END, tag)
+        
+        # Manual entry field
+        ttk.Label(main_frame, text="Or enter new tags:").pack(anchor="w")
+        manual_entry = ttk.Entry(main_frame)
+        manual_entry.pack(fill="x", pady=(5, 10))
+        manual_entry.focus_set()
+        
+        # Button frame
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x")
+        
+        def on_ok():
+            nonlocal result, cancelled
+            cancelled = False
+            
+            # Get selected tags from listbox
+            selected_indices = tag_listbox.curselection()
+            for idx in selected_indices:
+                result.append(tag_listbox.get(idx))
+            
+            # Get manually entered tags
+            manual_text = manual_entry.get().strip()
+            if manual_text:
+                manual_tags = [t.strip() for t in manual_text.split(',') if t.strip()]
+                result.extend(manual_tags)
+            
+            dialog.destroy()
+        
+        def on_cancel():
+            dialog.destroy()
+        
+        ttk.Button(button_frame, text="OK", command=on_ok, width=15).pack(side="right", padx=(5, 0))
+        ttk.Button(button_frame, text="Cancel", command=on_cancel, width=15).pack(side="right")
+        
+        # Handle Enter key in entry field
+        manual_entry.bind("<Return>", lambda e: on_ok())
+        
+        # Wait for dialog to close
+        app.root.wait_window(dialog)
+        
+        if cancelled:
+            return None
+        return result if result else None
+
     def tag_gallery_image(self):
-        """Add tags to selected image(s) with batch tagging support."""
+        """Add tags to selected image(s) with batch tagging support.
+        
+        Shows existing tags as selectable options while allowing manual entry of new tags.
+        Prevents duplicate tags on the same image and refreshes gallery tag filters after save.
+        """
         app = self.app
         # Validate selection - use multi-select set if available, otherwise fall back to single
         target_paths = []
@@ -3708,17 +4190,11 @@ class GalleryTab:
             app._refresh_tag_ui(status_msg='Selection cleared - file(s) not found')
             return
         
-        # Get tag input from user
+        # Show custom tag dialog with existing tags as selectable options
         count_str = f'{len(existing_paths)} image(s)' if len(existing_paths) > 1 else 'image'
-        tags_str = simpledialog.askstring('Add Tags', f'Tag {count_str} (comma-separated):', initialvalue='')
-        if not tags_str:
-            return  # User cancelled or empty input
-        
-        # Parse and clean tags
-        tags = [t.strip() for t in tags_str.split(',') if t.strip()]
+        tags = self._show_tag_dialog(f'Tag {count_str}')
         if not tags:
-            app._dialog.info('No Tags', 'No valid tags entered. Tags cannot be empty.')
-            return
+            return  # User cancelled or empty input
         
         # Deduplicate tags case-insensitively (preserve first occurrence's case)
         seen_lower = set()
@@ -3763,6 +4239,9 @@ class GalleryTab:
                 status_msg += f' ({len(failed_paths)} failed)'
         
         app._refresh_tag_ui(status_msg=status_msg, keep_selection=True)
+        
+        # Refresh gallery tag filters to show new tags
+        app._refresh_gallery_tag_filter()
         
         if failed_paths:
             app.status_var.set(f'Error tagging some images: {failed_paths[0][1]}')

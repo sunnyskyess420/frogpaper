@@ -28,6 +28,11 @@ logs/*
 # Gallery metadata (contains absolute local file paths)
 gallery_tags.json
 
+# Database files (contain user data)
+frogpaper.db
+frogpaper.db-shm
+frogpaper.db-wal
+
 # Wallpapers (large files — store locally, don't commit)
 wallpapers/manual/*
 wallpapers/generated/*

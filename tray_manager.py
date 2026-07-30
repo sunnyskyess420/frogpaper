@@ -166,8 +166,7 @@ class TrayManager:
                 logger.info("Starting tray icon...")
                 menu = pystray.Menu(
                     pystray.MenuItem("Open FrogPaper", app._tray_restore, default=True),
-                    pystray.MenuItem("Open Gallery", app._tray_open_gallery),
-                    pystray.MenuItem("Open Prompt Builder", app._tray_generate_prompt),
+                    pystray.MenuItem("Open Folder", app._tray_open_folder),
                     pystray.MenuItem("Settings", app._tray_open_settings),
                     pystray.Menu.SEPARATOR,
                     pystray.MenuItem("⏩ Next Wallpaper", app._tray_next_wallpaper),
@@ -186,7 +185,7 @@ class TrayManager:
                         visible=lambda item: getattr(app.slideshow, "running", False),
                     ),
                     pystray.Menu.SEPARATOR,
-                    pystray.MenuItem("About FrogPaper", app._show_about_dialog),
+                    pystray.MenuItem("About FrogPaper", app._tray_show_about),
                     pystray.MenuItem("Quit FrogPaper", app._tray_exit),
                 )
                 
@@ -301,9 +300,10 @@ class TrayManager:
 
 
     def _tray_generate_prompt(self, icon=None, item=None):
-            """Restore window — prompt builder is always visible in sidebar."""
+            """Restore window and generate an image."""
             app = self.app
             app.root.after(0, app._restore_window)
+            app.root.after(100, app.generate_image)
 
 
     def _tray_next_wallpaper(self, icon=None, item=None):
@@ -312,16 +312,31 @@ class TrayManager:
             app.root.after(0, app.advance_slideshow)
 
 
-    def _tray_open_gallery(self, icon=None, item=None):
-            """Restore window — gallery is always visible in 3-column layout."""
+    def _tray_open_folder(self, icon=None, item=None):
+            """Open the wallpapers folder in system file explorer (same as gallery header 'Open Folder' button)."""
             app = self.app
-            app.root.after(0, app._restore_window)
+            app.root.after(0, app._open_wallpapers_folder)
 
 
     def _tray_open_settings(self, icon=None, item=None):
             """Restore window and open Settings dialog."""
             app = self.app
-            app.root.after(0, app._open_settings_window)
+            app.root.after(0, lambda: self._restore_window_and_open_settings())
+
+    def _restore_window_and_open_settings(self):
+            """Restore the window and then open Settings dialog."""
+            self._restore_window()
+            self.app._open_settings_window()
+
+    def _tray_show_about(self, icon=None, item=None):
+            """Restore window and show About dialog."""
+            app = self.app
+            app.root.after(0, lambda: self._restore_window_and_show_about())
+
+    def _restore_window_and_show_about(self):
+            """Restore the window and then show About dialog."""
+            self._restore_window()
+            self.app._show_about_popup()
 
 
     def _tray_pause_slideshow(self, icon=None, item=None):

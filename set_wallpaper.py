@@ -25,11 +25,11 @@ def set_wallpaper(image_path: str | Path) -> bool:
     image_path = Path(image_path).resolve()
 
     if not image_path.exists():
-        print(f"  ❌ File not found: {image_path}")
+        print(f"  [X] File not found: {image_path}")
         return False
 
     if image_path.suffix.lower() not in IMAGE_EXTENSIONS:
-        print(f"  ❌ Unsupported format: {image_path.suffix}")
+        print(f"  [X] Unsupported format: {image_path.suffix}")
         print(f"     Supported: {', '.join(IMAGE_EXTENSIONS)}")
         return False
 
@@ -41,10 +41,10 @@ def set_wallpaper(image_path: str | Path) -> bool:
     )
 
     if result:
-        print(f"  ✅ Wallpaper set: {image_path.name}")
+        print(f"  [OK] Wallpaper set: {image_path.name}")
         return True
 
-    print(f"  ❌ Windows API call failed (error code: {ctypes.get_last_error()})")
+    print(f"  [X] Windows API call failed (error code: {ctypes.get_last_error()})")
     return False
 
 
@@ -67,12 +67,12 @@ def set_random_wallpaper(folders: list[Path] = None) -> bool:
     images = collect_wallpapers(folders)
 
     if not images:
-        print("  ⚠️  No wallpapers found in wallpapers/manual or wallpapers/generated.")
+        print("  [!] No wallpapers found in wallpapers/manual or wallpapers/generated.")
         print("     Save some images there first, then run this again.")
         return False
 
     chosen = random.choice(images)
-    print(f"\n  🎲 Randomly picked: {chosen.name}")
+    print(f"\n  [*] Randomly picked: {chosen.name}")
     return set_wallpaper(chosen)
 
 
@@ -80,7 +80,7 @@ def list_wallpapers() -> None:
     images = collect_wallpapers()
 
     if not images:
-        print("  ⚠️  No wallpapers saved yet.")
+        print("  [!] No wallpapers saved yet.")
         return
 
     print(f"\n  Found {len(images)} wallpaper(s):\n")

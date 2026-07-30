@@ -41,7 +41,7 @@ setx HUGGINGFACE_TOKEN hf_your_token_here
 
 FrogPaper is a complete wallpaper creation and management studio in a single window:
 
-1. **Build Prompts** — Use sidebar dropdowns or the Prompt Builder tab with Quick Build and Recipe Library
+1. **Build Prompts** — Use the sidebar dropdowns and negative prompt builder to craft prompts
 2. **Generate Images** — Send prompts to AI models via Pollinations, Cloudflare, or HuggingFace
 3. **Curate Collection** — Browse gallery, favorite images, apply 19 artistic filters, add text overlays, tag and organize
 4. **Set & Rotate** — Apply wallpapers instantly or let the slideshow rotate automatically with fullscreen-pause detection
@@ -67,7 +67,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Recipe Library** | Save, load, import, export reusable prompt configurations |
 | **13 App Themes** | Full theme system with dark, light, and specialty color schemes |
 | **Windows Integration** | Native wallpaper setting, system tray with full controls, minimize-to-tray, startup tasks |
-| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+P (Prompt Builder), Ctrl+S (Settings), Ctrl+N (Generate) |
+| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate) |
 
 ---
 
@@ -114,15 +114,6 @@ All action buttons sit at the **top** for instant access, followed by a separato
 - **Sort dropdown** — Date Newest/Oldest, Name A-Z/Z-A, Size Largest, Resolution Largest
 - **Tag filter** — dropdown to filter all views by tag
 - **Thumbnail grid** — lazy-rendered cards with fade-in animation; double-click to set as wallpaper
-
-### Tab: Prompt Builder
-
-Accessed via **Ctrl+P** or tray menu. Contains:
-
-- **Quick Build** — Full theme builder with all variables, Generate/Random/Save buttons
-- **Quick Prompt Library** — Collapsible list of saved recipes; load, edit, delete, export, import
-- **Template System** — Unified Recipe + Template management with import/export JSON
-- **Sessions** — Save/Load/Delete complete working states (stored in SQLite with JSON fallback)
 
 ### Settings Window
 
@@ -198,7 +189,7 @@ Right-clicking the tray icon gives full app control without opening the window:
 |---|---|
 | **Open FrogPaper** | Restore main window (double-click default) |
 | **Open Gallery** | Restore and jump to Gallery tab |
-| **Open Prompt Builder** | Restore and jump to Prompt Builder tab |
+| **Generate Image** | Restore window and generate a new image |
 | **Settings** | Open Settings dialog |
 | **Next Wallpaper** | Advance to next wallpaper in history |
 | **Previous Wallpaper** | Go back in wallpaper history |
@@ -215,7 +206,6 @@ Right-clicking the tray icon gives full app control without opening the window:
 | Shortcut | Action |
 |---|---|
 | `Ctrl+G` | Switch focus to Gallery |
-| `Ctrl+P` | Open Prompt Builder |
 | `Ctrl+S` | Open Settings |
 | `Ctrl+N` | Generate image |
 | `Ctrl+Alt+N` | Advance slideshow (global hotkey, requires `keyboard` package) |
@@ -381,11 +371,6 @@ Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the
 2. Optionally configure negative prompt presets and custom terms
 3. Click **Generate Image** at the top of the sidebar
 
-**Prompt Builder Method:**
-1. Open Prompt Builder via **Ctrl+P** or tray menu
-2. Use Quick Build to adjust all variables with more control
-3. Save recipes for instant recall from the Quick Prompt Library
-
 ### Managing Images
 
 **Gallery Navigation:**
@@ -448,7 +433,7 @@ All images are stored locally. Only text prompts are sent to the configured AI p
 ## Development Notes
 
 - **Entry point:** `app.py` contains the main UI, layout, and event logic (~6400 lines)
-- **Tab modules:** `prompt_tab.py` (Prompt Builder, Quick Build, Recipes) and `gallery_tab.py` (Gallery, style transfer, text overlay, tags)
+- **Tab modules:** `prompt_tab.py` (Quick Build, Recipes, Templates) and `gallery_tab.py` (Gallery, style transfer, text overlay, tags)
 - **Settings:** `settings_tab.py` — modal dialog with 5 sections
 - **Theme generation:** `theme_mixer.py` handles prompt construction; keyword caches pre-warm at startup
 - **Image generation:** `wallpaper_generator.py` supports 3 providers (Pollinations, Cloudflare, HuggingFace)

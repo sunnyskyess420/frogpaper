@@ -110,8 +110,13 @@ class KeywordExpander:
         if self._check_nltk():
             try:
                 self._setup_nltk()
+                logger.info("NLTK warmup completed successfully")
             except Exception as e:
                 logger.warning("NLTK warmup failed: %s", e)
+        
+        # Pre-load keyword data for faster lookups
+        if self.keywords_data:
+            logger.info(f"Keyword data loaded: {len(self.keywords_data)} categories, {len(self.all_keywords_set)} keywords")
         
         # sentence-transformers warmup disabled - causes system freezes due to heavy PyTorch model loading
         # Model will lazy-load on first semantic similarity request instead
@@ -444,5 +449,6 @@ def warmup_keyword_expander():
     try:
         expander = get_keyword_expander()
         expander.warmup()
+        logger.info("Keyword expander warmup completed")
     except Exception as e:
         logger.warning("Could not warmup keyword expander: %s", e)

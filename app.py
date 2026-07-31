@@ -6879,7 +6879,8 @@ class FrogPaperApp:
 
 
     def _get_startup_registry(self) -> bool:
-        """Return True if FrogPaper is registered in the Windows startup registry key."""
+        """Return True if FrogPaper is registered in the Windows startup registry key or Task Scheduler."""
+        # Check registry first
         try:
             import winreg
             key = winreg.OpenKey(
@@ -6891,11 +6892,89 @@ class FrogPaperApp:
                 winreg.QueryValueEx(key, "FrogPaper")
                 return True
             except FileNotFoundError:
-                return False
+                pass
             finally:
                 winreg.CloseKey(key)
         except Exception:
-            return False
+            pass
+        
+        # Check Task Scheduler as fallback
+        try:
+            import subprocess
+            task_name = "FrogPaperStartup"
+            cmd = ['schtasks', '/Query', '/TN', task_name]
+            result = subprocess.run(cmd, capture_output=True, text=True)
+            if result.returncode == 0:
+                logger.info("[Startup] Found startup entry in Task Scheduler")
+                return True
+        except Exception:
+            pass
+        
+        return False
+
+    def _set_startup_task_scheduler(self, enable: bool):
+        """Alternative method using Windows Task Scheduler when registry access fails."""
+        try:
+            import subprocess
+            import sys
+            from pathlib import Path
+            
+            task_name = "FrogPaperStartup"
+            
+            if enable:
+                # Determine the correct launch command based on execution mode
+                if getattr(sys, 'frozen', False):
+                    # Running as PyInstaller EXE
+                    exe_path = Path(sys.executable).resolve()
+                    target = str(exe_path)
+                    logger.info(f"[Startup] Setting startup task for EXE at: {target}")
+                else:
+                    # Running as script — launch via python
+                    import __main__
+                    script_path = Path(getattr(__main__, '__file__', 'app.py')).resolve()
+                    python_exe = Path(sys.executable).resolve()
+                    target = f'"{python_exe}" "{script_path}"'
+                    logger.info(f"[Startup] Setting startup task for script at: {target}")
+                
+                # Create/Update the scheduled task
+                cmd = [
+                    'schtasks', '/Create',
+                    '/TN', task_name,
+                    '/TR', target,
+                    '/SC', 'ONLOGON',
+                    '/RL', 'HIGHEST',
+                    '/F'
+                ]
+                
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    logger.info(f"[Startup] Task created successfully: {target}")
+                    self.status_var.set("Run on startup enabled (via Task Scheduler).")
+                else:
+                    logger.error(f"[Startup] Task creation failed: {result.stderr}")
+                    self.status_var.set(f"Failed to enable startup: {result.stderr}")
+                    raise Exception(f"Task creation failed: {result.stderr}")
+            else:
+                # Delete the scheduled task
+                cmd = ['schtasks', '/Delete', '/TN', task_name, '/F']
+                result = subprocess.run(cmd, capture_output=True, text=True)
+                if result.returncode == 0:
+                    logger.info("[Startup] Task deleted successfully")
+                    self.status_var.set("Run on startup disabled (via Task Scheduler).")
+                else:
+                    # Task might not exist, which is fine
+                    if "not found" in result.stderr.lower() or "could not be found" in result.stderr.lower():
+                        logger.info("[Startup] Task not found to delete")
+                        self.status_var.set("Run on startup disabled (was not enabled).")
+                    else:
+                        logger.error(f"[Startup] Task deletion failed: {result.stderr}")
+                        self.status_var.set(f"Failed to disable startup: {result.stderr}")
+                        raise Exception(f"Task deletion failed: {result.stderr}")
+                        
+        except Exception as e:
+            logger.error(f"[Startup] Task Scheduler error: {e}")
+            self.status_var.set(f"Failed to {'enable' if enable else 'disable'} startup via Task Scheduler: {e}")
+            raise
 
     def _set_startup_registry(self, enable: bool):
         """Add or remove FrogPaper from the Windows startup registry key.
@@ -6908,11 +6987,21 @@ class FrogPaperApp:
             import sys
             from pathlib import Path
             
-            key = winreg.OpenKey(
-                winreg.HKEY_CURRENT_USER,
-                r"Software\Microsoft\Windows\CurrentVersion\Run",
-                0, winreg.KEY_SET_VALUE
-            )
+            # Try KEY_ALL_ACCESS first for better permission handling
+            try:
+                key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Run",
+                    0, winreg.KEY_ALL_ACCESS
+                )
+            except PermissionError:
+                # Fallback to KEY_SET_VALUE if KEY_ALL_ACCESS fails
+                logger.warning("[Startup] KEY_ALL_ACCESS failed, trying KEY_SET_VALUE")
+                key = winreg.OpenKey(
+                    winreg.HKEY_CURRENT_USER,
+                    r"Software\Microsoft\Windows\CurrentVersion\Run",
+                    0, winreg.KEY_SET_VALUE
+                )
             
             if enable:
                 # Determine the correct launch command based on execution mode
@@ -6962,6 +7051,10 @@ class FrogPaperApp:
                     raise
             
             winreg.CloseKey(key)
+        except PermissionError as e:
+            logger.error(f"[Startup] Permission denied accessing registry: {e}")
+            # Try alternative method using Task Scheduler
+            self._set_startup_task_scheduler(enable)
         except Exception as e:
             logger.error(f"[Startup] Registry error: {e}")
             self.status_var.set(f"Failed to {'enable' if enable else 'disable'} startup: {e}")
@@ -6970,10 +7063,16 @@ class FrogPaperApp:
     def _on_run_on_startup_changed(self):
         """Handle run-on-startup toggle."""
         new_value = self.run_on_startup_var.get()
-        self.run_on_startup_enabled = new_value
-        self._set_startup_registry(new_value)
-        state = "enabled" if new_value else "disabled"
-        self.status_var.set(f"Run on startup {state}.")
+        try:
+            self._set_startup_registry(new_value)
+            self.run_on_startup_enabled = new_value
+            state = "enabled" if new_value else "disabled"
+            self.status_var.set(f"Run on startup {state}.")
+        except Exception as e:
+            # If both methods fail, revert the checkbox
+            logger.error(f"[Startup] Failed to change startup setting: {e}")
+            self.run_on_startup_var.set(self.run_on_startup_enabled)
+            self.status_var.set(f"Failed to change startup setting. Try running as administrator.")
 
 
 

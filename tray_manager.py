@@ -169,6 +169,8 @@ class TrayManager:
                     pystray.MenuItem("Open Folder", app._tray_open_folder),
                     pystray.MenuItem("Settings", app._tray_open_settings),
                     pystray.Menu.SEPARATOR,
+                    pystray.MenuItem("Tutorials", app._tray_show_tutorials),
+                    pystray.Menu.SEPARATOR,
                     pystray.MenuItem("⏩ Next Wallpaper", app._tray_next_wallpaper),
                     pystray.MenuItem("⏪ Previous Wallpaper", app._tray_prev_wallpaper),
                     pystray.MenuItem("🎲 Random Wallpaper", app._tray_random_wallpaper),

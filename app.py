@@ -137,6 +137,7 @@ seed_bundled_files()
 from setup_scheduler import create_task
 from session_manager import SessionManager
 from tray_manager import TrayManager
+from tutorial_manager import TutorialManager
 from settings_tab import SettingsTab
 from prompt_tab import PromptTab
 from gallery_tab import GalleryTab
@@ -2198,6 +2199,7 @@ class FrogPaperApp:
         self._prompt_tab = PromptTab(self)
         self._gallery_tab = GalleryTab(self)
         self._tray_mgr = TrayManager(self)
+        self._tutorial_mgr = TutorialManager(self)
 
         # Set window / taskbar icon using the shared icon loader
         # (must come AFTER _tray_mgr is created)
@@ -2243,6 +2245,11 @@ class FrogPaperApp:
         _t3 = time.perf_counter()
         self.apply_theme(load_config().get("app_theme", "darkforest"))
         logger.info(f"apply_theme: {time.perf_counter()-_t3:.2f}s")
+        
+        # Check if first-run tutorial should be shown
+        if self._tutorial_mgr.should_show_first_run_tutorial():
+            self.root.after(1000, self._show_first_run_prompt)
+        
         logger.info(f"total sync init: {time.perf_counter()-_t0:.2f}s")
 
         self.status_var.set("Loading gallery and warming up prompt engine…")
@@ -3640,6 +3647,14 @@ class FrogPaperApp:
         bottom.grid(row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=(4, 4))
         self.bottom_bar = bottom
 
+        # Tutorials button - prominently placed in status bar
+        self.tutorials_button = ttk.Button(
+            bottom,
+            text="🎓 Tutorials",
+            command=self._show_tutorial_menu
+        )
+        self.tutorials_button.pack(side="left", padx=(0, 10))
+        
         ttk.Label(bottom, textvariable=self.statusvar).pack(side="right")
 
         # ── Notebook stub (kept so existing code doesn't crash) ─────────────
@@ -6406,6 +6421,24 @@ class FrogPaperApp:
 
     def _tray_show_about(self, icon=None, item=None):
         return self._tray_mgr._tray_show_about(icon, item)
+
+    def _tray_show_tutorials(self, icon=None, item=None):
+        """Show tutorial selection menu from tray."""
+        return self._tutorial_mgr._show_tutorial_menu()
+    
+    def _show_first_run_prompt(self):
+        """Show a prompt to start the first-run tutorial."""
+        if self.ask(
+            "Welcome to FrogPaper! 🐸",
+            "Would you like to take a quick 5-minute tour to learn the basics?"
+        ):
+            self._tutorial_mgr.start_tutorial("quick_start")
+        else:
+            self._tutorial_mgr.mark_first_run_completed()
+    
+    def _show_tutorial_menu(self):
+        """Show the tutorial selection menu from the main app button."""
+        self._tutorial_mgr._show_tutorial_menu()
 
 
     def _tray_random_wallpaper(self, icon=None, item=None):

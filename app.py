@@ -6428,7 +6428,7 @@ class FrogPaperApp:
     
     def _show_first_run_prompt(self):
         """Show a prompt to start the first-run tutorial."""
-        if self.ask(
+        if self._dialog.ask(
             "Welcome to FrogPaper! 🐸",
             "Would you like to take a quick 5-minute tour to learn the basics?"
         ):

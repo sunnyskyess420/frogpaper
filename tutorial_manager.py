@@ -272,9 +272,9 @@ class TutorialManager:
         
         self.tutorial_window = tk.Toplevel(self.app.root)
         self.tutorial_window.title(self.current_tutorial["title"])
-        self.tutorial_window.geometry("500x450")
+        self.tutorial_window.geometry("600x500")
         self.tutorial_window.resizable(True, True)
-        self.tutorial_window.minsize(400, 350)
+        self.tutorial_window.minsize(500, 400)
         
         # Make window stay on top
         self.tutorial_window.attributes('-topmost', True)
@@ -282,31 +282,31 @@ class TutorialManager:
         # Style the window
         self.tutorial_window.configure(bg=self.app.UI.get("surface", "#1a1a1f"))
         
-        # Content frame with scroll
-        main_frame = ttk.Frame(self.tutorial_window)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Main container
+        main_container = ttk.Frame(self.tutorial_window)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title label
         title_label = ttk.Label(
-            main_frame,
+            main_container,
             text=self.current_tutorial["title"],
-            font=("Segoe UI", 16, "bold"),
+            font=("Segoe UI", 18, "bold"),
             foreground=self.app.UI.get("frog", "#4ade80")
         )
         title_label.pack(pady=(0, 5))
         
         # Description label
         desc_label = ttk.Label(
-            main_frame,
+            main_container,
             text=self.current_tutorial["description"],
-            font=("Segoe UI", 10),
+            font=("Segoe UI", 11),
             foreground=self.app.UI.get("text_secondary", "#9ca3af")
         )
-        desc_label.pack(pady=(0, 15))
+        desc_label.pack(pady=(0, 10))
         
         # Scrollable content area
-        canvas = tk.Canvas(main_frame, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(main_container, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
         scrollable_frame.bind(
@@ -320,24 +320,24 @@ class TutorialManager:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Step content
+        # Step content with better padding
         self.step_content = ttk.Label(
             scrollable_frame,
             text="",
-            font=("Segoe UI", 11),
-            wraplength=420,
+            font=("Segoe UI", 12),
+            wraplength=500,
             justify="left"
         )
-        self.step_content.pack(pady=10, padx=5)
+        self.step_content.pack(pady=15, padx=10)
         
         # Progress indicator
         self.progress_label = ttk.Label(
             scrollable_frame,
             text="",
-            font=("Segoe UI", 10, "bold"),
+            font=("Segoe UI", 11, "bold"),
             foreground=self.app.UI.get("frog", "#4ade80")
         )
-        self.progress_label.pack(pady=(20, 10))
+        self.progress_label.pack(pady=(15, 15))
         
         # Navigation buttons
         button_frame = ttk.Frame(scrollable_frame)
@@ -507,30 +507,30 @@ class TutorialManager:
         
         menu_window = tk.Toplevel(self.app.root)
         menu_window.title("Tutorials")
-        menu_window.geometry("400x500")
+        menu_window.geometry("450x550")
         menu_window.resizable(True, True)
-        menu_window.minsize(350, 400)
+        menu_window.minsize(400, 450)
         menu_window.attributes('-topmost', True)
         
         # Style the window
         menu_window.configure(bg=self.app.UI.get("surface", "#1a1a1f"))
         
-        # Content frame with scroll
-        main_frame = ttk.Frame(menu_window)
-        main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+        # Main container
+        main_container = ttk.Frame(menu_window)
+        main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
         # Title
         title_label = ttk.Label(
-            main_frame,
+            main_container,
             text="🎓 FrogPaper Tutorials",
-            font=("Segoe UI", 18, "bold"),
+            font=("Segoe UI", 20, "bold"),
             foreground=self.app.UI.get("frog", "#4ade80")
         )
-        title_label.pack(pady=(0, 20))
+        title_label.pack(pady=(0, 15))
         
         # Scrollable area for tutorial options
-        canvas = tk.Canvas(main_frame, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
-        scrollbar = ttk.Scrollbar(main_frame, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(main_container, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
+        scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
         scrollable_frame.bind(
@@ -556,14 +556,14 @@ class TutorialManager:
             is_completed = self.is_tutorial_completed(tutorial_id)
             
             # Tutorial card
-            card_frame = ttk.Frame(scrollable_frame, padding=15)
-            card_frame.pack(fill="x", pady=8)
+            card_frame = ttk.Frame(scrollable_frame, padding=18)
+            card_frame.pack(fill="x", pady=10)
             
             # Tutorial title
             title_label = ttk.Label(
                 card_frame,
                 text=title,
-                font=("Segoe UI", 12, "bold"),
+                font=("Segoe UI", 13, "bold"),
                 foreground=self.app.UI.get("text_primary", "#f0f0f2")
             )
             title_label.pack(anchor="w")
@@ -572,10 +572,10 @@ class TutorialManager:
             desc_label = ttk.Label(
                 card_frame,
                 text=description,
-                font=("Segoe UI", 10),
+                font=("Segoe UI", 11),
                 foreground=self.app.UI.get("text_secondary", "#9ca3af")
             )
-            desc_label.pack(anchor="w", pady=(4, 10))
+            desc_label.pack(anchor="w", pady=(5, 12))
             
             # Button row
             button_row = ttk.Frame(card_frame)
@@ -595,7 +595,7 @@ class TutorialManager:
                     button_row,
                     text="✓ Completed",
                     foreground=self.app.UI.get("frog", "#4ade80"),
-                    font=("Segoe UI", 10, "bold")
+                    font=("Segoe UI", 11, "bold")
                 )
                 status_label.pack(side="right")
         

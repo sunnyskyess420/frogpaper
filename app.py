@@ -1,6 +1,9 @@
 import sys
 import os
 
+# App version - single source of truth for version string
+APP_VERSION = "1.0.2"
+
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
 if getattr(sys, 'frozen', False):
@@ -6660,7 +6663,7 @@ class FrogPaperApp:
         # Version
         tk.Label(
             content_frame,
-            text="Version 1.0",
+            text=f"Version {APP_VERSION}",
             font=("Segoe UI", 10, "italic"),
             bg=pal["panel"],
             fg=pal.get("muted", "#888")

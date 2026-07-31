@@ -33,6 +33,10 @@ frogpaper.db
 frogpaper.db-shm
 frogpaper.db-wal
 
+# Installer build files
+generate_bmp.py
+FIX_README.md
+
 # Wallpapers (large files — store locally, don't commit)
 wallpapers/manual/*
 wallpapers/generated/*

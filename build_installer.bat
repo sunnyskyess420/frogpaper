@@ -55,8 +55,8 @@ echo OutputBaseFilename=FrogPaper-Setup-1.0.2
 echo Compression=lzma2
 echo SolidCompression=yes
 echo WizardStyle=modern
-echo WizardImageFile=FrogPaperLogo.png
-echo WizardSmallImageFile=frogpaper.ico
+echo WizardImageFile=FrogPaperLogo.bmp
+echo WizardSmallImageFile=FrogPaperSmall.bmp
 echo SetupIconFile=frogpaper.ico
 echo UninstallDisplayIcon={app}\frogpaper.ico
 echo CreateAppDir=yes
@@ -79,6 +79,8 @@ echo Source: "dist\FrogPaper.exe"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "sounds\*"; DestDir: "{app}\sounds"; Flags: ignoreversion recursesubdirs createallsubdirs
 echo Source: "frogpaper.ico"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "FrogPaperLogo.png"; DestDir: "{app}"; Flags: ignoreversion
+echo Source: "FrogPaperLogo.bmp"; DestDir: "{app}"; Flags: ignoreversion
+echo Source: "FrogPaperSmall.bmp"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "sidebar_logo.png"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "config.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "keywords.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
@@ -102,7 +104,7 @@ echo.
 echo [Icons]
 echo Name: "{group}\FrogPaper"; Filename: "{app}\FrogPaper.exe"; IconFilename: "{app}\frogpaper.ico"
 echo Name: "{group}\Uninstall FrogPaper"; Filename: "{uninstallexe}"
-echo Name: "{commondesktop}\FrogPaper"; Filename: "{app}\FrogPaper.exe"; IconFilename: "{app}\frogpaper.ico"; Tasks: desktopicon
+echo Name: "{autodesktop}\FrogPaper"; Filename: "{app}\FrogPaper.exe"; IconFilename: "{app}\frogpaper.ico"; Tasks: desktopicon
 echo Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\FrogPaper"; Filename: "{app}\FrogPaper.exe"; Tasks: quicklaunchicon
 echo.
 echo [Registry]

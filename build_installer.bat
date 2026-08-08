@@ -44,14 +44,14 @@ REM Create a comprehensive Inno Setup script
 (
 echo [Setup]
 echo AppName=FrogPaper
-echo AppVersion=1.0.2
+echo AppVersion=1.1.0
 echo AppPublisher=FrogPaper
 echo AppPublisherURL=https://github.com/sunnyskyess420/frogpaper
 echo AppSupportURL=https://github.com/sunnyskyess420/frogpaper/issues
 echo AppUpdatesURL=https://github.com/sunnyskyess420/frogpaper/releases
 echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
-echo OutputBaseFilename=FrogPaper-Setup-1.0.2
+echo OutputBaseFilename=FrogPaper-Setup-1.1.0
 echo Compression=lzma2
 echo SolidCompression=yes
 echo WizardStyle=modern
@@ -143,7 +143,7 @@ echo ========================================
 echo Installer created successfully!
 echo ========================================
 echo.
-echo Installer location: installer_output\FrogPaper-Setup-1.0.2.exe
+echo Installer location: installer_output\FrogPaper-Setup-1.1.0.exe
 echo.
 echo Press any key to exit...
 pause >nul

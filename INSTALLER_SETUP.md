@@ -32,7 +32,7 @@ Then, create the installer:
 build_installer.bat
 ```
 
-This will create `installer_output\FrogPaper-Setup-1.0.2.exe`
+This will create `installer_output\FrogPaper-Setup-1.1.0.exe`
 
 ## Installer Features
 
@@ -58,7 +58,7 @@ The Windows startup functionality has been improved:
 
 ## Testing the Installer
 
-1. Run the installer: `installer_output\FrogPaper-Setup-1.0.2.exe`
+1. Run the installer: `installer_output\FrogPaper-Setup-1.1.0.exe`
 2. Choose installation options (desktop icon, startup, etc.)
 3. After installation, test the "Run on startup" setting in FrogPaper settings
 4. Restart your computer to verify startup functionality
@@ -70,11 +70,11 @@ After building and testing the installer:
 
 1. **Upload the installer** to GitHub releases:
    ```cmd
-   gh release upload v1.0.2 installer_output\FrogPaper-Setup-1.0.2.exe --repo sunnyskyess420/frogpaper
+   gh release upload v1.1.0 installer_output\FrogPaper-Setup-1.1.0.exe --repo sunnyskyess420/frogpaper
    ```
 
 2. **Update your website** download button to point to the installer:
-   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.0.2.exe`
+   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.1.0.exe`
    - Update the file size and description
    - Add a note about the installer providing automatic startup options
 

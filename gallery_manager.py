@@ -547,5 +547,49 @@ def get_prompt_parameters(image_path: str | Path) -> dict:
             session.close()
     else:
         data = _load_tags_json()
+        entry = data.get("tags", {}).get(image_path, {})
+        return entry.get("prompt_params", {})
+
+
+def get_portrait_images() -> list[Path]:
+    """Collect all portrait (9:16 aspect ratio) images from all folders.
+    
+    Returns:
+        List of Path objects for portrait images found in generated, manual, 
+        styled, and favorites folders.
+    """
+    try:
+        from PIL import Image
+        from set_wallpaper import collect_wallpapers, MANUAL_DIR, GENERATED_DIR, STYLED_DIR, FAVORITES_DIR
+        
+        # Collect images from all folders
+        all_folders = [GENERATED_DIR, MANUAL_DIR, STYLED_DIR, FAVORITES_DIR]
+        all_images = collect_wallpapers(all_folders) or []
+        
+        # Portrait ratio: 9:16 with tolerance
+        target_ratio = 9/16
+        tolerance = 0.1
+        portrait_images = []
+        
+        for img_path in all_images:
+            try:
+                with Image.open(img_path) as img:
+                    w, h = img.size
+                    if h == 0:
+                        continue
+                    img_ratio = w / h
+                    if abs(img_ratio - target_ratio) <= tolerance:
+                        portrait_images.append(img_path)
+            except Exception:
+                # Skip images that can't be opened
+                continue
+        
+        return portrait_images
+    except ImportError:
+        # PIL not available, return empty list
+        return []
+    except Exception:
+        # Any other error, return empty list
+        return []
         entry = data["tags"].get(image_path)
         return dict(entry.get("prompt_params", {})) if entry else {}

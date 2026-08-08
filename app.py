@@ -2,7 +2,7 @@ import sys
 import os
 
 # App version - single source of truth for version string
-APP_VERSION = "1.0.2"
+APP_VERSION = "1.1.0"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -108,6 +108,7 @@ from gallery_manager import (
     delete_image_and_tags,
     save_prompt_parameters,
     get_prompt_parameters,
+    get_portrait_images,
 )
 
 from preset_manager import (
@@ -3795,6 +3796,8 @@ class FrogPaperApp:
     def _gallery_delete(self):
         return self._gallery_tab._gallery_delete()
 
+    def _gallery_export_portraits(self):
+        return self._gallery_tab._gallery_export_portraits()
 
     def _delete_styled_image(self):
         return self._gallery_tab._delete_styled_image()
@@ -6625,8 +6628,8 @@ class FrogPaperApp:
 
         about_window = tk.Toplevel(self.root)
         about_window.title("About FrogPaper")
-        about_window.geometry("400x260")
-        about_window.minsize(360, 220)
+        about_window.geometry("400x300")
+        about_window.minsize(360, 260)
         about_window.resizable(True, False)
         about_window.transient(self.root)
         about_window.grab_set()
@@ -6634,7 +6637,7 @@ class FrogPaperApp:
         # Center the window
         about_window.update_idletasks()
         x = (about_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (about_window.winfo_screenheight() // 2) - (260 // 2)
+        y = (about_window.winfo_screenheight() // 2) - (300 // 2)
         about_window.geometry(f"+{x}+{y}")
 
         # Apply full theme styling
@@ -6646,7 +6649,7 @@ class FrogPaperApp:
         if UI_EFFECTS_AVAILABLE:
             try:
                 glass_overlay = apply_glass_to_dialog(
-                    about_window, width=400, height=260,
+                    about_window, width=400, height=300,
                     corner_radius=20, bg_color=pal["bg"]
                 )
             except Exception:
@@ -6691,7 +6694,17 @@ class FrogPaperApp:
             bg=pal["panel"],
             fg=pal.get("muted", "#888"),
             wraplength=320
-        ).pack(pady=(10, 14))
+        ).pack(pady=(10, 2))
+
+        # New features
+        tk.Label(
+            content_frame,
+            text="✨ New in v1.1.0: Portrait export with folder selection",
+            font=("Segoe UI", 9),
+            bg=pal["panel"],
+            fg=pal.get("accent", pal["progress"]),
+            wraplength=320
+        ).pack(pady=(0, 10))
 
         # Version
         tk.Label(

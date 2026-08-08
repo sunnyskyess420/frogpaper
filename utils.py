@@ -146,3 +146,122 @@ def get_huggingface_token() -> str:
 
 def has_huggingface_token() -> bool:
     return bool(get_huggingface_token())
+
+
+def create_export_folder(name: str = "FrogPaper_Portrait_Export") -> Path:
+    """Create a temporary export folder with timestamp.
+    
+    Args:
+        name: Base name for the export folder.
+        
+    Returns:
+        Path to the created export folder.
+    """
+    from datetime import datetime
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    export_folder = BASE_DIR / f"{name}_{timestamp}"
+    export_folder.mkdir(parents=True, exist_ok=True)
+    return export_folder
+
+
+def copy_images_to_folder(image_paths: list[Path], destination: Path) -> tuple[int, int]:
+    """Copy images to destination folder.
+    
+    Args:
+        image_paths: List of image file paths to copy.
+        destination: Destination folder path.
+        
+    Returns:
+        Tuple of (success_count, failure_count).
+    """
+    import shutil
+    
+    # Create destination folder if it doesn't exist
+    destination.mkdir(parents=True, exist_ok=True)
+    
+    success_count = 0
+    failure_count = 0
+    
+    for img_path in image_paths:
+        try:
+            dest_path = destination / img_path.name
+            # Handle duplicate filenames
+            if dest_path.exists():
+                stem = img_path.stem
+                suffix = img_path.suffix
+                counter = 1
+                while dest_path.exists():
+                    dest_path = destination / f"{stem}_{counter}{suffix}"
+                    counter += 1
+            
+            shutil.copy2(img_path, dest_path)
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to copy {img_path}: {e}")
+            failure_count += 1
+    
+    return success_count, failure_count
+
+
+def open_folder_in_explorer(folder_path: Path) -> bool:
+    """Open a folder in Windows Explorer.
+    
+    Args:
+        folder_path: Path to the folder to open.
+        
+    Returns:
+        True if successful, False otherwise.
+    """
+    import subprocess
+    import os
+    
+    try:
+        if os.name == 'nt':  # Windows
+            os.startfile(str(folder_path))
+            return True
+        else:
+            # Fallback for other platforms
+            subprocess.run(['xdg-open', str(folder_path)], check=True)
+            return True
+    except Exception as e:
+        logger.error(f"Failed to open folder {folder_path}: {e}")
+        return False
+
+
+def invoke_windows_share(file_paths: list[Path]) -> bool:
+    """Invoke Windows Share UI for multiple files.
+    
+    This is a complex operation that may not work reliably across all Windows versions.
+    As a fallback, we recommend using open_folder_in_explorer instead.
+    
+    Args:
+        file_paths: List of file paths to share.
+        
+    Returns:
+        True if successful, False otherwise.
+    """
+    import subprocess
+    import os
+    
+    if not file_paths:
+        return False
+    
+    try:
+        # Convert paths to absolute Windows paths
+        abs_paths = [str(p.resolve()) for p in file_paths]
+        
+        # Attempt to invoke Windows Share UI using PowerShell
+        # This method uses the Windows Runtime API
+        ps_script = f'''
+        Add-Type -AssemblyName WindowsRuntime
+        $dataTransfer = [Windows.ApplicationModel.DataTransfer.DataTransferManager]::GetForCurrentView()
+        '''
+        
+        # For now, return False as this needs more complex implementation
+        # Fallback to folder export is recommended
+        logger.warning("Direct Windows Share API not implemented, use folder export instead")
+        return False
+        
+    except Exception as e:
+        logger.error(f"Failed to invoke Windows Share: {e}")
+        return False

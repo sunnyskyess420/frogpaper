@@ -58,6 +58,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **3 AI Providers** | Pollinations.ai (free), Cloudflare Workers AI (free tier), HuggingFace Inference |
 | **Multiple Models** | FLUX.1-Krea-dev, FLUX Realism, FLUX Anime, FLUX 3D, Turbo, SDXL, SD 3.5 Large, custom |
 | **Gallery** | 7 views (Gallery, Favorites, Styled, Manual, 16:9, Portrait, Square) with sorting and filtering |
+| **Portrait Export** | Bulk export portrait (9:16) images to any destination including SD cards and USB drives |
 | **Style Transfer** | 19 local artistic filters: Oil Painting, Cyberpunk Neon, Gouache, Vaporwave, and more |
 | **Text Overlay** | Add text to any image with font selection, sizing, color, outline, shadow, and 7 positions |
 | **Tag System** | Tag images, filter gallery by tag, manage tags across all views |
@@ -109,7 +110,7 @@ All action buttons sit at the **top** for instant access, followed by a separato
 ### Right Panel — My Collection (Gallery)
 
 - **Header** — "My Collection" title with Open Folder and Refresh Gallery buttons
-- **Action buttons** — Set as Wallpaper, Save to Favorites, Apply Style, Add Text, Delete
+- **Action buttons** — Set as Wallpaper, Save to Favorites, Apply Style, Add Text, Delete, Export Portraits
 - **View selector** — 7 radio-button views: Gallery, Favorites, Styled, Manual, 16:9, Portrait, Square
 - **Sort dropdown** — Date Newest/Oldest, Name A-Z/Z-A, Size Largest, Resolution Largest
 - **Tag filter** — dropdown to filter all views by tag
@@ -296,6 +297,38 @@ AppData/FrogPaper/
 ├── prompt_library.json     # Saved prompt library
 └── gallery_tags.json       # Gallery tag definitions
 ```
+
+---
+
+## Changelog
+
+### v1.1.0 - Portrait Export Feature
+**New Features:**
+- **Portrait Export**: Bulk export all portrait (9:16) images from all folders (generated, manual, styled, favorites)
+- **Folder Selection**: Choose export destination including SD cards, USB drives, and any folder location
+- **Cross-View Export**: Export button available in all gallery views (Gallery, Favorites, Styled, Manual, 16:9, Portrait, Square)
+- **Enhanced UX**: Progress feedback, error handling, and MTP device guidance
+
+**Improvements:**
+- Direct copy to selected destination (no intermediate folders)
+- Automatic duplicate filename handling
+- Enhanced success dialog with transfer instructions
+- Fixed view switching to preserve export button visibility
+
+**Technical:**
+- Added `get_portrait_images()` to gallery_manager.py
+- Added export utilities to utils.py (create_export_folder, copy_images_to_folder, open_folder_in_explorer)
+- Updated gallery tab with folder browser dialog integration
+- Fixed button repack logic for all gallery views
+
+### v1.0.2 - Gallery & Style System
+- Gallery system with 7 views and sorting
+- Style transfer with 19 artistic filters
+- Text overlay system
+- Tag system and metadata management
+- Slideshow automation
+- Session management
+- Recipe library
 
 ---
 

@@ -30,6 +30,7 @@ from gallery_manager import (
     delete_image_and_tags,
     save_prompt_parameters,
     get_prompt_parameters,
+    get_portrait_images,
 )
 
 
@@ -48,6 +49,7 @@ class GalleryTab:
         "style": "palette",
         "text": "text_edit",
         "delete": "delete",
+        "export": "export",
     }
 
     def __init__(self, app):
@@ -64,7 +66,7 @@ class GalleryTab:
         accent = pal.get("accent", pal["progress"])
         try:
             from icons import get_icon
-            icon_names = ["wallpaper", "star", "palette", "text_edit", "delete"]
+            icon_names = ["wallpaper", "star", "palette", "text_edit", "delete", "export"]
             for btn, icon_name in zip(app._gallery_action_row_order, icon_names):
                 if hasattr(btn, 'configure') and icon_name:
                     _img = get_icon(icon_name, size=14, color=accent)
@@ -217,11 +219,15 @@ class GalleryTab:
                    command=app._gallery_delete)
         _btn_delete.pack(side="left", padx=(0, 6))
 
+        app._btn_export_portraits = ttk.Button(action_row, text=" Export Portraits",
+                   command=app._gallery_export_portraits)
+        app._btn_export_portraits.pack(side="left", padx=(0, 6))
+
         # Full ordered list — mirrors the view radio order: Gallery|Favorites|Styled|Manual
         # Gallery=Wallpaper, Favorites=Save to Fav, Styled=Apply Style, Manual=Delete
         app._gallery_action_row_order = [
             _btn_wallpaper, app._btn_save_to_fav, app.style_menu_btn,
-            _btn_text, _btn_delete,
+            _btn_text, _btn_delete, app._btn_export_portraits,
         ]
 
         # Row 1: View selector
@@ -1352,6 +1358,111 @@ class GalleryTab:
             app.selected_gallery_path = Path(path_str)
         app.tag_gallery_image()
 
+    def _gallery_export_portraits(self):
+        """Export all portrait images to a user-selected folder for phone transfer."""
+        from tkinter import filedialog
+        from pathlib import Path
+        
+        app = self.app
+        
+        # Show folder browser dialog to select destination
+        app.status_var.set("Select export destination...")
+        
+        # Suggest Documents folder as initial directory
+        initial_dir = str(Path.home() / "Documents")
+        
+        destination_folder = filedialog.askdirectory(
+            title="Select Destination Folder for Portrait Images",
+            initialdir=initial_dir,
+            mustexist=False
+        )
+        
+        # Handle user cancellation
+        if not destination_folder:
+            app.status_var.set("Export cancelled")
+            return
+        
+        destination_path = Path(destination_folder)
+        
+        # Show initial status
+        app.status_var.set("Finding portrait images...")
+        
+        # Run in background thread to avoid UI freeze
+        def _export_thread():
+            try:
+                from utils import copy_images_to_folder, open_folder_in_explorer
+                
+                # Collect portrait images
+                portrait_images = get_portrait_images()
+                
+                if not portrait_images:
+                    app.root.after(0, lambda: app._dialog.info(
+                        "No Portrait Images", 
+                        "No portrait (9:16) images found in your gallery.\n\n"
+                        "Generate some portrait wallpapers first, then try again."
+                    ))
+                    app.root.after(0, lambda: app.status_var.set("No portrait images found"))
+                    return
+                
+                # Update status with count
+                app.root.after(0, lambda: app.status_var.set(f"Found {len(portrait_images)} portrait images"))
+                app.root.after(0, lambda: app.status_var.set(f"Copying {len(portrait_images)} images to {destination_path.name}..."))
+                
+                # Copy images to selected destination
+                success_count, failure_count = copy_images_to_folder(portrait_images, destination_path)
+                
+                # Show completion status
+                if failure_count > 0:
+                    app.root.after(0, lambda: app.status_var.set(
+                        f"Exported {success_count} images ({failure_count} failed)"
+                    ))
+                else:
+                    app.root.after(0, lambda: app.status_var.set(
+                        f"Successfully exported {success_count} portrait images"
+                    ))
+                
+                # Open destination folder in Explorer
+                open_folder_in_explorer(destination_path)
+                
+                # Show success dialog with instructions
+                app.root.after(0, lambda: app._dialog.info(
+                    "Portrait Images Exported",
+                    f"Successfully exported {success_count} portrait images to:\n\n"
+                    f"{destination_path}\n\n"
+                    f"Your images are ready! \n\n"
+                    f"Note: If your phone doesn't appear in the export dialog (MTP devices),\n"
+                    f"you can copy the images manually:\n"
+                    f"1. Open Windows Explorer (your phone is visible there)\n"
+                    f"2. Navigate to the exported folder above\n"
+                    f"3. Drag and drop images to your phone\n\n"
+                    f"Alternative transfer methods:\n"
+                    f"• Use Windows Nearby Sharing from the exported folder\n"
+                    f"• Upload to cloud storage (Google Drive, OneDrive, etc.)\n"
+                    f"• Email the images to yourself\n\n"
+                    f"({failure_count} images failed to copy)" if failure_count > 0 else
+                    f"Your images are ready! \n\n"
+                    f"Note: If your phone doesn't appear in the export dialog (MTP devices),\n"
+                    f"you can copy the images manually:\n"
+                    f"1. Open Windows Explorer (your phone is visible there)\n"
+                    f"2. Navigate to the exported folder above\n"
+                    f"3. Drag and drop images to your phone\n\n"
+                    f"Alternative transfer methods:\n"
+                    f"• Use Windows Nearby Sharing from the exported folder\n"
+                    f"• Upload to cloud storage (Google Drive, OneDrive, etc.)\n"
+                    f"• Email the images to yourself"
+                ))
+                
+            except Exception as e:
+                logger.error(f"Error exporting portrait images: {e}")
+                app.root.after(0, lambda: app._dialog.error(
+                    "Export Failed",
+                    f"Failed to export portrait images:\n\n{str(e)}"
+                ))
+                app.root.after(0, lambda: app.status_var.set("Export failed"))
+        
+        # Start background thread
+        threading.Thread(target=_export_thread, daemon=True).start()
+
 
     def _gallery_view_mode(self):
         """Return 'Favorites' or 'Gallery' based on current radio selection."""
@@ -1469,33 +1580,34 @@ class GalleryTab:
         _btn_wallpaper_ref = app._gallery_action_row_order[0]
         _btn_text_ref      = app._gallery_action_row_order[3]
         _btn_delete_ref    = app._gallery_action_row_order[4]
+        _btn_export_ref    = app._gallery_action_row_order[5]
 
         if mode == "Favorites":
             app.gallery_fav_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_fav_scroll.pack(side='right', fill='y')
-            # Favorites: Wallpaper | Add Text | Delete
-            _repack([_btn_wallpaper_ref, _btn_text_ref, _btn_delete_ref])
+            # Favorites: Wallpaper | Add Text | Delete | Export Portraits
+            _repack([_btn_wallpaper_ref, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
             tag_filter = app.get_active_tag()
             app.load_favorites(tag_filter=tag_filter)
         elif mode == "Styled":
             app.gallery_styled_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_styled_scroll.pack(side='right', fill='y')
-            # Styled: Wallpaper | Save to Fav | Delete  (Apply Style hidden — already styled)
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_delete_ref])
+            # Styled: Wallpaper | Save to Fav | Delete | Export Portraits  (Apply Style hidden — already styled)
+            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_delete_ref, _btn_export_ref])
             tag_filter = app.get_active_tag()
             app.load_styled(tag_filter=tag_filter)
         elif mode == "Manual":
             app.gallery_manual_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_manual_scroll.pack(side='right', fill='y')
-            # Manual: Wallpaper | Save to Fav | Add Text | Delete
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref])
+            # Manual: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
+            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
             tag_filter = app.get_active_tag()
             app.load_manual(tag_filter=tag_filter)
         elif mode in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
-            # Ratio views: Wallpaper | Save to Fav | Add Text | Delete
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref])
+            # Ratio views: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
+            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
             tag_filter = app.get_active_tag()
             # Show loading indicator
             app.status_var.set(f'Loading {mode} images...')
@@ -1506,8 +1618,8 @@ class GalleryTab:
         else:  # Gallery
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
-            # Gallery: Wallpaper | Save to Fav | Add Text | Delete
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref])
+            # Gallery: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
+            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
             # Force multiple UI updates to ensure canvas is properly visible and sized
             app.gallery_canvas.update()
             app.gallery_canvas.update_idletasks()
@@ -2157,7 +2269,12 @@ class GalleryTab:
         border = pal.get("border_color", pal["panel2"])
         surface = pal.get("surface", pal["panel2"])
         
-        for path_str, (card, name_label, tags_label) in app.gallery_cards.items():
+        for path_str, card_data in app.gallery_cards.items():
+            # Handle variable-length card data (some have 2, 3, or 6 elements)
+            card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
+            name_label = card_data[1] if len(card_data) > 1 else None
+            tags_label = card_data[2] if len(card_data) > 2 else None
+            
             is_multi_sel = path_str in app.selected_gallery_paths
             is_primary = app.selected_gallery_path and path_str == str(app.selected_gallery_path)
             
@@ -3060,7 +3177,8 @@ class GalleryTab:
         
 
         # Clear existing real cards
-        for card, *_ in app.gallery_cards.values():
+        for card_data in app.gallery_cards.values():
+            card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
             card.destroy()
         app.gallery_cards.clear()
 
@@ -3806,7 +3924,9 @@ class GalleryTab:
         # Skip any widget that has been destroyed (TclError guard)
         path_to_idx = {str(p): i for i, p in enumerate(app.gallery_images)}
         dead_cards = []
-        for key, (card, _, __) in app.gallery_cards.items():
+        for key, card_data in app.gallery_cards.items():
+            # Handle variable-length card data (some have 2, 3, or 6 elements)
+            card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
             try:
                 if not card.winfo_exists():
                     dead_cards.append(key)

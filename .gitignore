@@ -65,6 +65,8 @@ build/
 favorites_migrated/
 logs/history_exports/
 FrogPaper/
+FrogPaper_Portrait_Export_*/
+gh-portable/
 
 # VS Code
 .vscode/

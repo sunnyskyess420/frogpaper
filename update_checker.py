@@ -136,11 +136,7 @@ def show_update_notification(app, release_info: dict):
         url = release_info["download_url"]
 
         title = f"Update Available"
-        msg = f"A new version of FrogPaper is available!\n\n"
-        msg += f"{name}\n\n"
-        if body:
-            msg += f"{body}\n\n"
-        msg += "Would you like to download it now?"
+        msg = f"A new version of FrogPaper is available!\n\n{name}\n\nWould you like to download it now?"
 
         result = app._dialog.ask(title, msg)
 

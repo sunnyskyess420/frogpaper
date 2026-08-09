@@ -7169,6 +7169,13 @@ def main():
 
             app.refresh_token_status()
 
+            # Check for updates in the background (non-blocking)
+            try:
+                from update_checker import check_on_startup
+                check_on_startup(app, APP_VERSION, delay_seconds=5)
+            except Exception:
+                pass  # Update checker is optional — don't crash if it fails
+
             # Auto-generate a fresh wallpaper on startup if enabled
             if app.auto_generate_on_startup_var.get():
                 def _startup_generate():
@@ -7246,7 +7253,6 @@ def main():
 if __name__ == "__main__":
 
         main()
-
 
 
 

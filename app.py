@@ -2,7 +2,7 @@ import sys
 import os
 
 # App version - single source of truth for version string
-APP_VERSION = "1.1.0"
+APP_VERSION = "1.1.1"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -6699,7 +6699,7 @@ class FrogPaperApp:
         # New features
         tk.Label(
             content_frame,
-            text="✨ New in v1.1.0: Portrait export with folder selection",
+            text="✨ New in v1.1.1: Automatic update notifications",
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),

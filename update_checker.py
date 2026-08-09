@@ -59,10 +59,26 @@ def fetch_latest_release() -> Optional[dict]:
         return None
 
 
+def _clean_markdown(text: str) -> str:
+    """Strip markdown formatting from GitHub release body for clean display."""
+    import re
+    # Remove bold/italic markers
+    text = re.sub(r'\*{1,2}([^*]+)\*{1,2}', r'\1', text)
+    # Remove heading markers
+    text = re.sub(r'^#{1,6}\s*', '', text, flags=re.MULTILINE)
+    # Remove bullet markers but keep the text
+    text = re.sub(r'^\s*[-*]\s*', '- ', text, flags=re.MULTILINE)
+    # Remove links but keep the text
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)
+    # Collapse multiple blank lines
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    return text.strip()
+
+
 def check_for_update(current_version: str) -> Optional[dict]:
     """Return release info dict if an update is available, else None.
 
-    Returned dict keys: tag_name, name, html_url, body (truncated), download_url
+    Returned dict keys: tag_name, name, html_url, body (cleaned), download_url
     """
     data = fetch_latest_release()
     if data is None:
@@ -81,10 +97,23 @@ def check_for_update(current_version: str) -> Optional[dict]:
             download_url = asset.get("browser_download_url", download_url)
             break
 
-    # Truncate body for the popup
+    # Clean and truncate body for the popup
     body = (data.get("body") or "").strip()
-    if len(body) > 300:
-        body = body[:300] + "..."
+    body = _clean_markdown(body)
+
+    # Keep only the first few lines so the dialog doesn't overflow
+    lines = body.split("\n")
+    kept = []
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if kept:
+                break  # stop at first blank line after content
+            continue
+        kept.append(stripped)
+        if len(kept) >= 5:  # max 5 bullet points / lines
+            break
+    body = "\n".join(kept)
 
     return {
         "tag_name": latest_tag,
@@ -106,10 +135,9 @@ def show_update_notification(app, release_info: dict):
         body = release_info["body"]
         url = release_info["download_url"]
 
-        title = f"Update Available: {tag}"
+        title = f"Update Available"
         msg = f"A new version of FrogPaper is available!\n\n"
-        if name and name != tag:
-            msg += f"{name}\n\n"
+        msg += f"{name}\n\n"
         if body:
             msg += f"{body}\n\n"
         msg += "Would you like to download it now?"

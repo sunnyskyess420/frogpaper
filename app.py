@@ -22,6 +22,15 @@ import shutil
 import tkinter.font as tkfont
 import logging
 
+# Configure logging to show INFO level messages in terminal
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler()
+    ]
+)
+
 import ctypes
 import ctypes.wintypes
 
@@ -90,6 +99,19 @@ from theme_mixer import generate_themes
 from prompt_builder import build_all_prompts
 from slideshow import SlideshowManager
 from keyword_expander import warmup_keyword_expander
+
+# ── Pinned Dropdown Options (v1.3.0) ──────────────────────────────────────
+try:
+    from pinned_dropdowns import (
+        init_pinned_manager,
+        get_manager,
+        PinnedCombobox,
+        create_pinned_combobox,
+        build_pinned_settings_ui,
+    )
+    PINNED_DROPDOWNS_AVAILABLE = True
+except ImportError:
+    PINNED_DROPDOWNS_AVAILABLE = False
 
 
 
@@ -1088,44 +1110,6 @@ THEMES = {
         "mist_alpha":   0,
     },
 
-    # ── Frog Neon / Toxic Swamp ──────────────────────────────────
-    "darkocean": {
-        "bg":          "#060d06",
-        "panel":       "#0b160b",
-        "panel2":      "#111f11",
-        "surface":     "#162816",
-        "text":        "#b8f0b0",
-        "muted":       "#4db84d",
-        "entrybg":     "#090f09",
-        "entryfg":     "#a8e8a0",
-        "tabbg":       "#0e1a0e",
-        "tabsel":      "#1a4a1a",
-        "accent":      "#39ff14",
-        "progress":    "#28cc10",
-        "actions":     ["#0a3d0a","#0f5010","#146614","#1a8018","#22aa20","#2ecc2c"],
-        "button_fg":   "#b8f0b0",
-        "button_hover":"#28cc10",
-        "scrollbar_bg":"#0b160b",
-        "scrollbar_fg":"#28cc10",
-        "selected_bg": "#1a4a1a",
-        "selected_fg": "#d0ffd0",
-        "border_color":"#1a3a1a",
-        "separator":   "#111f11",
-        "success_color":"#39ff14",
-        "error_color": "#ff3030",
-        "warning_color":"#ffe000",
-        "tag_fg":      "#39ff14",
-        "heading_font_size": 11, "label_font_weight": "bold",
-        # Default special effects (disabled)
-        "glow_color":   "",
-        "glow_intensity": 0,
-        "hover_transition": "",
-        "focus_color":  "",
-        "focus_shape":  "",
-        "button_radius": 0,
-        "mist_color":   "",
-        "mist_alpha":   0,
-    },
 
     # ── Clear Sky ─────────────────────────────────────────────────────
     "lightocean": {
@@ -1482,6 +1466,45 @@ THEMES = {
         "mist_alpha":   0,
     },
 
+    # ── Deep Ocean — rich navy blue ─────────────────────────────────────
+    "oceanbluenew": {
+        "bg":          "#0a1628",
+        "panel":       "#101e34",
+        "panel2":      "#162844",
+        "surface":     "#1c3254",
+        "text":        "#c8e0ff",
+        "muted":       "#5090c0",
+        "entrybg":     "#0c1a2e",
+        "entryfg":     "#b0d0f0",
+        "tabbg":       "#142640",
+        "tabsel":      "#1e4a78",
+        "accent":      "#38a8e8",
+        "progress":    "#2878b0",
+        "actions":     ["#0e3a6a","#144880","#1a5898","#2068b0","#2878c8","#3888d8"],
+        "button_fg":   "#d8f0ff",
+        "button_hover":"#2878b0",
+        "scrollbar_bg":"#101e34",
+        "scrollbar_fg":"#2878b0",
+        "selected_bg": "#1e4a78",
+        "selected_fg": "#ffffff",
+        "border_color":"#1a3a60",
+        "separator":   "#162844",
+        "success_color":"#38a8e8",
+        "error_color": "#e85060",
+        "warning_color":"#f0b830",
+        "tag_fg":      "#58b0e8",
+        "heading_font_size": 11, "label_font_weight": "normal",
+        # Default special effects (disabled)
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "",
+        "focus_shape":  "",
+        "button_radius": 0,
+        "mist_color":   "",
+        "mist_alpha":   0,
+    },
+
     # ── Frog Swamp — maximum frog energy ──────────────────────────────────
     "frogswamp": {
         "bg":           "#0a1a08",   # deep swamp black-green
@@ -1573,22 +1596,22 @@ THEMES = {
         "entryfg":     "#2a1040",   # dark purple text
         "tabbg":       "#d8c0e8",   # tab bar light
         "tabsel":      "#b070e0",   # selected tab — bright purple
-        "accent":      "#0088cc",   # cyan accent
-        "progress":    "#0066aa",   # blue progress
-        "actions":     ["#0055aa","#0066cc","#0077ee","#0088ff","#0099ff","#00aaff"],
+        "accent":      "#9b30ff",   # vivid neon purple accent
+        "progress":    "#8800cc",   # deep purple progress
+        "actions":     ["#6a00b3","#7b1fa2","#8800cc","#9b30ff","#ab47bc","#bb66dd"],
         "button_fg":   "#2a1040",
-        "button_hover": "#0066cc",
+        "button_hover": "#7b1fa2",
         "button_hover_fg": "#ffffff",
         "scrollbar_bg":"#e8d0f5",
-        "scrollbar_fg":"#0066cc",
+        "scrollbar_fg":"#8800cc",
         "selected_bg": "#b070e0",
         "selected_fg": "#ffffff",
         "border_color":"#c090d0",
         "separator":   "#d8b8e8",
-        "success_color":"#0088cc",
+        "success_color":"#00aa88",
         "error_color": "#cc0044",
         "warning_color":"#cc8800",
-        "tag_fg":      "#0066cc",
+        "tag_fg":      "#8800cc",
         "heading_font_size": 12, "label_font_weight": "bold",
         # Default special effects (disabled)
         "glow_color":   "",
@@ -1759,32 +1782,33 @@ UI = {
 THEME_DISPLAY_NAMES = {
 
     # Forest Greens
-    "darkforest":     "🌲 Dark Forest Green",
-    "lightforest":    "🌿 Light Forest Green",
-    "frogswamp":      "🐸 Frog Swamp (dark)",
-    "frogswamp_light": "🐸 Frog Swamp (light)",
+    "darkforest":       "🌲 Forest Green — Dark",
+    "lightforest":      "🌿 Forest Green — Light",
+    "frogswamp":        "🐸 Frog Swamp — Dark",
+    "frogswamp_light":  "🐸 Frog Swamp — Light",
 
     # Ocean Blues
-    "darkocean":      "🌊 Frog Neon (dark)",
-    "lightocean":     "💧 Ocean Blue (light)",
-    "darkglass":      "🔮 Dark Glass (dark)",
-    "darkglass_light": "🔮 Dark Glass (light)",
+    "oceanbluenew":     "🌊 Ocean Blue — Dark",
+    "lightocean":       "💧 Ocean Blue — Light",
+    "darkglass":        "🔮 Dark Glass — Dark",
+    "darkglass_light":  "🔮 Dark Glass — Light",
+
 
     # Warm Tones
-    "darksunset":     "🌅 Sunset Orange (dark)",
-    "lightsunset":    "🌅 Sunset Orange (light)",
-    "warmpaper":      "📜 Warm Paper (light)",
-    "warmpaper_dark": "📜 Warm Paper (dark)",
+    "darksunset":       "🌅 Sunset Ember — Dark",
+    "lightsunset":      "🌅 Sunset Ember — Light",
+    "warmpaper":        "📜 Warm Paper — Light",
+    "warmpaper_dark":   "📜 Warm Paper — Dark",
 
-    # Neon/Cyber
-    "neoncyber":      "⚡ Neon Cyber (dark)",
-    "neoncyber_light": "⚡ Neon Cyber (light)",
+    # Neon / Cyber
+    "neoncyber":        "⚡ Neon Cyber — Dark",
+    "neoncyber_light":  "⚡ Neon Cyber — Light",
 
     # Neutral
-    "darkcontrast":   "◼️ High Contrast (dark)",
-    "lightcontrast":  "◻️ High Contrast (light)",
-    "studioneutral":  "🎨 Studio Neutral (dark)",
-    "studioneutral_light": "🎨 Studio Neutral (light)",
+    "darkcontrast":     "◼ High Contrast — Dark",
+    "lightcontrast":    "◻ High Contrast — Light",
+    "studioneutral":    "🎨 Studio Neutral — Dark",
+    "studioneutral_light": "🎨 Studio Neutral — Light",
 
 }
 
@@ -2017,11 +2041,16 @@ class ThemedDialog:
 class FrogPaperApp:
 
     def __init__(self, root):
-
+        """Initialize the FrogPaper application."""
         self.root = root
-
-        self.template_variable_widgets = {}
-
+        self.root.title("FrogPaper - AI Wallpaper Generator")
+        self.root.geometry("1600x900")
+        
+        # Initialize sync manager for automatic backups
+        self.sync_manager = None
+        self.backup_scheduler_job = None
+        self._backup_stop_event = threading.Event()
+        
         # Initialize SQLite database (migrates existing JSON on first run)
         try:
             import database
@@ -2125,6 +2154,10 @@ class FrogPaperApp:
         # Slideshow tracking
         self.slideshow = SlideshowManager(self.root, self.status_var)
 
+        # Tutorial manager
+        from tutorial_manager import TutorialManager
+        self.tutorial_manager = TutorialManager(self)
+
         # Gallery State (Initialize before build_ui)
         self.gallery_sort_mode = "date"  # "date" or "name"
         self.gallery_sort_desc = True
@@ -2201,6 +2234,17 @@ class FrogPaperApp:
         self._gallery_tab = GalleryTab(self)
         self._tray_mgr = TrayManager(self)
         self._tutorial_mgr = TutorialManager(self)
+
+        # Initialize pinned dropdowns system (v1.3.0)
+        if PINNED_DROPDOWNS_AVAILABLE:
+            try:
+                import utils as _pin_utils
+                init_pinned_manager(_pin_utils.load_config, _pin_utils.save_config)
+                self._pinned_dropdowns_enabled = True
+                logger.info("Pinned dropdowns system initialized")
+            except Exception as _pin_err:
+                logger.warning("Pinned dropdowns not available: %s", _pin_err)
+                self._pinned_dropdowns_enabled = False
 
         # Set window / taskbar icon using the shared icon loader
         # (must come AFTER _tray_mgr is created)
@@ -2612,23 +2656,132 @@ class FrogPaperApp:
                         # Recurse into frame children
                         self._retheme_child_widgets(child, pal)
                     elif isinstance(child, tk.Label):
-                        # Determine foreground: use muted color for labels
-                        # that appear to be info/meta text (short text, no selection)
+                        # Determine foreground based on actual font size.
+                        # Small fonts (≤9pt) get muted colour; larger get text colour.
+                        is_small = False
                         try:
                             font_info = child.cget("font")
-                            is_small = font_info and ("small" in str(font_info) or
-                                                      str(font_info).endswith("8") or
-                                                      "tiny" in str(font_info))
+                            if isinstance(font_info, tuple) and len(font_info) >= 2:
+                                is_small = abs(int(font_info[1])) <= 9
+                            elif isinstance(font_info, str):
+                                # Named font — query actual size via Tk
+                                actual = self.root.tk.call(font_info, "actual", "-size")
+                                is_small = abs(int(actual)) <= 9
                         except Exception:
-                            is_small = False
+                            pass
                         fg = pal["muted"] if is_small else pal["text"]
                         child.configure(bg=pal["panel"], fg=fg)
+                    elif isinstance(child, tk.Button):
+                        # Re-theme button background to match new panel colour
+                        # so no visible square appears around icon-only buttons
+                        # (e.g. the heart/star favorite buttons).
+                        # The parent Frame was already re-themed above, so
+                        # just read its current bg.
+                        parent_bg = pal["panel"]
+                        try:
+                            pw = self.root.nametowidget(child.winfo_parent())
+                            parent_bg = pw.cget("bg")
+                        except Exception:
+                            pass
+                        child.configure(
+                            bg=parent_bg,
+                            activebackground=pal.get("panel2", parent_bg),
+                        )
+                        # Refresh heart/star icon images with new accent colour
+                        if hasattr(child, "_img_path"):
+                            try:
+                                from icons import get_icon
+                                accent = pal.get("accent", pal["progress"])
+                                is_fav = False
+                                try:
+                                    if hasattr(self, "_gallery_tab"):
+                                        is_fav = self._gallery_tab._is_image_favorited(child._img_path)
+                                except Exception:
+                                    pass
+                                heart_name = "heart_filled" if is_fav else "heart_outline"
+                                heart_icon = get_icon(heart_name, size=36, color=accent)
+                                child.configure(image=heart_icon)
+                                child.image = heart_icon
+                                child._icon_ref = heart_icon
+                            except Exception:
+                                pass
                     elif isinstance(child, tk.Canvas):
                         child.configure(bg=pal["panel"], highlightthickness=0)
                 except tk.TclError:
                     pass  # Widget already destroyed
         except tk.TclError:
             pass  # Parent already destroyed
+
+    def _retheme_settings_cloud_widgets(self, pal):
+        """Re-theme the Cloud Accounts section in the settings tab.
+
+        The cloud cards and sync options use tk widgets with hardcoded bg/fg
+        colours set at build time.  Unlike ttk widgets they do NOT auto-update
+        when the ttk style changes, so we must walk the tree and repaint them.
+
+        We use pal["bg"] (not pal["panel"]) because the cloud cards live
+        directly on the settings scroll area which uses the theme background.
+        """
+        bg = pal["bg"]
+        muted = pal["muted"]
+        text_fg = pal["text"]
+        entry_bg = pal.get("entrybg", bg)
+        sep_color = pal.get("separator", pal.get("border_color", "#333"))
+        accent = pal.get("accent", pal["progress"])
+
+        def _walk(parent):
+            try:
+                for child in parent.winfo_children():
+                    try:
+                        if isinstance(child, tk.Frame):
+                            # Separator frames (height=1) get the separator colour
+                            if child.cget("height") == 1 and child.cget("width") == 0:
+                                child.configure(bg=sep_color)
+                            else:
+                                child.configure(bg=bg)
+                            _walk(child)
+                        elif isinstance(child, (ttk.LabelFrame, ttk.Frame)):
+                            # ttk containers are styled by the ttk theme engine;
+                            # just recurse into their tk children.
+                            _walk(child)
+                        elif isinstance(child, tk.Label):
+                            child.configure(bg=bg)
+                            # Keep accent-coloured labels (setup links, icons)
+                            try:
+                                cur_fg = child.cget("fg")
+                                # Detect accent-styled labels by checking if their
+                                # current fg is a non-muted colour (heuristic)
+                                if cur_fg and cur_fg not in (muted, text_fg):
+                                    child.configure(fg=accent)
+                                else:
+                                    # Small font → muted, otherwise text
+                                    is_small = False
+                                    try:
+                                        font_info = child.cget("font")
+                                        if isinstance(font_info, tuple) and len(font_info) >= 2:
+                                            is_small = abs(int(font_info[1])) <= 9
+                                    except Exception:
+                                        pass
+                                    child.configure(fg=muted if is_small else text_fg)
+                            except Exception:
+                                pass
+                        elif isinstance(child, (tk.Checkbutton, tk.Radiobutton)):
+                            child.configure(bg=bg, fg=text_fg,
+                                           selectcolor=entry_bg,
+                                           activebackground=bg,
+                                           activeforeground=text_fg)
+                        elif isinstance(child, tk.Canvas):
+                            child.configure(bg=bg, highlightthickness=0)
+                    except tk.TclError:
+                        pass
+            except tk.TclError:
+                pass
+
+        if hasattr(self, 'settings_inner'):
+            try:
+                _walk(self.settings_inner)
+            except tk.TclError:
+                pass
 
     def _retheme_gallery_widgets(self, pal):
         """Re-theme all gallery view card widgets after a theme change."""
@@ -2638,7 +2791,9 @@ class FrogPaperApp:
         if hasattr(self, "gallery_inner") and self.gallery_inner.winfo_exists():
             self._retheme_child_widgets(self.gallery_inner, pal)
             # Update card highlight borders
-            for key, (card, name_lbl, tags_lbl) in list(self.gallery_cards.items()):
+            for key, card_data in list(self.gallery_cards.items()):
+                # Handle variable-length card data (some have 2, 3, 4, or 6 elements)
+                card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
                 try:
                     if card.winfo_exists():
                         card.configure(highlightbackground=border)
@@ -2664,6 +2819,58 @@ class FrogPaperApp:
         if hasattr(self, "gallery_manual_inner") and self.gallery_manual_inner.winfo_exists():
             self._retheme_child_widgets(self.gallery_manual_inner, pal)
 
+    def _retheme_neg_prompt_labels(self, pal):
+        """Re-theme the negative prompt area's tk.Label widgets.
+
+        Several labels in the negative prompt builder are created with
+        hardcoded fg='gray' and are never updated during apply_theme().
+        This method updates them to use the current theme's muted colour.
+        """
+        muted = pal.get("muted", "#888888")
+        bg = pal.get("panel", pal["bg"])
+        text_fg = pal.get("text", "#ffffff")
+
+        # 1) Term-count labels next to each preset checkbutton
+        if hasattr(self, "_neg_preset_frame"):
+            for row_frame in self._neg_preset_frame.winfo_children():
+                for child in row_frame.winfo_children():
+                    if isinstance(child, tk.Label):
+                        try:
+                            child.configure(bg=bg, fg=muted)
+                        except tk.TclError:
+                            pass
+
+        # 2) Preset description label (shows on hover)
+        if hasattr(self, "_neg_preset_desc_lbl") and self._neg_preset_desc_lbl.winfo_exists():
+            self._neg_preset_desc_lbl.configure(bg=bg, fg=muted)
+
+        # 3) Preview note ("Additional negatives may be added...")
+        # This label doesn't have a stored reference, so find it by text
+        # 4) Term count display
+        # We handle both by walking the sidebar's negative prompt section
+        if hasattr(self, "_neg_final_frame") and self._neg_final_frame.winfo_exists():
+            parent = self._neg_final_frame.master
+            for child in parent.winfo_children():
+                if isinstance(child, tk.Label) and child not in (
+                    getattr(self, "_neg_preset_desc_lbl", None),
+                ):
+                    try:
+                        child.configure(bg=bg, fg=muted)
+                    except (tk.TclError, AttributeError):
+                        pass
+
+        # 5) Preview Text widget — tk.Text inherits from tk_setPalette,
+        # but re-configure explicitly to ensure consistency
+        if hasattr(self, "_neg_final_text") and self._neg_final_text.winfo_exists():
+            try:
+                self._neg_final_text.configure(
+                    bg=pal.get("entrybg", pal["bg"]),
+                    fg=pal.get("entryfg", pal["text"]),
+                    insertbackground=pal["text"],
+                )
+            except tk.TclError:
+                pass
+
     def apply_theme(self, theme_name):
         if theme_name not in THEMES:
             theme_name = "darkforest"
@@ -2674,15 +2881,34 @@ class FrogPaperApp:
         self.root.configure(bg=pal["bg"])
         style = ttk.Style(self.root)
 
-        _LIGHT_THEMES = {"lightforest", "lightocean", "lightsunset", "lightcontrast", "warmpaper", "frogswamp_light", "neoncyber_light", "studioneutral_light", "darkglass_light"}
+        # Apply sv_ttk theme for rounded corners.
+        # Use the matching sv_ttk base theme (light/dark) so that
+        # configure_colors() and tk_setPalette set appropriate base
+        # colours before we fine-tune with the FrogPaper palette.
+        # Detect light theme by background luminance, not name, so themes
+        # like "warmpaper" are correctly identified as light.
         if SV_TTK_AVAILABLE:
-            sv_mode = "light" if theme_name in _LIGHT_THEMES else "dark"
-            sv_ttk.set_theme(sv_mode, self.root)
-        else:
             try:
-                style.theme_use("clam")
+                def _is_light_bg(hex_color):
+                    h = hex_color.lstrip('#')
+                    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
+                    return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.5
+                is_light_theme = _is_light_bg(pal["bg"])
+                sv_ttk.set_theme("light" if is_light_theme else "dark")
             except Exception:
                 pass
+
+        # ── Replace sv_ttk's base sprites with themed colours ──
+        # sv_ttk bakes grey (dark) or light grey (light) PNG backgrounds
+        # into all widget images.  This recolours every sprite to match
+        # the active FrogPaper theme palette while keeping sv_ttk's
+        # rounded corners and hover state layouts.
+        if SV_TTK_AVAILABLE:
+            try:
+                from sv_ttk_fix import fix_sv_ttk_sprites
+                fix_sv_ttk_sprites(self.root, pal)
+            except Exception as e:
+                logger.warning("sv_ttk sprite fix failed: %s", e)
 
         accent = pal.get("accent", pal["progress"])
         border = pal.get("border_color", pal["panel2"])
@@ -2714,6 +2940,20 @@ class FrogPaperApp:
             foreground=accent,
             font=("Segoe UI", 10, "bold"),
             padding=(2, 2),
+        )
+
+
+        # ── Global tk palette for non-ttk widgets (Canvas, Text, etc.) ──
+        self.root.tk_setPalette(
+            background=pal["bg"],
+            foreground=pal["text"],
+            highlightColor=accent,
+            selectBackground=pal["tabsel"],
+            selectForeground=pal["text"],
+            activeBackground=accent,
+            activeForeground=pal["text"],
+            troughColor=pal["panel2"],
+            disabledforeground=pal["muted"],
         )
 
         style.configure("TLabel", background=pal["bg"], foreground=pal["text"])
@@ -2772,43 +3012,41 @@ class FrogPaperApp:
         glow_intensity = pal.get("glow_intensity", 0)
         
         style.configure("TEntry",
-            fieldbackground=pal["entrybg"],
-            foreground=pal["entryfg"],
+            fieldbackground=pal["bg"],
+            foreground=pal["text"],
             insertcolor=pal["text"],
             insertwidth=2,
             relief="flat",
-            borderwidth=1,
-            bordercolor=border,
+            borderwidth=0,
             padding=(4, 3),
         )
         style.map("TEntry",
-            fieldbackground=[("focus", surface)],
-            bordercolor=[("focus", glow_color if glow_intensity > 0 else accent)],
+            fieldbackground=[("focus", pal["panel2"])],
         )
 
         # Frog-eye focus indicators and water ripple hover effects
         style.configure("TCombobox",
-            fieldbackground=pal["entrybg"],
-            foreground=pal["entryfg"],
+            fieldbackground=pal["bg"],
+            foreground=pal["text"],
             selectbackground=pal["tabsel"],
             selectforeground=pal["text"],
             relief="flat",
-            borderwidth=1,
+            borderwidth=0,
             padding=(4, 3),
             focuscolor=focus_color,
         )
         style.map("TCombobox",
-            fieldbackground=[("focus", surface), ("readonly", pal["entrybg"])],
-            foreground=[("readonly", pal["entryfg"])],
-            bordercolor=[("focus", glow_color if glow_intensity > 0 else accent)],
+            fieldbackground=[("focus", pal["panel2"]), ("readonly", pal["bg"])],
+            foreground=[("readonly", pal["text"])],
             selectbackground=[("active", hover_color), ("readonly", pal["tabsel"])],
         )
 
         style.configure("TCheckbutton",
             background=pal["bg"],
             foreground=pal["text"],
-            indicatorcolor=pal["entrybg"],
+            indicatorcolor=pal["panel2"],
             indicatorrelief="flat",
+            indicatormargin=(4, 2),
         )
         style.map("TCheckbutton",
             background=[("active", pal["bg"])],
@@ -2818,7 +3056,8 @@ class FrogPaperApp:
         style.configure("TRadiobutton",
             background=pal["bg"],
             foreground=pal["text"],
-            indicatorcolor=pal["entrybg"],
+            indicatorcolor=pal["panel2"],
+            indicatormargin=(4, 2),
         )
         style.map("TRadiobutton",
             background=[("active", pal["bg"])],
@@ -2858,26 +3097,24 @@ class FrogPaperApp:
 
         # ── TSpinbox (rounded, consistent with TEntry) ──
         style.configure("TSpinbox",
-            fieldbackground=pal["entrybg"],
-            foreground=pal["entryfg"],
+            fieldbackground=pal["bg"],
+            foreground=pal["text"],
             insertcolor=pal["text"],
             insertwidth=2,
             relief="flat",
-            borderwidth=1,
-            bordercolor=border,
+            borderwidth=0,
             padding=(4, 3),
             arrowcolor=pal["muted"],
         )
         style.map("TSpinbox",
-            fieldbackground=[("focus", surface)],
-            bordercolor=[("focus", accent)],
+            fieldbackground=[("focus", pal["panel2"])],
             arrowcolor=[("active", accent)],
         )
 
         # ── TScale (sliders) ──
         style.configure("TScale",
             background=pal["bg"],
-            troughcolor=pal["panel2"],
+            troughcolor=pal["border_color"],
             borderwidth=0,
             sliderlength=18,
         )
@@ -2902,7 +3139,7 @@ class FrogPaperApp:
 
         # ── Separator spacing ──
         style.configure("Spacy.TSeparator",
-            background=border,
+            background=pal["border_color"],
             padding=(0, 6),
         )
 
@@ -2946,7 +3183,7 @@ class FrogPaperApp:
             background=[("active", accent)],
         )
 
-        style.configure("TSeparator", background=border)
+        style.configure("TSeparator", background=pal["border_color"])
 
         self._update_all_entry_cursors()
 
@@ -2978,6 +3215,8 @@ class FrogPaperApp:
             self.settings_canvas.configure(bg=canvas_bg, highlightthickness=0)
         if hasattr(self, "settings_inner"):
             self.settings_inner.configure(style="Inner.TFrame")
+        # Re-theme cloud cards + sync options (tk widgets with hardcoded colours)
+        self._retheme_settings_cloud_widgets(pal)
         if hasattr(self, "prompt_builder_canvas"):
             self.prompt_builder_canvas.configure(bg=canvas_bg, highlightthickness=0)
         if hasattr(self, "templatecanvas"):
@@ -2997,6 +3236,12 @@ class FrogPaperApp:
 
         # Re-theme all gallery card widgets (cards, placeholders, labels)
         self._retheme_gallery_widgets(pal)
+
+        # ── Re-theme negative prompt area labels ──
+        # These tk.Label widgets use hardcoded fg colors at creation time
+        # and are NOT handled by _retheme_child_widgets (which only covers
+        # gallery frames).
+        self._retheme_neg_prompt_labels(pal)
 
         # Clear icon cache so icons re-render in new accent colour
         try:
@@ -3086,8 +3331,8 @@ class FrogPaperApp:
                       "_sidebar_mode_lbl",
                       "_sidebar_lighting_lbl", "_sidebar_color_lbl",
                       "_sidebar_subj_lbl", "_sidebar_setting_lbl",
-                      "_sidebar_atm_lbl",
-                      "_sidebar_neg_lbl"):
+                      "_sidebar_atm_lbl", "_sidebar_mood_lbl",
+                      "_sidebar_neg_lbl", "_sidebar_cn_lbl"):
             w = getattr(self, attr, None)
             if w and isinstance(w, tk.Label):
                 w.configure(bg=pal["panel"], fg=pal["text"])
@@ -3111,6 +3356,17 @@ class FrogPaperApp:
                     activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
                 )
 
+        # ── Re-theme the settings popup (if open) ──
+        # The popup uses tk.Frame widgets with explicit bg= values that
+        # are frozen at creation time and are NOT covered by the global
+        # ttk style update above.
+        if (hasattr(self, '_settings_win') and self._settings_win
+                and self._settings_win.winfo_exists()):
+            try:
+                self._settings_tab._retheme_settings_popup(pal)
+            except Exception:
+                pass
+
         config = load_config()
         config["app_theme"] = theme_name
         save_config(config)
@@ -3119,19 +3375,21 @@ class FrogPaperApp:
         """Apply visual enhancements (rounded buttons, shadows, etc.)."""
         try:
             # ── Re-render sidebar buttons with theme accent color ──
-            if hasattr(self, '_generate_btn') and hasattr(self, '_rounded_gen_btn'):
+            if hasattr(self, '_rounded_gen_btn') and self._rounded_gen_btn:
                 self._rounded_gen_btn.fill_color = accent
                 self._rounded_gen_btn.text_color = pal["button_fg"]
-                w = self._generate_btn.winfo_width() or 140
-                h = self._generate_btn.winfo_height() or 38
-                self._rounded_gen_btn._render_images(w, h)
+                self._rounded_gen_btn.gradient_end = self._lighten_color(
+                    accent, 20)
+                self._rounded_gen_btn._render_images(
+                    self._rounded_gen_btn.width, self._rounded_gen_btn.height)
                 self._rounded_gen_btn._on_leave()
-            if hasattr(self, '_generate_prompt_btn') and hasattr(self, '_rounded_prompt_btn'):
+            if hasattr(self, '_rounded_prompt_btn') and self._rounded_prompt_btn:
                 self._rounded_prompt_btn.fill_color = accent
                 self._rounded_prompt_btn.text_color = pal["button_fg"]
-                w = self._generate_prompt_btn.winfo_width() or 140
-                h = self._generate_prompt_btn.winfo_height() or 38
-                self._rounded_prompt_btn._render_images(w, h)
+                self._rounded_prompt_btn.gradient_end = self._lighten_color(
+                    accent, 20)
+                self._rounded_prompt_btn._render_images(
+                    self._rounded_prompt_btn.width, self._rounded_prompt_btn.height)
                 self._rounded_prompt_btn._on_leave()
 
         except Exception as e:
@@ -3162,7 +3420,16 @@ class FrogPaperApp:
 
         style = ttk.Style(self.root)
 
-        style.theme_use("clam")
+        if SV_TTK_AVAILABLE:
+            try:
+                sv_ttk.set_theme("dark")
+            except Exception:
+                pass
+        else:
+            try:
+                style.theme_use("clam")
+            except Exception:
+                pass
 
         self.base_font = tkfont.nametofont("TkDefaultFont")
         self.base_font.configure(family="Segoe UI", size=9)
@@ -3314,15 +3581,57 @@ class FrogPaperApp:
 
         ttk.Separator(left, orient="horizontal").pack(fill="x", pady=(2, 10))
 
+        # Mood (placed above Subject so mood directly modifies subject in the prompt)
+        mood_lbl = tk.Label(left, text="Mood", anchor="w")
+        mood_lbl.configure(font=self.bold_font)
+        mood_lbl.pack(fill="x", pady=(0, 2))
+        self._sidebar_mood_lbl = mood_lbl
+        mood_options = THEME_VARIABLE_OPTIONS.get("mood", [""])
+        self.mood_var = tk.StringVar(value="")
+        
+        # Use PinnedCombobox if available (has stars inside!)
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.mood_entry = PinnedCombobox(left, category="mood", values=mood_options,
+                                                  textvariable=self.mood_var, state="readonly")
+                self.mood_entry.pack(fill="x", pady=(0, 10))
+                self.mood_entry.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _mood_err:
+                logger.debug("Pinned mood fallback: %s", _mood_err)
+                self.mood_entry = ttk.Combobox(left, textvariable=self.mood_var,
+                                               values=mood_options, state="readonly")
+                self.mood_entry.pack(fill="x", pady=(0, 10))
+                self.mood_entry.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.mood_entry = ttk.Combobox(left, textvariable=self.mood_var,
+                                           values=mood_options, state="readonly")
+            self.mood_entry.pack(fill="x", pady=(0, 10))
+            self.mood_entry.bind("<MouseWheel>", lambda e: "break")
+
         # Subject
         subj_lbl = tk.Label(left, text="Subject", anchor="w")
         subj_lbl.configure(font=self.bold_font)
         subj_lbl.pack(fill="x", pady=(0, 2))
         self._sidebar_subj_lbl = subj_lbl
-        self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
-        self.subject_entry.pack(fill="x", pady=(0, 10))
-        self.subject_entry.insert(0, "frog")
-        self.subject_entry.bind("<MouseWheel>", lambda e: "break")
+        # Subject - Use PinnedCombobox if available
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.subject_entry = PinnedCombobox(left, category="subject", 
+                                                     values=THEME_VARIABLE_OPTIONS["subject"])
+                self.subject_entry.pack(fill="x", pady=(0, 10))
+                self.subject_entry.insert(0, "frog")
+                self.subject_entry.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _subj_err:
+                logger.debug("Pinned subject fallback: %s", _subj_err)
+                self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
+                self.subject_entry.pack(fill="x", pady=(0, 10))
+                self.subject_entry.insert(0, "frog")
+                self.subject_entry.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
+            self.subject_entry.pack(fill="x", pady=(0, 10))
+            self.subject_entry.insert(0, "frog")
+            self.subject_entry.bind("<MouseWheel>", lambda e: "break")
 
         # Mode dropdown
         mode_lbl = tk.Label(left, text="Mode", anchor="w")
@@ -3344,10 +3653,25 @@ class FrogPaperApp:
         lighting_lbl.pack(fill="x", pady=(0, 2))
         self._sidebar_lighting_lbl = lighting_lbl
 
-        self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"])
-        self.lighting_entry.pack(fill="x", pady=(0, 10))
-        self.lighting_entry.insert(0, "neon")
-        self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
+        # Lighting - Use PinnedCombobox if available
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.lighting_entry = PinnedCombobox(left, category="lighting",
+                                                      values=THEME_VARIABLE_OPTIONS["lighting"])
+                self.lighting_entry.pack(fill="x", pady=(0, 10))
+                self.lighting_entry.insert(0, "neon")
+                self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _lit_err:
+                logger.debug("Pinned lighting fallback: %s", _lit_err)
+                self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"])
+                self.lighting_entry.pack(fill="x", pady=(0, 10))
+                self.lighting_entry.insert(0, "neon")
+                self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"])
+            self.lighting_entry.pack(fill="x", pady=(0, 10))
+            self.lighting_entry.insert(0, "neon")
+            self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
 
         # Color palette row
         color_lbl = tk.Label(left, text="Color Palette", anchor="w")
@@ -3355,50 +3679,122 @@ class FrogPaperApp:
         color_lbl.pack(fill="x", pady=(0, 4))
         self._sidebar_color_lbl = color_lbl
 
+        # Color palette row
         color_frame = ttk.Frame(left)
         color_frame.pack(fill="x", pady=(0, 14))
+        
         # Use random defaults for color to avoid empty on startup
         color_families = [f for f in COLOR_FAMILIES if f]
         color_variations = COLOR_VARIATIONS
         default_family = random.choice(color_families) if color_families else ""
         default_variation = random.choice(color_variations) if color_variations else ""
         self.color_family_var = tk.StringVar(value=default_family)
-        self.color_family_combo = ttk.Combobox(color_frame, textvariable=self.color_family_var,
-                                               values=COLOR_FAMILIES, state="readonly", width=14)
-        self.color_family_combo.pack(side="left", padx=(0, 6))
-        self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
+        
+        # Color Family - Use PinnedCombobox if available
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.color_family_combo = PinnedCombobox(color_frame, category="color_family",
+                                                          values=COLOR_FAMILIES, state="readonly",
+                                                          textvariable=self.color_family_var, width=14)
+                self.color_family_combo.pack(side="left", padx=(0, 6))
+                self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _cf_err:
+                logger.debug("Pinned color family fallback: %s", _cf_err)
+                self.color_family_combo = ttk.Combobox(color_frame, textvariable=self.color_family_var,
+                                                       values=COLOR_FAMILIES, state="readonly", width=14)
+                self.color_family_combo.pack(side="left", padx=(0, 6))
+                self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.color_family_combo = ttk.Combobox(color_frame, textvariable=self.color_family_var,
+                                                   values=COLOR_FAMILIES, state="readonly", width=14)
+            self.color_family_combo.pack(side="left", padx=(0, 6))
+            self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
+        
         self.color_variation_var = tk.StringVar(value=default_variation)
-        self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
-                                                  values=COLOR_VARIATIONS, state="readonly", width=14)
-        self.color_variation_combo.pack(side="left")
-        self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
+        
+        # Color Variation - Use PinnedCombobox if available  
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.color_variation_combo = PinnedCombobox(color_frame, category="color_variation",
+                                                             values=COLOR_VARIATIONS, state="readonly",
+                                                             textvariable=self.color_variation_var, width=14)
+                self.color_variation_combo.pack(side="left")
+                self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _cv_err:
+                logger.debug("Pinned color variation fallback: %s", _cv_err)
+                self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
+                                                          values=COLOR_VARIATIONS, state="readonly", width=14)
+                self.color_variation_combo.pack(side="left")
+                self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
+                                                      values=COLOR_VARIATIONS, state="readonly", width=14)
+            self.color_variation_combo.pack(side="left")
+            self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
 
         # Setting (location/environment)
         setting_lbl = tk.Label(left, text="Setting", anchor="w")
         setting_lbl.configure(font=self.bold_font)
         setting_lbl.pack(fill="x", pady=(0, 2))
         self._sidebar_setting_lbl = setting_lbl
-        self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"])
-        self.setting_entry.pack(fill="x", pady=(0, 10))
-        first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
-        if first_setting:
-            self.setting_entry.insert(0, first_setting[0])
-        self.setting_entry.bind("<MouseWheel>", lambda e: "break")
+        # Setting - Use PinnedCombobox if available
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.setting_entry = PinnedCombobox(left, category="setting",
+                                                     values=THEME_VARIABLE_OPTIONS["setting"])
+                self.setting_entry.pack(fill="x", pady=(0, 10))
+                first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
+                if first_setting:
+                    self.setting_entry.insert(0, first_setting[0])
+                self.setting_entry.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _set_err:
+                logger.debug("Pinned setting fallback: %s", _set_err)
+                self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"])
+                self.setting_entry.pack(fill="x", pady=(0, 10))
+                first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
+                if first_setting:
+                    self.setting_entry.insert(0, first_setting[0])
+                self.setting_entry.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"])
+            self.setting_entry.pack(fill="x", pady=(0, 10))
+            first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
+            if first_setting:
+                self.setting_entry.insert(0, first_setting[0])
+            self.setting_entry.bind("<MouseWheel>", lambda e: "break")
 
         # Atmosphere
         atm_lbl = tk.Label(left, text="Atmosphere", anchor="w")
         atm_lbl.configure(font=self.bold_font)
         atm_lbl.pack(fill="x", pady=(0, 2))
         self._sidebar_atm_lbl = atm_lbl
+        # Atmosphere - Use PinnedCombobox if available
         first_atmosphere = [opt for opt in THEME_VARIABLE_OPTIONS.get("atmosphere", []) if opt]
         # Use a random default instead of first alphabetically to avoid always showing "arcane haze"
         default_atm = random.choice(first_atmosphere) if first_atmosphere else ""
         self.atmosphere_var = tk.StringVar(value=default_atm)
-        self.atmosphere_combo = ttk.Combobox(left, textvariable=self.atmosphere_var,
-                                             values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
-                                             state="readonly")
-        self.atmosphere_combo.pack(fill="x", pady=(0, 10))
-        self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
+        
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
+            try:
+                self.atmosphere_combo = PinnedCombobox(left, category="atmosphere",
+                                                       values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
+                                                       state="readonly",
+                                                       textvariable=self.atmosphere_var)
+                self.atmosphere_combo.pack(fill="x", pady=(0, 10))
+                self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
+            except Exception as _atm_err:
+                logger.debug("Pinned atmosphere fallback: %s", _atm_err)
+                self.atmosphere_combo = ttk.Combobox(left, textvariable=self.atmosphere_var,
+                                                     values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
+                                                     state="readonly")
+                self.atmosphere_combo.pack(fill="x", pady=(0, 10))
+                self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
+        else:
+            self.atmosphere_combo = ttk.Combobox(left, textvariable=self.atmosphere_var,
+                                                 values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
+                                                 state="readonly")
+            self.atmosphere_combo.pack(fill="x", pady=(0, 10))
+            self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
 
         # ── Negative Prompt Builder (unified) ──
         from negative_manager import load_negative_presets, get_preset_negatives
@@ -3453,6 +3849,26 @@ class FrogPaperApp:
                         sub.bind("<Leave>", lambda e: self._neg_preset_desc_var.set(""))
                         break
 
+        # ── Custom Negatives (user-curated, persistent) ──
+        from negative_manager import load_custom_negatives as _load_cn
+
+        cn_header = ttk.Frame(left)
+        cn_header.pack(fill="x", pady=(6, 0))
+        cn_lbl = tk.Label(cn_header, text="Custom Negatives", anchor="w")
+        cn_lbl.configure(font=self.small_font)
+        cn_lbl.pack(side="left")
+        self._sidebar_cn_lbl = cn_lbl
+        cn_add_btn = ttk.Button(cn_header, text="+", width=3,
+                                 command=self._add_custom_negative)
+        cn_add_btn.pack(side="right")
+
+        # Scrollable frame for custom negative checkboxes
+        self._cn_frame = ttk.Frame(left)
+        self._cn_frame.pack(fill="x", pady=(0, 2))
+        self._cn_vars = {}  # term_str -> BooleanVar
+        self._cn_widgets = []  # list of (row_frame, term_str) for rebuild
+        self._rebuild_custom_neg_ui()
+
         # Custom terms — single-line entry with label
         custom_lbl = tk.Label(left, text="Custom terms (comma-separated):", anchor="w")
         custom_lbl.configure(font=self.small_font)
@@ -3468,14 +3884,19 @@ class FrogPaperApp:
         preview_lbl.pack(fill="x", pady=(0, 1))
         self._neg_final_frame = ttk.Frame(left)
         self._neg_final_frame.pack(fill="x", pady=(0, 1))
-        self._neg_final_text = tk.Text(self._neg_final_frame, height=3, wrap="word",
-                                        font=self.mono_font, bd=1, relief="solid")
-        self._neg_final_text.pack(fill="x")
+        _neg_scroll = tk.Scrollbar(self._neg_final_frame, orient="vertical", width=12)
+        self._neg_final_text = tk.Text(self._neg_final_frame, height=8, wrap="word",
+                                        font=self.mono_font, bd=1, relief="solid",
+                                        yscrollcommand=_neg_scroll.set)
+        self._neg_final_text.pack(side="left", fill="both", expand=True)
+        _neg_scroll.config(command=self._neg_final_text.yview)
+        _neg_scroll.pack(side="right", fill="y")
         self._neg_final_text.bind("<KeyRelease>", self._on_neg_final_edited)
 
         # Small note about what this preview shows
         preview_note = tk.Label(left, anchor="w", wraplength=240, fg="gray",
-                              text="Additional negatives may be added at generation time.")
+                              text="Additional negatives may be added at generation time. "
+                              "Edit the preview directly or use Reset to reapply custom terms.")
         preview_note.configure(font=self.small_font)
         preview_note.pack(fill="x", pady=(0, 1))
 
@@ -3519,26 +3940,6 @@ class FrogPaperApp:
         # Quick actions on center tab bar
         center_tabs = ttk.Frame(center)
         center_tabs.grid(row=0, column=0, sticky="ew", pady=(0, 6))
-
-        # Apply Style menubutton — same styles as gallery, applied to current preview
-        self._center_style_btn = ttk.Menubutton(center_tabs, text=" Apply Style")
-        self._center_style_menu = tk.Menu(self._center_style_btn, tearoff=0)
-        for display_name, style_key in [
-            ("Vivid Enhance", "edge_enhance"), ("Monochrome BW", "bw"),
-            ("Vintage Warm", "vintage"), ("Color Pop", "posterize"),
-            ("Oil Painting", "oil_painting"), ("Watercolor", "watercolor"),
-            ("Cyberpunk Neon", "cyberpunk_neon"), ("Vaporwave", "vaporwave"),
-            ("Pixel Art", "pixel_art"), ("Sketch Pencil", "sketch_pencil"),
-            ("Gouache", "gouache"), ("Art Deco", "art_deco"),
-            ("Surreal Dali", "surreal_dali"), ("3D Render", "3d_render"),
-            ("Anime Key", "anime_key"), ("Noir BW", "noir_bw"),
-            ("Vintage Sepia", "vintage_sepia"), ("Pop Art", "pop_art"),
-            ("Impressionist", "impressionist"),
-        ]:
-            self._center_style_menu.add_command(label=display_name,
-                command=lambda sk=style_key: self._gallery_apply_theme(sk))
-        self._center_style_btn.config(menu=self._center_style_menu)
-        self._center_style_btn.pack(side="right", padx=(6, 0))
 
         # Image preview area
         preview_card = ttk.Frame(center, style="Card.TFrame")
@@ -3605,7 +4006,7 @@ class FrogPaperApp:
 
         _pt_scroll = ttk.Scrollbar(preview_frame, orient="vertical")
         self.prompt_text = tk.Text(
-            preview_frame, wrap="word", font=self.mono_font, height=8,
+            preview_frame, wrap="word", font=self.mono_font, height=12,
             yscrollcommand=_pt_scroll.set,
         )
         _pt_scroll.config(command=self.prompt_text.yview)
@@ -3627,16 +4028,19 @@ class FrogPaperApp:
 
         ttk.Label(gallery_header, text="My Collection",
                   font=self.sidebar_title_font).pack(side="left")
-        
+
         button_frame = ttk.Frame(gallery_header)
         button_frame.pack(side="right")
-        
-        ttk.Button(button_frame, text=" Open Folder", width=18,
-                   command=self._open_wallpapers_folder).pack(side="left", padx=(0, 4))
-        ttk.Button(button_frame, text=" Refresh Gallery", width=18,
-                   command=self.load_gallery).pack(side="left", padx=(0, 4))
-        ttk.Button(button_frame, text=" Auto-Tag All", width=18,
-                   command=self._gallery_tab._bulk_auto_tag).pack(side="left")
+
+        # Header buttons — packed dynamically so order can change per view
+        self._btn_export_portraits = ttk.Button(button_frame, text="Export Portraits",
+                   command=self._gallery_export_portraits)
+        self._btn_open_folder = ttk.Button(button_frame, text="📂 Open Folder",
+                   command=self._open_wallpapers_folder)
+        self._btn_tutorials = ttk.Button(button_frame, text="Tutorials",
+                   command=self._show_tutorial_menu)
+        # Initial pack (non-portrait order: Open Folder | Tutorials)
+        self._repack_header_buttons(is_portrait=False)
 
         # Gallery content — delegate to existing builder
         gallery_content = ttk.Frame(right, padding=(0, 0))
@@ -3648,14 +4052,14 @@ class FrogPaperApp:
         bottom.grid(row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=(4, 4))
         self.bottom_bar = bottom
 
-        # Tutorials button - prominently placed in status bar
-        self.tutorials_button = ttk.Button(
-            bottom,
-            text="🎓 Tutorials",
-            command=self._show_tutorial_menu
-        )
-        self.tutorials_button.pack(side="left", padx=(0, 10))
-        
+        # Cloud sync quick button (left side of status bar)
+        self._statusbar_sync_btn = ttk.Button(bottom, text="☁ Sync",
+                                                  command=self._manual_sync, width=9)
+        self._statusbar_sync_btn.pack(side="left", padx=(0, 8))
+        self._statusbar_sync_lbl = ttk.Label(bottom, text="", font=self.small_font)
+        self._statusbar_sync_lbl.pack(side="left")
+        self._sync_status_lbl = self._statusbar_sync_lbl
+
         ttk.Label(bottom, textvariable=self.statusvar).pack(side="right")
 
         # ── Notebook stub (kept so existing code doesn't crash) ─────────────
@@ -3704,14 +4108,6 @@ class FrogPaperApp:
         return self._gallery_tab._do_sort_gallery_reload()
 
 
-
-
-    def _on_tag_var_changed(self, *args):
-        return self._gallery_tab._on_tag_var_changed(*args)
-
-
-    def _confirm_delete_tag(self):
-        return self._gallery_tab._confirm_delete_tag()
 
 
     def _on_tag_selected(self):
@@ -3805,6 +4201,23 @@ class FrogPaperApp:
     def _copy_prompt_to_clipboard(self):
         return self._gallery_tab._copy_prompt_to_clipboard()
 
+
+    def _repack_header_buttons(self, is_portrait=False):
+        """Repack the header buttons (Export Portraits / Open Folder / Tutorials).
+
+        Portrait order:  Export Portraits | Open Folder | Tutorials
+        Other view order: Open Folder | Tutorials  (Export Portraits hidden)
+        """
+        for btn in (self._btn_export_portraits, self._btn_open_folder, self._btn_tutorials):
+            btn.pack_forget()
+
+        if is_portrait:
+            self._btn_export_portraits.pack(side="left", padx=(0, 8))
+            self._btn_open_folder.pack(side="left", padx=(0, 8))
+            self._btn_tutorials.pack(side="left")
+        else:
+            self._btn_open_folder.pack(side="left", padx=(0, 8))
+            self._btn_tutorials.pack(side="left")
 
     def _open_wallpapers_folder(self):
         return self._gallery_tab._open_wallpapers_folder()
@@ -3903,8 +4316,11 @@ class FrogPaperApp:
     def on_manual_resize(self, event):
         return self._gallery_tab.on_manual_resize(event)
 
+    def on_cloud_resize(self, event):
+        return self._gallery_tab.on_cloud_resize(event)
 
-
+    def on_fav_resize(self, event):
+        return self._gallery_tab.on_fav_resize(event)
 
     def _rebuild_manual_grid(self, cols):
         return self._gallery_tab._rebuild_manual_grid(cols)
@@ -4371,6 +4787,22 @@ class FrogPaperApp:
 
             save_json_list(FAVORITES_LOG, self.favorites)
 
+        # Also run the GalleryTab's original_image_path backfill, which
+        # repairs favorites (created by older versions or migrated from the
+        # legacy top-level favorites/ folder) whose JSON entry is missing
+        # original_image_path. Without this, the heart icon on the Gallery/
+        # Styled/Manual views shows as outline even though the image is in
+        # favorites — see load_favorites() for the runtime fallback.
+        try:
+            if hasattr(self, '_gallery_tab'):
+                backfilled = self._gallery_tab._backfill_original_image_paths()
+                updated_favorites += backfilled or 0
+        except Exception as e:
+            try:
+                logger.warning(f"migrate_saved_image_paths: backfill failed: {e}")
+            except Exception:
+                pass
+
         return 0, updated_favorites
 
 
@@ -4722,20 +5154,53 @@ class FrogPaperApp:
     def _on_mousewheel(self, event):
         """Handle mousewheel scrolling with context awareness."""
         try:
-            # Check if focus is in an input widget - don't scroll page
+            # ── If mouse is over a Toplevel (e.g. Settings window), skip gallery ──
+            # The gallery hit-test below uses root-relative coordinates, so when a
+            # Toplevel overlaps the gallery the gallery would steal the scroll event.
+            # Instead, fall through to the _hover_canvas fallback which the settings
+            # canvas sets up via <Enter>/<Leave> bindings.
+            pointer_x = self.root.winfo_pointerx()
+            pointer_y = self.root.winfo_pointery()
+            for child_win in self.root.winfo_children():
+                if isinstance(child_win, tk.Toplevel) and child_win.winfo_exists() and child_win.winfo_viewable():
+                    wx = child_win.winfo_rootx()
+                    wy = child_win.winfo_rooty()
+                    ww = child_win.winfo_width()
+                    wh = child_win.winfo_height()
+                    if wx <= pointer_x <= wx + ww and wy <= pointer_y <= wy + wh:
+                        # Mouse is over a Toplevel — let _hover_canvas handle it
+                        hover_c = getattr(self, '_hover_canvas', None)
+                        if hover_c is not None:
+                            try:
+                                hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                            except Exception:
+                                pass
+                        return "break"
+
+            # Get mouse position (used for all hit-testing below)
+            mouse_x = pointer_x - self.root.winfo_rootx()
+            mouse_y = pointer_y - self.root.winfo_rooty()
+
+            # If focus is in an input widget, ONLY block scrolling when the
+            # mouse is actually over that input widget.  Otherwise the scroll
+            # event should still reach the canvas the mouse is hovering over.
             focus_widget = self.root.focus_get()
             if focus_widget:
                 widget_class = focus_widget.winfo_class()
-                # Skip scrolling if focus is in entry, combobox, or text widget
                 if widget_class in ('TEntry', 'Entry', 'TCombobox', 'Combobox', 'Text'):
-                    return
-                # Also check if mouse is over the prompt_text widget
-                if hasattr(self, 'prompt_text') and focus_widget == self.prompt_text:
-                    return
-
-            # Get mouse position
-            mouse_x = self.root.winfo_pointerx() - self.root.winfo_rootx()
-            mouse_y = self.root.winfo_pointery() - self.root.winfo_rooty()
+                    try:
+                        fx = focus_widget.winfo_rootx() - self.root.winfo_rootx()
+                        fy = focus_widget.winfo_rooty() - self.root.winfo_rooty()
+                        fw = focus_widget.winfo_width()
+                        fh = focus_widget.winfo_height()
+                        if (fx <= mouse_x <= fx + fw and fy <= mouse_y <= fy + fh):
+                            # Mouse IS over the focused input — let it scroll
+                            # the input natively (e.g. combobox dropdown list).
+                            return
+                    except Exception:
+                        pass
+                    # Mouse is NOT over the focused input — fall through and
+                    # scroll the canvas the mouse is actually hovering over.
 
             # Check if mouse is over Prompt Preview text widget
             if hasattr(self, 'prompt_text'):
@@ -4800,6 +5265,16 @@ class FrogPaperApp:
                 if target_canvas == self.gallery_canvas:
                     self._on_gallery_scroll()
                 return "break"
+
+            # Fallback: scroll whatever canvas the mouse is hovering over
+            # (settings tab, tutorial popups, prompt template vars, etc.)
+            hover_c = getattr(self, '_hover_canvas', None)
+            if hover_c is not None:
+                try:
+                    hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                    return "break"
+                except Exception:
+                    pass
 
         except Exception:
             pass
@@ -4891,7 +5366,28 @@ class FrogPaperApp:
         # Save fullscreen pause setting
         config = load_config()
         config['slideshow_pause_on_fullscreen'] = bool(self.slideshow_pause_on_fullscreen_var.get())
+        
+        # Save cloud account settings
+        if hasattr(self, 'auto_backup_var'):
+            config['auto_backup_enabled'] = bool(self.auto_backup_var.get())
+        # Parse and validate backup time
+        if hasattr(self, 'auto_backup_hour_var'):
+            try:
+                parts = self.auto_backup_hour_var.get().strip().split(':')
+                h = int(parts[0]) % 24
+                m = int(parts[1]) % 60 if len(parts) > 1 else 0
+                config['auto_backup_hour'] = h
+                config['auto_backup_minute'] = m
+            except (ValueError, IndexError):
+                pass  # keep previous values
+        if hasattr(self, 'sync_scope_var'):
+            config['sync_scope'] = self.sync_scope_var.get()
+        
         save_config(config)
+        
+        # Restart backup scheduler if setting changed
+        self._setup_auto_backup()
+        
         return result
 
 
@@ -4966,13 +5462,17 @@ class FrogPaperApp:
         display_name = self.theme_var.get()
         theme_mapping = {
             "Dark (forest green)": "darkforest",
-            "Light (forest green)": "light_forest",
-            "Ocean Blue (dark)": "dark_ocean",
-            "Ocean Blue (light)": "light_ocean",
-            "Sunset Orange (dark)": "dark_sunset",
-            "Sunset Orange (light)": "light_sunset",
-            "High Contrast (dark)": "dark_contrast",
-            "High Contrast (light)": "light_contrast",
+            "Light (forest green)": "lightforest",
+            "Ocean Blue (dark)": "oceanbluenew",
+            "Ocean Blue (light)": "lightocean",
+            "Deep Ocean — Dark": "oceanbluenew",
+            "Ocean Blue — Dark": "oceanbluenew",
+            "Sunset Ember — Dark": "darksunset",
+            "Sunset Ember — Light": "lightsunset",
+            "High Contrast (dark)": "darkcontrast",
+            "High Contrast (light)": "lightcontrast",
+            "Forest Green — Dark": "darkforest",
+            "Forest Green — Light": "lightforest",
         }
         theme_name = theme_mapping.get(display_name, "darkforest")
         self.apply_theme(theme_name)
@@ -5113,13 +5613,19 @@ class FrogPaperApp:
     # ── Negative Prompt Builder methods ──────────────────────────────────
 
     def _rebuild_neg_combined(self, *_args):
-        """Rebuild the final combined negative prompt from selected presets + custom terms."""
+        """Rebuild the final combined negative prompt from selected presets + custom negatives + custom terms."""
         if self._neg_manual_edit:
             return  # user is manually editing; don't overwrite
         parts = []
+        # 1. Preset negatives (from checkboxes)
         for key, dname, desc, negs, term_count in self._neg_preset_info:
             if self._neg_preset_vars[key].get():
                 parts.append(negs)
+        # 2. Custom negatives (saved, toggleable)
+        for term, var in self._cn_vars.items():
+            if var.get():
+                parts.append(term)
+        # 3. One-off custom terms entry
         custom = self._neg_custom_var.get().strip()
         if custom:
             parts.append(custom)
@@ -5151,6 +5657,80 @@ class FrogPaperApp:
 
     def _reset_neg_combined(self):
         """Exit manual-edit mode and rebuild from presets + custom."""
+        self._neg_manual_edit = False
+        self._rebuild_neg_combined()
+
+    # ── Custom Negatives UI ─────────────────────────────────────────────────
+
+    def _rebuild_custom_neg_ui(self):
+        """Rebuild the custom negatives checkbox list from saved data."""
+        from negative_manager import load_custom_negatives
+
+        # Clear existing
+        for widget in self._cn_frame.winfo_children():
+            widget.destroy()
+        self._cn_vars.clear()
+        self._cn_widgets.clear()
+
+        terms = load_custom_negatives()
+        if not terms:
+            # Show a subtle placeholder
+            ph = tk.Label(self._cn_frame, text="No saved terms yet", fg="gray",
+                          anchor="w")
+            ph.configure(font=self.small_font)
+            ph.pack(fill="x")
+            self._cn_widgets.append((ph, ""))
+            return
+
+        for entry in terms:
+            term = entry.get("term", "")
+            enabled = entry.get("enabled", True)
+            row = ttk.Frame(self._cn_frame)
+            row.pack(fill="x", pady=(0, 1))
+
+            var = tk.BooleanVar(value=enabled)
+            self._cn_vars[term] = var
+
+            cb = ttk.Checkbutton(row, text=term, variable=var,
+                                  command=self._on_custom_neg_toggled)
+            cb.pack(side="left")
+
+            # Small × button to remove
+            x_btn = tk.Label(row, text="×", fg="gray", cursor="hand2")
+            x_btn.configure(font=self.small_font)
+            x_btn.pack(side="right", padx=(2, 0))
+            x_btn.bind("<Button-1>", lambda e, t=term: self._remove_custom_negative(t))
+            x_btn.bind("<Enter>", lambda e, lbl=x_btn: lbl.configure(fg="#ff6666"))
+            x_btn.bind("<Leave>", lambda e, lbl=x_btn: lbl.configure(fg="gray"))
+
+            self._cn_widgets.append((row, term))
+
+    def _add_custom_negative(self):
+        """Prompt user to add a new custom negative term."""
+        term = simpledialog.askstring("Add Custom Negative",
+                                      "Enter a negative term to save:",
+                                      parent=self.root)
+        if not term or not term.strip():
+            return
+        from negative_manager import add_custom_negative
+        add_custom_negative(term.strip())
+        self._rebuild_custom_neg_ui()
+        self._neg_manual_edit = False
+        self._rebuild_neg_combined()
+
+    def _remove_custom_negative(self, term):
+        """Remove a custom negative term and refresh."""
+        from negative_manager import remove_custom_negative
+        remove_custom_negative(term)
+        self._rebuild_custom_neg_ui()
+        self._neg_manual_edit = False
+        self._rebuild_neg_combined()
+
+    def _on_custom_neg_toggled(self):
+        """Handle checkbox toggle — persist the new state and rebuild preview."""
+        from negative_manager import set_custom_negative_enabled
+        for term, var in self._cn_vars.items():
+            set_custom_negative_enabled(term, var.get())
         self._neg_manual_edit = False
         self._rebuild_neg_combined()
 
@@ -5236,6 +5816,11 @@ class FrogPaperApp:
             if hasattr(self.subject_entry, 'get'):
                 val = self.subject_entry.get()
                 logger.debug(f"generate: subject_entry.get() = '{val}'")
+                # Strip ★ pin marker if present
+                if PINNED_DROPDOWNS_AVAILABLE:
+                    _pmgr = get_manager()
+                    if _pmgr:
+                        val = _pmgr.strip_pin_marker(val)
                 self.prompt_builder_values["subject"] = val
             elif hasattr(self.subject_entry, 'current'):
                 idx = self.subject_entry.current()
@@ -5270,6 +5855,11 @@ class FrogPaperApp:
             if hasattr(self.lighting_entry, 'get'):
                 val = self.lighting_entry.get()
                 logger.debug(f"generate: lighting_entry.get() = '{val}'")
+                # Strip ★ pin marker if present
+                if PINNED_DROPDOWNS_AVAILABLE:
+                    _pmgr = get_manager()
+                    if _pmgr:
+                        val = _pmgr.strip_pin_marker(val)
                 self.prompt_builder_values["lighting"] = val
             elif hasattr(self.lighting_entry, 'current'):
                 idx = self.lighting_entry.current()
@@ -5283,6 +5873,11 @@ class FrogPaperApp:
             if hasattr(self.setting_entry, 'get'):
                 val = self.setting_entry.get()
                 logger.debug(f"generate: setting_entry.get() = '{val}'")
+                # Strip ★ pin marker if present
+                if PINNED_DROPDOWNS_AVAILABLE:
+                    _pmgr = get_manager()
+                    if _pmgr:
+                        val = _pmgr.strip_pin_marker(val)
                 self.prompt_builder_values["setting"] = val
             elif hasattr(self.setting_entry, 'current'):
                 idx = self.setting_entry.current()
@@ -5296,6 +5891,11 @@ class FrogPaperApp:
             if hasattr(self.atmosphere_combo, 'get'):
                 val = self.atmosphere_combo.get()
                 logger.debug(f"generate: atmosphere_combo.get() = '{val}'")
+                # Strip ★ pin marker if present
+                if PINNED_DROPDOWNS_AVAILABLE:
+                    _pmgr = get_manager()
+                    if _pmgr:
+                        val = _pmgr.strip_pin_marker(val)
                 self.prompt_builder_values["atmosphere"] = val
             elif hasattr(self.atmosphere_combo, 'current'):
                 idx = self.atmosphere_combo.current()
@@ -5303,6 +5903,24 @@ class FrogPaperApp:
                     val = self.atmosphere_combo.get()
                     logger.debug(f"generate: atmosphere_combo (combobox).get() = '{val}'")
                     self.prompt_builder_values["atmosphere"] = val
+        
+        # Mood
+        if hasattr(self, 'mood_entry'):
+            if hasattr(self.mood_entry, 'get'):
+                val = self.mood_entry.get()
+                logger.debug(f"generate: mood_entry.get() = '{val}'")
+                # Strip ★ pin marker if present
+                if PINNED_DROPDOWNS_AVAILABLE:
+                    _pmgr = get_manager()
+                    if _pmgr:
+                        val = _pmgr.strip_pin_marker(val)
+                self.prompt_builder_values["mood"] = val
+            elif hasattr(self.mood_entry, 'current'):
+                idx = self.mood_entry.current()
+                if idx >= 0:
+                    val = self.mood_entry.get()
+                    logger.debug(f"generate: mood_entry (combobox).get() = '{val}'")
+                    self.prompt_builder_values["mood"] = val
         
         # Color - combine family and variation
         if hasattr(self, 'color_family_var') and hasattr(self.color_family_var, 'get'):
@@ -5469,6 +6087,12 @@ class FrogPaperApp:
                     val = self.atmosphere_combo.get()
                     logger.debug(f"atmosphere_combo (combobox).get() = '{val}'")
                     self.prompt_builder_values["atmosphere"] = val
+
+        # Mood
+        if hasattr(self, 'mood_entry'):
+            val = self.mood_entry.get()
+            logger.debug(f"mood_entry.get() = '{val}'")
+            self.prompt_builder_values["mood"] = val
         
         # Color - combine family and variation
         if hasattr(self, 'color_family_var') and hasattr(self.color_family_var, 'get'):
@@ -6238,9 +6862,7 @@ class FrogPaperApp:
 
             self.status_var.set(f"Generated: {self.last_image_path.name}")
 
-            self.load_gallery()
-
-            self.load_favorites()
+            self._gallery_tab._refresh_current_view()
 
             if auto_set_wallpaper:
 
@@ -6634,11 +7256,8 @@ class FrogPaperApp:
         about_window.transient(self.root)
         about_window.grab_set()
 
-        # Center the window
-        about_window.update_idletasks()
-        x = (about_window.winfo_screenwidth() // 2) - (400 // 2)
-        y = (about_window.winfo_screenheight() // 2) - (300 // 2)
-        about_window.geometry(f"+{x}+{y}")
+        from utils import center_window
+        center_window(self.root, about_window)
 
         # Apply full theme styling
         pal = THEMES.get(self.current_theme_name, THEMES["darkforest"])
@@ -6888,6 +7507,555 @@ class FrogPaperApp:
             except Exception as e:
 
                 logger.error(f"Error updating tray menu: {e}")
+
+
+    # ── Cloud Account Methods ───────────────────────────────────────────────
+
+    # ── Unified cloud account management ─────────────────────────────────
+
+    CLOUD_PROVIDERS = {
+        "google_drive": {
+            "display_name": "Google Drive",
+            "id_config_key": "google_client_id",
+            "secret_config_key": "google_client_secret",
+            "class_name": "GoogleDriveProvider",
+            "module": "cloud_providers",
+        },
+        "onedrive": {
+            "display_name": "OneDrive",
+            "id_config_key": "onedrive_client_id",
+            "secret_config_key": "onedrive_client_secret",
+            "class_name": "OneDriveProvider",
+            "module": "cloud_providers",
+        },
+        "dropbox": {
+            "display_name": "Dropbox",
+            "id_config_key": "dropbox_app_key",
+            "secret_config_key": "dropbox_app_secret",
+            "class_name": "DropboxProvider",
+            "module": "cloud_providers",
+        },
+    }
+
+    def _update_all_cloud_cards(self):
+        """Update all cloud provider card UIs based on current token state."""
+        from utils import has_oauth_token
+        for provider_name in self.CLOUD_PROVIDERS:
+            connected = has_oauth_token(provider_name)
+            if hasattr(self, '_toggle_cloud_card'):
+                self._toggle_cloud_card(provider_name, connected)
+
+    def _cloud_connect(self, provider_name):
+        """Unified connect/disconnect handler for all cloud providers.
+
+        If currently connected → disconnect.
+        If not connected → validate credentials and connect.
+        """
+        from utils import has_oauth_token, delete_oauth_token, load_config, save_config
+
+        info = self.CLOUD_PROVIDERS.get(provider_name)
+        if not info:
+            return
+
+        display_name = info["display_name"]
+
+        # ── DISCONNECT path ────────────────────────────────────────────
+        if has_oauth_token(provider_name):
+            if not self._dialog.ask(
+                f"Disconnect {display_name}",
+                f"Disconnect {display_name}?\n\n"
+                f"Your cloud sync will stop working until you reconnect."
+            ):
+                return
+            try:
+                delete_oauth_token(provider_name)
+                logger.info(f"Disconnected {provider_name}")
+            except Exception as e:
+                logger.error(f"Failed to delete {provider_name} token: {e}")
+            if hasattr(self, '_toggle_cloud_card'):
+                self._toggle_cloud_card(provider_name, False)
+            self.status_var.set(f"{display_name} disconnected")
+            return
+
+        # ── CONNECT path ──────────────────────────────────────────────
+        id_var = getattr(self, f"{provider_name}_id_var", None)
+        secret_var = getattr(self, f"{provider_name}_secret_var", None)
+        if not id_var or not secret_var:
+            self._dialog.error(display_name, "Internal error: credential fields not found.")
+            return
+
+        client_id = id_var.get().strip()
+        client_secret = secret_var.get().strip()
+        if not client_id or not client_secret:
+            self._dialog.warning(
+                f"{display_name} Connection",
+                f"Please enter your {display_name} credentials in the fields above."
+            )
+            return
+
+        # Save credentials to keyring
+        try:
+            import keyring
+            keyring.set_password("FrogPaper", info["id_config_key"], client_id)
+            keyring.set_password("FrogPaper", info["secret_config_key"], client_secret)
+        except ImportError:
+            self._dialog.error(
+                "Keyring Required",
+                "The keyring library is required for secure credential storage. Please install it with: pip install keyring"
+            )
+            return
+        except Exception as e:
+            self._dialog.error(
+                "Storage Error",
+                f"Failed to save credentials securely: {e}"
+            )
+            return
+
+        # Update module-level globals so the provider picks them up
+        import cloud_providers
+        id_global = f"{provider_name.upper().replace('GOOGLE_DRIVE', 'GOOGLE')}_CLIENT_ID"
+        secret_global = f"{provider_name.upper().replace('GOOGLE_DRIVE', 'GOOGLE')}_CLIENT_SECRET"
+        # Map to actual global names used in cloud_providers.py
+        global_map = {
+            "google_drive": ("GOOGLE_CLIENT_ID", "GOOGLE_CLIENT_SECRET"),
+            "onedrive": ("ONEDRIVE_CLIENT_ID", "ONEDRIVE_CLIENT_SECRET"),
+            "dropbox": ("DROPBOX_APP_KEY", "DROPBOX_APP_SECRET"),
+        }
+        g_id, g_secret = global_map.get(provider_name, (id_global, secret_global))
+        setattr(cloud_providers, g_id, client_id)
+        setattr(cloud_providers, g_secret, client_secret)
+
+        # Instantiate provider and authenticate in a background thread
+        # Google's run_local_server() blocks the main thread (freezes UI)
+        # so we offload it and update the card when done.
+        import threading
+
+        def _auth_and_update():
+            try:
+                mod = __import__(info["module"], fromlist=[info["class_name"]])
+                cls = getattr(mod, info["class_name"])
+                provider = cls()
+
+                kwargs = {}
+                if provider_name == "dropbox":
+                    kwargs["main_root"] = self.root
+
+                success = provider.authenticate(**kwargs)
+
+                # Schedule UI update on the main thread
+                self.root.after(0, lambda: _on_auth_done(success, None))
+            except Exception as e:
+                logger.error(f"{provider_name} connection error: {e}")
+                self.root.after(0, lambda: _on_auth_done(False, str(e)))
+
+        def _on_auth_done(success, error_msg):
+            if success:
+                if hasattr(self, '_toggle_cloud_card'):
+                    self._toggle_cloud_card(provider_name, True)
+                self._dialog.info(f"{display_name} Connection",
+                                  f"Successfully connected to {display_name}!")
+            else:
+                if hasattr(self, '_toggle_cloud_card'):
+                    self._toggle_cloud_card(provider_name, False,
+                                            error_msg=(error_msg or "Authentication failed")[:60])
+                self._dialog.warning(
+                    f"{display_name} Connection",
+                    f"Failed to connect to {display_name}.\n\n"
+                    f"Check that your credentials are correct and that the API is enabled."
+                    + (f"\n\nError: {error_msg}" if error_msg else "")
+                )
+
+        self.status_var.set(f"Connecting to {display_name}...")
+        threading.Thread(target=_auth_and_update, daemon=True).start()
+
+    # ── Cloud card UI state management ─────────────────────────────────
+
+    def _toggle_cloud_card(self, provider_name, connected, error_msg=None):
+        """Switch a cloud provider card between connected / not-connected / error.
+
+        This method is called by:
+          - _update_all_cloud_cards() at startup
+          - _cloud_connect() after connect/disconnect attempt
+          - _update_google_drive_status() / _update_onedrive_status() / _update_dropbox_status()
+        """
+        refs = getattr(self, '_cloud_card_refs', {}).get(provider_name)
+        if not refs:
+            return
+
+        from settings_tab import STATUS_COLORS
+        pal = self.THEMES.get(getattr(self, 'current_theme_name', 'darkforest'), self.THEMES['darkforest'])
+        _muted = pal['muted']
+        _card_bg = pal.get('card_bg', pal['bg'])
+
+        accent_bar = refs['accent_bar']
+        dot_canvas = refs['dot_canvas']
+        dot_id = refs['dot_id']
+        status_lbl = refs['status_lbl']
+        cred_frame = refs['cred_frame']
+        connected_frame = refs['connected_frame']
+        error_frame = refs['error_frame']
+        error_lbl = refs['error_lbl']
+        guide_toggle = refs['setup_guide_toggle']
+        guide_frame = refs['guide_frame']
+
+        if error_msg:
+            # ── ERROR state ──
+            accent_bar.config(bg=STATUS_COLORS['error'])
+            dot_canvas.itemconfig(dot_id, fill=STATUS_COLORS['error'])
+            status_lbl.config(text='Error', fg=STATUS_COLORS['error'])
+            cred_frame.grid_remove()
+            connected_frame.grid_remove()
+            error_frame.grid()
+            error_lbl.config(text=error_msg)
+            guide_toggle.grid_remove()
+            guide_frame.grid_remove()
+        elif connected:
+            # ── CONNECTED state ──
+            accent_bar.config(bg=STATUS_COLORS['connected'])
+            dot_canvas.itemconfig(dot_id, fill=STATUS_COLORS['connected'])
+            status_lbl.config(text='Connected', fg=STATUS_COLORS['connected'])
+            cred_frame.grid_remove()
+            error_frame.grid_remove()
+            connected_frame.grid()
+            guide_toggle.grid_remove()
+            guide_frame.grid_remove()
+        else:
+            # ── NOT CONNECTED state ──
+            accent_bar.config(bg=STATUS_COLORS['not_connected'])
+            dot_canvas.itemconfig(dot_id, fill=STATUS_COLORS['not_connected'])
+            status_lbl.config(text='Not connected', fg=_muted)
+            connected_frame.grid_remove()
+            error_frame.grid_remove()
+            cred_frame.grid()
+            guide_toggle.grid()
+
+    # ── Legacy cloud status methods (kept for backward compat) ──────────────
+
+    def _update_google_drive_status(self):
+        from utils import has_oauth_token
+        if hasattr(self, '_toggle_cloud_card'):
+            self._toggle_cloud_card("google_drive", has_oauth_token("google_drive"))
+
+    def _update_onedrive_status(self):
+        from utils import has_oauth_token
+        if hasattr(self, '_toggle_cloud_card'):
+            self._toggle_cloud_card("onedrive", has_oauth_token("onedrive"))
+
+    def _update_dropbox_status(self):
+        from utils import has_oauth_token
+        if hasattr(self, '_toggle_cloud_card'):
+            self._toggle_cloud_card("dropbox", has_oauth_token("dropbox"))
+
+    def _connect_google_drive(self):
+        self._cloud_connect("google_drive")
+
+    def _connect_onedrive(self):
+        self._cloud_connect("onedrive")
+
+    def _connect_dropbox(self):
+        self._cloud_connect("dropbox")
+
+    def _manual_sync(self):
+        """Perform manual sync with user choice for conflicts."""
+        logger.info("Manual sync button clicked")
+        try:
+            if not hasattr(self, 'sync_manager') or self.sync_manager is None:
+                from sync_manager import SyncManager
+                self.sync_manager = SyncManager(self)
+                logger.info("SyncManager initialized")
+            
+            if self.sync_manager is None:
+                raise Exception("SyncManager initialization failed")
+            
+            # Clear sync metadata to force fresh sync
+            try:
+                self.sync_manager.sync_metadata = {"files": {}, "last_sync": None}
+                self.sync_manager._save_sync_metadata()
+                logger.info("Sync metadata cleared for fresh sync")
+            except Exception as e:
+                logger.warning(f"Failed to clear sync metadata: {e}")
+            
+            # Pre-authenticate all providers on the MAIN thread so OAuth
+            # dialogs (Dropbox) work correctly — they cannot run in a background
+            # thread (tkinter requirement).
+            logger.info("Pre-authenticating cloud providers on main thread...")
+            self.sync_status_var.set("Authenticating...")
+            self.root.update_idletasks()
+            providers = self.sync_manager.pre_authenticate(main_root=self.root)
+            
+            if not providers:
+                logger.info("No cloud providers authenticated, aborting sync")
+                self.sync_status_var.set("No cloud connection")
+                self._dialog.warning("Sync", "No cloud providers are connected. Please set up a cloud account in Settings first.")
+                return
+            
+            logger.info(f"Pre-authenticated providers: {list(providers.keys())}")
+            logger.info("Starting manual sync...")
+            self.sync_status_var.set("Syncing...")
+            if hasattr(self, '_sync_status_lbl'):
+                self._sync_status_lbl.config(text="Syncing...")
+            self.root.update_idletasks()
+            
+            # Run sync in background thread to prevent UI freeze
+            # Providers are already authenticated, so no dialogs needed in the thread
+            import threading
+            thread = threading.Thread(target=self._run_manual_sync, daemon=True)
+            thread.start()
+            logger.info("Sync thread started")
+        except Exception as e:
+            logger.error(f"Manual sync initialization failed: {e}")
+            self.sync_status_var.set(f"Sync failed: {e}")
+            self._dialog.error("Sync Error", f"Failed to initialize sync: {e}")
+
+    def _run_manual_sync(self):
+        """Run manual sync in background thread."""
+        try:
+            # Ensure sync_manager exists
+            if not hasattr(self, 'sync_manager') or self.sync_manager is None:
+                from sync_manager import SyncManager
+                self.sync_manager = SyncManager(self)
+                logger.info("SyncManager initialized in background thread")
+            
+            if self.sync_manager is None:
+                raise Exception("SyncManager is None in background thread")
+            
+            # Start periodic progress updates
+            self._start_sync_progress_updates()
+            
+            # Reuse already-authenticated providers from pre_authenticate.
+            # _initialize_providers is called inside perform_sync but since
+            # providers are already set and tokens are fresh, it will just
+            # reload and validate them (no dialogs needed).
+            results = self.sync_manager.perform_sync(is_manual=True)
+            
+            # Stop progress updates
+            self._stop_sync_progress_updates()
+            
+            # Update UI from main thread
+            self.root.after(0, lambda: self._on_sync_complete(results))
+        except Exception as e:
+            logger.error(f"Manual sync failed: {e}")
+            self._stop_sync_progress_updates()
+            self.root.after(0, lambda: self._on_sync_error(str(e)))
+
+    def _start_sync_progress_updates(self):
+        """Start periodic updates of sync progress in status bar."""
+        if hasattr(self, '_sync_progress_job'):
+            try:
+                self.root.after_cancel(self._sync_progress_job)
+            except:
+                pass
+        
+        def update_progress():
+            if not hasattr(self, 'sync_manager') or not self.sync_manager.sync_in_progress:
+                return
+            
+            progress = self.sync_manager.sync_progress
+            total = self.sync_manager.sync_total
+            status = self.sync_manager.sync_status
+            
+            if total > 0:
+                percent = int((progress / total) * 100)
+                self.status_var.set(f"Sync: {status} ({progress}/{total} - {percent}%)")
+            else:
+                self.status_var.set(f"Sync: {status}")
+            
+            self._sync_progress_job = self.root.after(500, update_progress)
+        
+        self._sync_progress_job = self.root.after(500, update_progress)
+
+    def _stop_sync_progress_updates(self):
+        """Stop periodic sync progress updates."""
+        if hasattr(self, '_sync_progress_job'):
+            try:
+                self.root.after_cancel(self._sync_progress_job)
+            except:
+                pass
+
+    def _on_sync_complete(self, results):
+        """Handle sync completion."""
+        if results.get("status") == "no_cloud":
+            self.sync_status_var.set("No cloud accounts connected")
+            if hasattr(self, '_sync_status_lbl'):
+                self._sync_status_lbl.config(text="No cloud connection")
+            self._dialog.warning("Sync Failed", "No cloud accounts are connected. Please connect a cloud provider in Settings first.")
+        elif results.get("status") == "failed":
+            self.sync_status_var.set("Sync failed")
+            if hasattr(self, '_sync_status_lbl'):
+                self._sync_status_lbl.config(text="Sync failed")
+            self._dialog.error("Sync Failed", f"Sync encountered {results.get('errors', 0)} errors. Check logs for details.")
+        else:
+            summary = f"Added: {results.get('added', 0)}, Modified: {results.get('modified', 0)}, Deleted: {results.get('deleted', 0)}"
+            self.sync_status_var.set("Sync complete")
+            if hasattr(self, '_sync_status_lbl'):
+                self._sync_status_lbl.config(text=f"Done — {results.get('added', 0)} up")
+            self._dialog.info("Sync Complete", f"Sync completed successfully.\n\n{summary}")
+
+    def _on_sync_error(self, error_message):
+        """Handle sync error."""
+        self.sync_status_var.set("Sync failed")
+        if hasattr(self, '_sync_status_lbl'):
+            self._sync_status_lbl.config(text="Sync failed")
+        self._dialog.error("Sync Error", f"Sync failed: {error_message}")
+
+    def _get_tray_sync_status(self):
+        """Get sync status for tray menu display."""
+        if not hasattr(self, 'sync_manager'):
+            return "Not initialized"
+        
+        status = self.sync_manager.get_sync_status()
+        if status.get('in_progress'):
+            return "Syncing..."
+        elif status.get('cloud_connected'):
+            return "Connected"
+        else:
+            return "No connection"
+
+    def _tray_sync_now(self, icon=None, item=None):
+        """Trigger manual sync from tray menu."""
+        def _do():
+            self._tray_restore()
+            self.root.after(100, self._manual_sync)
+        self.root.after(0, _do)
+
+    def _tray_show_sync_status(self, icon=None, item=None):
+        """Show sync status dialog from tray menu."""
+        def _do():
+            self._tray_restore()
+            if not hasattr(self, 'sync_manager'):
+                from sync_manager import SyncManager
+                self.sync_manager = SyncManager(self)
+            
+            status = self.sync_manager.get_sync_status()
+            status_text = f"Last Sync: {status.get('last_sync', 'Never')}\n"
+            status_text += f"Files Tracked: {status.get('files_tracked', 0)}\n"
+            status_text += f"Cloud Connected: {'Yes' if status.get('cloud_connected') else 'No'}\n"
+            status_text += f"Sync In Progress: {'Yes' if status.get('in_progress') else 'No'}"
+            
+            self._dialog.info("Sync Status", status_text)
+        self.root.after(0, _do)
+
+    def _setup_auto_backup(self):
+        """Setup automatic daily backup scheduling."""
+        from utils import load_config
+        config = load_config()
+        
+        if config.get("auto_backup_enabled", False):
+            self._start_backup_scheduler()
+        else:
+            self._stop_backup_scheduler()
+
+    def _start_backup_scheduler(self):
+        """Start the automatic backup scheduler.
+
+        Fires once per day at the user-configured time (default 02:00).
+        If the scheduled time was missed (app was closed/asleep), it runs
+        shortly after the next launch instead.
+        """
+        # Stop any existing scheduler first
+        self._stop_backup_scheduler()
+
+        self._backup_stop_event.clear()
+
+        def backup_scheduler():
+            """Background thread: wait until target time, sync, repeat daily."""
+            from utils import load_config
+            from datetime import datetime, timedelta
+            from sync_manager import SyncManager
+
+            while not self._backup_stop_event.is_set():
+                try:
+                    config = load_config()
+                    if not config.get("auto_backup_enabled", False):
+                        break
+
+                    target_hour = config.get("auto_backup_hour", 2)
+                    target_minute = config.get("auto_backup_minute", 0)
+                    now = datetime.now()
+
+                    # Build today's target datetime
+                    target = now.replace(hour=target_hour, minute=target_minute,
+                                          second=0, microsecond=0)
+
+                    # If target already passed today, check if we already synced today
+                    if now >= target:
+                        last_sync_str = config.get("auto_backup_last_run", "")
+                        already_ran_today = False
+                        if last_sync_str:
+                            try:
+                                last_run = datetime.fromisoformat(last_sync_str)
+                                if last_run.date() == now.date():
+                                    already_ran_today = True
+                            except (ValueError, TypeError):
+                                pass
+
+                        if not already_ran_today:
+                            # Missed today's window — run now (catch-up)
+                            logger.info("Missed backup window, running catch-up backup now")
+                            self._run_scheduled_backup()
+                        # Otherwise already ran today, sleep until tomorrow
+
+                    # Sleep until target time (or re-check in 60s if stop requested)
+                    now = datetime.now()
+                    target = now.replace(hour=target_hour, minute=target_minute,
+                                          second=0, microsecond=0)
+                    if now >= target:
+                        # Past today's target, aim for tomorrow
+                        target += timedelta(days=1)
+                    wait_secs = (target - now).total_seconds()
+
+                    # Wake up every 60s to check for stop signal
+                    while wait_secs > 0 and not self._backup_stop_event.is_set():
+                        sleep_chunk = min(60, wait_secs)
+                        self._backup_stop_event.wait(timeout=sleep_chunk)
+                        wait_secs -= 60
+
+                    if self._backup_stop_event.is_set():
+                        break
+
+                    # Time to back up
+                    self._run_scheduled_backup()
+
+                except Exception as e:
+                    logger.error(f"Backup scheduler error: {e}")
+                    self._backup_stop_event.wait(timeout=60)
+
+        self.backup_scheduler_job = threading.Thread(target=backup_scheduler, daemon=True)
+        self.backup_scheduler_job.start()
+        logger.info("Automatic backup scheduler started")
+
+    def _run_scheduled_backup(self):
+        """Execute a scheduled backup (called from scheduler thread)."""
+        try:
+            from sync_manager import SyncManager
+            if not self.sync_manager:
+                self.sync_manager = SyncManager(self)
+
+            # Pre-authenticate on main thread before syncing
+            self.root.after(0, lambda: None)  # keep root alive
+
+            results = self.sync_manager.perform_sync(is_manual=False)
+            logger.info(f"Automatic backup completed: {results}")
+
+            # Record successful run time
+            from utils import load_config, save_config
+            config = load_config()
+            from datetime import datetime
+            config["auto_backup_last_run"] = datetime.now().isoformat()
+            save_config(config)
+
+            # Update UI
+            if hasattr(self, 'last_backup_var'):
+                self.root.after(0, lambda: self.last_backup_var.set(
+                    f"Last backup: {datetime.now().strftime('%Y-%m-%d %H:%M')}"))
+        except Exception as e:
+            logger.error(f"Scheduled backup failed: {e}")
+
+    def _stop_backup_scheduler(self):
+        """Stop the automatic backup scheduler."""
+        self._backup_stop_event.set()
+        self.backup_scheduler_job = None
+        logger.info("Automatic backup scheduler stopped")
 
 
 
@@ -7222,8 +8390,11 @@ def main():
                         app.lighting_entry.delete(0, tk.END)
                         app.lighting_entry.insert(0, random_lighting)
                     if hasattr(app, 'mood_entry'):
-                        app.mood_entry.delete(0, tk.END)
-                        app.mood_entry.insert(0, random_mood)
+                        if isinstance(app.mood_entry, ttk.Combobox):
+                            app.mood_entry.set(random_mood)
+                        else:
+                            app.mood_entry.delete(0, tk.END)
+                            app.mood_entry.insert(0, random_mood)
                     # Update color family and color variation sidebar widgets
                     if hasattr(app, 'color_family_var'):
                         app.color_family_var.set(family)

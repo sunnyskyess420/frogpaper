@@ -17,6 +17,11 @@ env/
 # Secrets / local config
 .env
 config.json
+config_*.json
+*.key
+*.pem
+credentials.json
+tokens.json
 
 # Logs & generated data (contain local paths, personal prompts, history)
 logs/*.json

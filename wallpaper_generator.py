@@ -20,28 +20,23 @@ class ImageGenerationError(Exception):
     pass
 
 def load_token() -> str:
-    token = os.getenv("HUGGINGFACE_TOKEN", "").strip()
+    from utils import get_huggingface_token
+    token = get_huggingface_token()
     if not token:
-        try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-                cfg = json.load(f)
-            token = (cfg.get("huggingface_token") or "").strip()
-        except Exception:
-            pass
-    if not token:
-        raise ValueError("Missing Hugging Face token. Set the HUGGINGFACE_TOKEN environment variable first.")
+        raise ValueError("Missing Hugging Face token. Set the HUGGINGFACE_TOKEN environment variable or use Settings.")
     return token
 
 def _load_cloudflare_config() -> tuple:
-    """Load Cloudflare API token and account ID from config.
+    """Load Cloudflare API token and account ID from keyring.
     Returns (token, account_id)."""
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
-            cfg = json.load(f)
-        token = (cfg.get("cloudflare_token") or "").strip()
-        account_id = (cfg.get("cloudflare_account_id") or "").strip()
-    except Exception:
-        token, account_id = "", ""
+        import keyring
+        token = (keyring.get_password("FrogPaper", "cloudflare_token") or "").strip()
+        account_id = (keyring.get_password("FrogPaper", "cloudflare_account_id") or "").strip()
+    except ImportError:
+        raise ValueError("keyring library required for secure credential storage")
+    except Exception as e:
+        raise ValueError(f"Failed to load Cloudflare credentials: {e}")
     if not token:
         raise ValueError("Missing Cloudflare API token. Set it in Settings.")
     if not account_id:

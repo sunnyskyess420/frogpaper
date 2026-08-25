@@ -3,9 +3,29 @@ import os
 import sys
 import tempfile
 import logging
+import tkinter as tk
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
+
+
+def center_window(parent: tk.Tk | tk.Toplevel, child: tk.Toplevel) -> None:
+    """Center *child* window on top of *parent* window.
+
+    Call this after the child has been given its initial geometry (so it
+    knows its requested size) but before the mainloop blocks.  It works
+    whether the child uses ``geometry("WxH")`` or ``geometry("WxH+X+Y")``.
+    """
+    child.update_idletasks()
+    pw = parent.winfo_width()
+    ph = parent.winfo_height()
+    px = parent.winfo_rootx()
+    py = parent.winfo_rooty()
+    cw = child.winfo_width()
+    ch = child.winfo_height()
+    x = px + (pw - cw) // 2
+    y = py + (ph - ch) // 2
+    child.geometry(f"+{x}+{y}")
 
 
 def get_app_dir() -> Path:
@@ -31,6 +51,7 @@ BASE_DIR = get_app_dir()
 CONFIG_FILE = BASE_DIR / "config.json"
 
 _BUNDLED_DATA_FILES = [
+    "config.example.json",
     "keywords.json",
     "negative_presets.json",
     "presets.json",
@@ -55,6 +76,16 @@ def seed_bundled_files() -> None:
                 shutil.copy2(src, dst)
             except Exception as e:
                 logger.warning("Could not copy bundled file %s: %s", name, e)
+    
+    # Special handling: copy config.example.json to config.json if config.json doesn't exist
+    config_example = bundle / "config.example.json"
+    config_target = app / "config.json"
+    if config_example.exists() and not config_target.exists():
+        try:
+            shutil.copy2(config_example, config_target)
+            logger.info("Created config.json from config.example.json")
+        except Exception as e:
+            logger.warning("Could not create config.json from example: %s", e)
 
 
 def load_json_list(path: Path) -> list:
@@ -125,27 +156,122 @@ def get_huggingface_token() -> str:
     token = os.environ.get("HUGGINGFACE_TOKEN", "").strip()
     if token:
         return token
-    # Priority 2: OS credential manager via keyring
+    # Priority 2: OS credential manager via keyring (no plaintext fallback)
     try:
         import keyring
         token = (keyring.get_password("FrogPaper", "huggingface_token") or "").strip()
         if token:
             return token
     except ImportError:
-        pass  # keyring not installed — fall through to config
-    except Exception:
-        pass  # keyring backend error — fall through to config
-    # Priority 3: config.json (plaintext fallback)
-    try:
-        config = load_config()
-        token = (config.get("huggingface_token") or "").strip()
-        return token
-    except Exception:
-        return ""
+        logger.warning("keyring not installed - cannot retrieve token securely")
+    except Exception as e:
+        logger.warning(f"keyring error: {e}")
+    return ""
 
 
 def has_huggingface_token() -> bool:
     return bool(get_huggingface_token())
+
+
+def save_huggingface_token(token: str) -> None:
+    """Save Hugging Face token to OS credential manager.
+    
+    Args:
+        token: Hugging Face token string to store
+    """
+    try:
+        import keyring
+        keyring.set_password("FrogPaper", "huggingface_token", token)
+        logger.info("Hugging Face token saved to keyring")
+    except ImportError:
+        logger.error("keyring not installed - cannot save token securely")
+        raise RuntimeError("keyring library is required for secure credential storage")
+    except Exception as e:
+        logger.error(f"keyring failed: {e}")
+        raise
+
+
+def get_oauth_token(provider: str) -> str:
+    """Get OAuth token for a cloud provider.
+    
+    Only uses OS credential manager via keyring for security.
+    
+    Args:
+        provider: Provider name (e.g., "google_drive", "onedrive", "dropbox")
+        
+    Returns:
+        OAuth token string, or empty string if not found.
+    """
+    # Only use OS credential manager via keyring (no plaintext fallback)
+    try:
+        import keyring
+        token = (keyring.get_password("FrogPaper", f"oauth_{provider}") or "").strip()
+        if token:
+            return token
+    except ImportError:
+        logger.warning("keyring not installed - cannot retrieve OAuth token securely")
+    except Exception as e:
+        logger.warning(f"keyring error for {provider}: {e}")
+    return ""
+
+
+def save_oauth_token(provider: str, token: str) -> None:
+    """Save OAuth token for a cloud provider to OS credential manager.
+    
+    Args:
+        provider: Provider name (e.g., "google_drive", "onedrive", "dropbox")
+        token: OAuth token string to store
+    """
+    try:
+        import keyring
+        keyring.set_password("FrogPaper", f"oauth_{provider}", token)
+        logger.info(f"OAuth token saved to keyring for {provider}")
+    except ImportError:
+        logger.error("keyring not installed - cannot save OAuth token securely")
+        raise RuntimeError("keyring library is required for secure credential storage")
+    except Exception as e:
+        logger.error(f"keyring failed for {provider}: {e}")
+        raise
+
+
+def delete_oauth_token(provider: str) -> None:
+    """Delete OAuth token for a cloud provider from OS credential manager.
+    
+    Args:
+        provider: Provider name (e.g., "google_drive", "onedrive", "dropbox")
+    """
+    # Try keyring first
+    try:
+        import keyring
+        keyring.delete_password("FrogPaper", f"oauth_{provider}")
+        logger.info(f"OAuth token deleted from keyring for {provider}")
+        return
+    except ImportError:
+        pass  # Fall through to config.json
+    except Exception as e:
+        logger.debug(f"Keyring deletion failed: {e}")
+    
+    # Fallback: remove from config.json
+    try:
+        config = load_config()
+        if "oauth_tokens" in config and provider in config["oauth_tokens"]:
+            del config["oauth_tokens"][provider]
+            save_config(config)
+            logger.info(f"OAuth token deleted from config for {provider}")
+    except Exception as e:
+        logger.debug(f"Config deletion failed: {e}")
+
+
+def has_oauth_token(provider: str) -> bool:
+    """Check if OAuth token exists for a cloud provider.
+    
+    Args:
+        provider: Provider name (e.g., "google_drive", "onedrive", "dropbox")
+        
+    Returns:
+        True if token exists, False otherwise.
+    """
+    return bool(get_oauth_token(provider))
 
 
 def create_export_folder(name: str = "FrogPaper_Portrait_Export") -> Path:

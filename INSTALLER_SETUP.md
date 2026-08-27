@@ -26,13 +26,18 @@ build_frogpaper_exe.bat
 
 This will create `dist\FrogPaper.exe` using PyInstaller.
 
+> **Note**: `build_frogpaper_exe.bat` automatically runs `prebuild_check.py`
+> before packing the EXE. If any non-empty API token or OAuth secret is found
+> in `config.json` or `config.template.json`, the build aborts with exit code 2.
+> See `SECURITY_NOTES.md` for details.
+
 ### Step 2: Build the Installer
 Then, create the installer:
 ```cmd
 build_installer.bat
 ```
 
-This will create `installer_output\FrogPaper-Setup-1.1.0.exe`
+This will create `installer_output\FrogPaper-Setup-1.3.0.exe`
 
 ## Installer Features
 
@@ -58,7 +63,7 @@ The Windows startup functionality has been improved:
 
 ## Testing the Installer
 
-1. Run the installer: `installer_output\FrogPaper-Setup-1.1.0.exe`
+1. Run the installer: `installer_output\FrogPaper-Setup-1.3.0.exe`
 2. Choose installation options (desktop icon, startup, etc.)
 3. After installation, test the "Run on startup" setting in FrogPaper settings
 4. Restart your computer to verify startup functionality
@@ -70,11 +75,11 @@ After building and testing the installer:
 
 1. **Upload the installer** to GitHub releases:
    ```cmd
-   gh release upload v1.1.0 installer_output\FrogPaper-Setup-1.1.0.exe --repo sunnyskyess420/frogpaper
+   gh release upload v1.3.0 installer_output\FrogPaper-Setup-1.3.0.exe --repo sunnyskyess420/frogpaper
    ```
 
 2. **Update your website** download button to point to the installer:
-   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.1.0.exe`
+   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.3.0.exe`
    - Update the file size and description
    - Add a note about the installer providing automatic startup options
 

@@ -6,6 +6,12 @@ Shows a themed notification popup when a newer version is available.
 
 Used by app.py — called once on startup in a background thread.
 No extra dependencies — uses only urllib (stdlib).
+
+Persistence:
+    If the user clicks "Skip This Version", the latest tag is recorded in
+    config.json under `skipped_update_version`. The popup will NOT appear
+    again for that exact version. When an even newer version is released,
+    the popup reappears (because the skipped tag no longer matches).
 """
 
 import json
@@ -21,6 +27,56 @@ logger = logging.getLogger(__name__)
 GITHUB_REPO = "sunnyskyess420/frogpaper"
 RELEASES_URL = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 DOWNLOADS_URL = "https://sunnyskyess420.github.io/frogpaper-website/#downloads"
+
+# Field in config.json used to persist the user's "skip this version" choice.
+SKIPPED_VERSION_KEY = "skipped_update_version"
+
+
+def _config_path() -> Path:
+    """Locate config.json next to the EXE (or beside the source tree)."""
+    try:
+        from utils import CONFIG_FILE
+        return CONFIG_FILE
+    except Exception:
+        # Fallback if utils hasn't been imported yet — shouldn't happen in
+        # normal operation, but we never want the update check to crash.
+        return Path(__file__).resolve().parent / "config.json"
+
+
+def get_skipped_version() -> str:
+    """Return the version tag the user has explicitly skipped, or ""."""
+    try:
+        with _config_path().open("r", encoding="utf-8") as f:
+            data = json.load(f)
+        if isinstance(data, dict):
+            return str(data.get(SKIPPED_VERSION_KEY, "") or "").strip()
+    except Exception:
+        pass
+    return ""
+
+
+def skip_version(version_tag: str) -> None:
+    """Persist the given version tag as 'skipped' so the popup is suppressed
+    for that exact version on subsequent launches."""
+    try:
+        from utils import load_config, save_config
+        config = load_config()
+        config[SKIPPED_VERSION_KEY] = version_tag
+        save_config(config)
+        logger.info("Update popup suppressed for version %s", version_tag)
+    except Exception as exc:
+        # Fall back to a direct file write if utils helpers are unavailable.
+        try:
+            path = _config_path()
+            with path.open("r", encoding="utf-8") as f:
+                config = json.load(f) if path.exists() else {}
+            if not isinstance(config, dict):
+                config = {}
+            config[SKIPPED_VERSION_KEY] = version_tag
+            with path.open("w", encoding="utf-8") as f:
+                json.dump(config, f, indent=2)
+        except Exception as exc2:
+            logger.warning("Failed to persist skipped version: %s / %s", exc, exc2)
 
 
 def parse_version(version_str: str) -> tuple:
@@ -78,7 +134,10 @@ def _clean_markdown(text: str) -> str:
 def check_for_update(current_version: str) -> Optional[dict]:
     """Return release info dict if an update is available, else None.
 
-    Returned dict keys: tag_name, name, html_url, body (cleaned), download_url
+    Suppressed (returns None) when:
+      - the GitHub API call fails
+      - the latest tag is not strictly newer than the current version
+      - the user has explicitly skipped the latest tag
     """
     data = fetch_latest_release()
     if data is None:
@@ -87,6 +146,11 @@ def check_for_update(current_version: str) -> Optional[dict]:
     latest_tag = data.get("tag_name", "")
     if not latest_tag or not is_newer(latest_tag, current_version):
         logger.debug("App is up-to-date (%s >= %s)", current_version, latest_tag)
+        return None
+
+    # Honor a previously-recorded "Skip this version" choice.
+    if get_skipped_version() == latest_tag:
+        logger.debug("Update to %s skipped by user — suppressing popup", latest_tag)
         return None
 
     # Find the .exe installer asset
@@ -127,23 +191,43 @@ def check_for_update(current_version: str) -> Optional[dict]:
 def show_update_notification(app, release_info: dict):
     """Display a themed update notification using the app's dialog system.
 
+    Offers three actions:
+      - "Yes"                   → open download page in browser
+      - "Skip This Version"     → suppress popup for this exact version
+      - "No"                    → dismiss for this launch only
+
     Must be called on the main thread (scheduled via root.after).
     """
     try:
         tag = release_info["tag_name"]
         name = release_info["name"]
-        body = release_info["body"]
         url = release_info["download_url"]
 
-        title = f"Update Available"
-        msg = f"A new version of FrogPaper is available!\n\n{name}\n\nWould you like to download it now?"
+        title = "Update Available"
+        msg = (
+            f"A new version of FrogPaper is available!\n\n"
+            f"{name}\n\n"
+            f"Would you like to download it now?"
+        )
 
-        result = app._dialog.ask(title, msg)
+        # Use the dialog's underlying _show() so we can supply three buttons.
+        # _show returns the label of the button that was clicked.
+        buttons = ("Yes", "Skip This Version", "No")
+        choice = app._dialog._show("ask", title, msg, buttons=buttons)
 
-        if result:
-            # Open download page in default browser
+        if choice == "Yes":
             import webbrowser
             webbrowser.open(url)
+        elif choice == "Skip This Version":
+            skip_version(tag)
+            try:
+                app._dialog.info(
+                    "Update Skipped",
+                    f"You won't be notified about version {tag} again.\n\n"
+                    f"A new popup will appear when an even newer version is released.",
+                )
+            except Exception:
+                pass
 
     except Exception as exc:
         logger.warning("Failed to show update notification: %s", exc)
@@ -153,11 +237,11 @@ def check_on_startup(app, current_version: str, delay_seconds: int = 5):
     """Run the update check in a background thread after a short delay.
 
     This keeps startup fast — the check runs quietly and only shows
-    a popup if a newer version is found.
+    a popup if a newer version is found (and hasn't been skipped).
 
     Args:
         app: The FrogPaperApp instance (for dialog + root.after).
-        current_version: The APP_VERSION string (e.g. "1.1.0").
+        current_version: The APP_VERSION string (e.g. "1.2.0").
         delay_seconds: How long to wait before checking (default 5s).
     """
 

@@ -69,7 +69,13 @@ class SlideshowManager:
         if skip_duplicates:
             # Filter out recent history (extract basename for comparison)
             seen = {Path(h).name.lower() for h in self.history[-50:]}  # Last 50 filenames
-            candidates = [p for p in candidates if p.name.lower() not in seen]
+            filtered = [p for p in candidates if p.name.lower() not in seen]
+            # If all candidates were filtered out (history exhausted), reset and start fresh
+            if filtered:
+                candidates = filtered
+            else:
+                # All images have been shown — clear history so they can repeat
+                self.history.clear()
         
         return candidates
 

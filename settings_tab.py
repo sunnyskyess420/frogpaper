@@ -10,7 +10,7 @@ import re
 
 from tkinter import ttk
 from datetime import datetime
-from utils import load_config, save_config, get_huggingface_token, save_huggingface_token
+from utils import load_config, save_config, get_huggingface_token
 
 # Pinned Dropdown Options feature (v1.3.0 - Favorite Items)
 try:
@@ -118,6 +118,48 @@ def _darken(hex_color, amount):
         return hex_color
 
 
+def _compute_sidebar_bg(pal):
+    """Compute a sidebar background that is distinct from the main bg.
+    
+    For dark themes: sidebar is slightly lighter than bg (not darker).
+    For light themes: sidebar is slightly darker than bg.
+    Ensures the sidebar is always visually distinct from the content area.
+    """
+    bg = pal.get("bg", "#111827")
+    panel = pal.get("panel", "#1f2937")
+    
+    try:
+        bg_hex = bg.lstrip("#")
+        r, g, b = int(bg_hex[0:2], 16), int(bg_hex[2:4], 16), int(bg_hex[4:6], 16)
+        # Perceived brightness
+        luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+        
+        if luminance < 0.15:
+            # Very dark theme: use panel color (which is lighter) as sidebar
+            return panel
+        elif luminance < 0.5:
+            # Dark theme: blend bg toward panel
+            return _blend_colors(bg, panel, 0.4)
+        else:
+            # Light theme: darken bg slightly toward panel
+            return _darken(bg, 15)
+    except (ValueError, IndexError):
+        return _darken(bg, 15)
+
+
+def _blend_colors(c1, c2, t):
+    """Linearly blend two hex colors. t=0 gives c1, t=1 gives c2."""
+    try:
+        c1 = c1.lstrip("#")
+        c2 = c2.lstrip("#")
+        r = int(int(c1[0:2], 16) * (1 - t) + int(c2[0:2], 16) * t)
+        g = int(int(c1[2:4], 16) * (1 - t) + int(c2[2:4], 16) * t)
+        b = int(int(c1[4:6], 16) * (1 - t) + int(c2[4:6], 16) * t)
+        return f"#{max(0,min(255,r)):02x}{max(0,min(255,g)):02x}{max(0,min(255,b)):02x}"
+    except (ValueError, IndexError):
+        return c1
+
+
 class SettingsTab:
     """Redesigned settings tab with sidebar navigation and card-based layout."""
 
@@ -133,6 +175,14 @@ class SettingsTab:
         self._settings_content_area = None
         self._settings_sep = None
         self._settings_save_bar = None
+        # Live registry of SettingCard / SettingRow / ExpandableSection /
+        # HelpResourceCard / CloudProviderCard instances built inside the
+        # popup.  Each entry exposes an ``update_theme(pal)`` method so that
+        # ``_retheme_settings_popup`` can repaint the cards after the user
+        # switches themes while the settings popup is open.  Without this
+        # the cards would stay frozen on the previous theme's colours
+        # (often grey defaults) even after the neon cyber theme is applied.
+        self._setting_components = []
 
     def _build_settings_tab(self, parent):
         """Build the complete settings page with sidebar navigation."""
@@ -144,7 +194,7 @@ class SettingsTab:
         
         # Ensure keys expected by settings components exist
         pal["card_bg"] = _darken(pal.get("panel2", pal.get("panel", pal["bg"])), -8)
-        pal["sidebar_bg"] = _darken(pal.get("bg", "#111827"), 30)
+        pal["sidebar_bg"] = _compute_sidebar_bg(pal)
         
         # Main container
         main_container = tk.Frame(parent, bg=pal["bg"])
@@ -353,7 +403,7 @@ class SettingsTab:
         """
         bg = pal["bg"]
         card_bg = _darken(pal.get("panel2", pal.get("panel", bg)), -8)
-        sidebar_bg = _darken(pal.get("bg", "#111827"), 30)
+        sidebar_bg = _compute_sidebar_bg(pal)
         border_color = pal.get("border_color", "#374151")
         accent = pal.get("accent", "#8b5cf6")
         muted = pal.get("muted", "#9ca3af")
@@ -454,6 +504,163 @@ class SettingsTab:
                 w.configure(bg=card_bg, fg=muted)
             except (tk.TclError, AttributeError):
                 pass
+
+        # ── Walk the settings scroll-area tree ──
+        #
+        # The body of the settings popup is made of SettingCard /
+        # SettingRow / ExpandableSection / HelpResourceCard /
+        # CloudProviderCard instances.  Each of these captures its colours
+        # at creation time and never updates them when the user switches
+        # themes — so when the user opens Settings while a different theme
+        # is active and then switches to e.g. "Neon Cyber — Dark", the
+        # cards stay frozen on the previous theme's colours (often grey
+        # defaults), producing the "grey instead of theme color" bug.
+        #
+        # Each component now tags its outer tk widget with
+        # ``_fp_component = self`` so we can rediscover it here and call
+        # its ``update_theme`` method.  When a widget is owned by a
+        # component, we let the component repaint itself and DO NOT
+        # recurse into its internals (the component knows about its own
+        # accent bars, icons, borders, etc. and would conflict with a
+        # generic repaint pass).  We only repaint "free-standing" widgets
+        # that live directly inside the scroll area: category headers,
+        # section labels, separator lines, and any other tk widgets the
+        # settings builders added outside a card component.
+        try:
+            inner = getattr(self.app, "settings_inner", None)
+            if inner is not None and inner.winfo_exists():
+                # Colours used for free-standing widgets (those NOT
+                # owned by a card component).
+                page_bg = bg
+                text_fg = pal.get("text", "#e5e7eb")
+                entry_bg = pal.get("entrybg", bg)
+
+                # Use a marker so we never recurse into the same
+                # widget twice even if it gets re-packed during the
+                # walk (some components re-pack their children when
+                # update_theme runs).
+                visited = set()
+
+                def _repaint_free_standing(parent, current_bg):
+                    """Walk the tree, repaint free-standing widgets, and
+                    skip the internals of any tagged component (which
+                    has its own update_theme that owns its internals)."""
+                    try:
+                        for child in parent.winfo_children():
+                            try:
+                                if not child.winfo_exists():
+                                    continue
+                                child_id = id(child)
+                                if child_id in visited:
+                                    continue
+                                visited.add(child_id)
+
+                                # 1) If this widget is the outer frame of
+                                #    a SettingCard / SettingRow / etc,
+                                #    let that component repaint itself
+                                #    and DO NOT recurse into its body —
+                                #    the component's update_theme already
+                                #    handles its accent bar, borders,
+                                #    icon, title, description, content
+                                #    frame, and step labels.
+                                comp = getattr(child, "_fp_component", None)
+                                if comp is not None and hasattr(comp, "update_theme"):
+                                    try:
+                                        comp.update_theme(popup_pal)
+                                    except Exception:
+                                        pass
+                                    continue  # do NOT recurse into the component
+
+                                # 2) Free-standing widgets — repaint.
+                                if isinstance(child, tk.Frame):
+                                    # Detect 1-pixel separator lines
+                                    try:
+                                        h = int(child.cget("height"))
+                                    except (tk.TclError, ValueError, TypeError):
+                                        h = 0
+                                    try:
+                                        wd = int(child.cget("width"))
+                                    except (tk.TclError, ValueError, TypeError):
+                                        wd = 0
+                                    try:
+                                        ht = int(child.cget("highlightthickness"))
+                                    except (tk.TclError, ValueError, TypeError):
+                                        ht = 0
+
+                                    if h == 1 and wd == 0:
+                                        # Separator line
+                                        child.configure(bg=border_color)
+                                        _repaint_free_standing(child, border_color)
+                                    elif ht > 0:
+                                        # Standalone bordered card-like
+                                        # frame (rare).  Use card_bg.
+                                        child.configure(
+                                            bg=card_bg,
+                                            highlightbackground=border_color,
+                                        )
+                                        _repaint_free_standing(child, card_bg)
+                                    else:
+                                        # Plain container — inherit page bg
+                                        try:
+                                            child.configure(bg=current_bg)
+                                        except tk.TclError:
+                                            pass
+                                        _repaint_free_standing(child, current_bg)
+                                elif isinstance(child, tk.Label):
+                                    try:
+                                        font_info = child.cget("font")
+                                        is_small = False
+                                        if isinstance(font_info, tuple) and len(font_info) >= 2:
+                                            try:
+                                                is_small = abs(int(font_info[1])) <= 9
+                                            except (ValueError, TypeError):
+                                                pass
+                                        cur_fg = child.cget("fg")
+                                        # Preserve explicit accent / status
+                                        # colours so we don't blow away
+                                        # coloured icons or status badges.
+                                        status_colors = {
+                                            "#22c55e", "#ef4444", "#f59e0b",
+                                            "#3b82f6", accent,
+                                        }
+                                        if cur_fg and cur_fg not in (
+                                            muted, text_fg, "gray", "grey",
+                                            "#888888", "#9ca3af",
+                                        ) and cur_fg not in status_colors:
+                                            new_fg = cur_fg
+                                        else:
+                                            new_fg = muted if is_small else text_fg
+                                        child.configure(bg=current_bg, fg=new_fg)
+                                    except tk.TclError:
+                                        pass
+                                elif isinstance(child, tk.Canvas):
+                                    try:
+                                        child.configure(bg=current_bg, highlightthickness=0)
+                                    except tk.TclError:
+                                        pass
+                                elif isinstance(child, (tk.Checkbutton, tk.Radiobutton)):
+                                    try:
+                                        child.configure(
+                                            bg=current_bg,
+                                            fg=text_fg,
+                                            selectcolor=entry_bg,
+                                            activebackground=current_bg,
+                                            activeforeground=text_fg,
+                                        )
+                                    except tk.TclError:
+                                        pass
+                                # Recurse into ttk containers as well so
+                                # any nested tk children get repainted.
+                                if isinstance(child, (ttk.Frame, ttk.LabelFrame)):
+                                    _repaint_free_standing(child, current_bg)
+                            except tk.TclError:
+                                continue
+                    except tk.TclError:
+                        pass
+
+                _repaint_free_standing(inner, page_bg)
+        except Exception:
+            pass
 
     # ================================================================
     # CATEGORY BUILDERS
@@ -597,13 +804,7 @@ class SettingsTab:
         
         tk.Label(cf_frame, text="Token:", font=("Segoe UI", 10),
                 fg=pal["text"], bg=pal["card_bg"]).grid(row=0, column=0, sticky="w", padx=8)
-        # Load Cloudflare token from keyring
-        saved_cf_token = ""
-        try:
-            import keyring
-            saved_cf_token = (keyring.get_password("FrogPaper", "cloudflare_token") or "").strip()
-        except (ImportError, Exception):
-            pass
+        saved_cf_token = load_config().get("cloudflare_token", "")
         app.cloudflare_token_var = tk.StringVar(value=saved_cf_token)
         cf_token_entry = ttk.Entry(cf_frame, textvariable=app.cloudflare_token_var, width=30, show="*")
         cf_token_entry.grid(row=0, column=1, sticky="ew")
@@ -611,13 +812,7 @@ class SettingsTab:
         
         tk.Label(cf_frame, text="Account ID:", font=("Segoe UI", 10),
                 fg=pal["text"], bg=pal["card_bg"]).grid(row=1, column=0, sticky="w", padx=8, pady=8)
-        # Load Cloudflare account ID from keyring
-        saved_cf_account_id = ""
-        try:
-            import keyring
-            saved_cf_account_id = (keyring.get_password("FrogPaper", "cloudflare_account_id") or "").strip()
-        except (ImportError, Exception):
-            pass
+        saved_cf_account_id = load_config().get("cloudflare_account_id", "")
         app.cloudflare_account_id_var = tk.StringVar(value=saved_cf_account_id)
         cf_id_entry = ttk.Entry(cf_frame, textvariable=app.cloudflare_account_id_var, width=30)
         cf_id_entry.grid(row=1, column=1, sticky="ew", pady=8)
@@ -1241,13 +1436,12 @@ class SettingsTab:
         """Auto-save token when the entry field loses focus."""
         app = self.app
         token = app.token_var.get().strip()
+        config = load_config()
         if token:
-            try:
-                save_huggingface_token(token)
-            except RuntimeError:
-                # keyring not available, show error to user
-                app.token_preview_var.set("Error: keyring required for secure storage")
-                return
+            config["huggingface_token"] = token
+        else:
+            config.pop("huggingface_token", None)
+        save_config(config)
         app.token_preview_var.set(self.format_token_preview())
 
     def _set_dimensions_from_string(self, dimensions_str):
@@ -1324,20 +1518,13 @@ class SettingsTab:
         config["model_id"] = self.resolved_model_id() or "flux"
         config["provider"] = app.provider_var.get().strip()
 
-        # Cloudflare (save to keyring instead of config)
+        # Cloudflare
         cf_token = app.cloudflare_token_var.get().strip()
+        if cf_token:
+            config["cloudflare_token"] = cf_token
         cf_account_id = app.cloudflare_account_id_var.get().strip()
-        if cf_token or cf_account_id:
-            try:
-                import keyring
-                if cf_token:
-                    keyring.set_password("FrogPaper", "cloudflare_token", cf_token)
-                if cf_account_id:
-                    keyring.set_password("FrogPaper", "cloudflare_account_id", cf_account_id)
-            except ImportError:
-                logger.warning("keyring not installed - Cloudflare credentials not saved securely")
-            except Exception as e:
-                logger.warning(f"Failed to save Cloudflare credentials to keyring: {e}")
+        if cf_account_id:
+            config["cloudflare_account_id"] = cf_account_id
 
         # Slideshow
         config['slideshow_enabled'] = bool(app.slideshow_enabled_var.get())

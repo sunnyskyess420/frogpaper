@@ -28,6 +28,7 @@ from gallery_manager import (
     rename_image,
     get_folder_structure,
     delete_image_and_tags,
+    cleanup_orphaned_tags,
     save_prompt_parameters,
     get_prompt_parameters,
     get_portrait_images,
@@ -45,7 +46,6 @@ class GalleryTab:
     # Icon mapping: widget attribute or local var name -> icon name
     _ACTION_ICONS = {
         "wallpaper": "wallpaper",
-        "favorite": "star",
         "style": "palette",
         "text": "text_edit",
         "delete": "delete",
@@ -55,8 +55,110 @@ class GalleryTab:
     def __init__(self, app):
         self.app = app
         self._fade_jobs = {}  # label widget -> list of after() ids
+        self._ratio_load_gen = 0  # generation counter to cancel stale ratio-load threads
+
+    # ── Tag helpers ──────────────────────────────────────────────────
+    _STYLE_SUFFIXES = None  # lazily built from StyleTransfer.available_styles
+
+    def _get_tags_with_fallback(self, img_path, fav_item=None):
+        """Get tags for an image, falling back to related/original paths.
+
+        Styled images and favorites copies live in different directories than
+        the originals whose tags were actually stored.  This helper tries:
+          1. Direct lookup on *img_path*
+          2. For styled images: strip _{style} suffix and check generated/manual dirs
+          3. For favorites: use the ``original_image_path`` from the fav entry
+          4. Broader _resolve_related_paths search
+        """
+        app = self.app
+
+        # 1. Direct lookup
+        tags = get_tags_for_image(img_path) or []
+        if tags:
+            return tags
+
+        # 2. Styled image → try the original source
+        if hasattr(app, 'STYLED_DIR') and img_path.is_absolute() and app.STYLED_DIR in img_path.parents:
+            if self._STYLE_SUFFIXES is None:
+                # Build lazy once: ["_oil_painting", "_watercolor", ...] (skip "original")
+                try:
+                    from style_transfer import StyleTransfer
+                    st = StyleTransfer()
+                    self._STYLE_SUFFIXES = sorted(
+                        [f"_{s}" for s in st.available_styles if s != "original"],
+                        key=len, reverse=True,  # longest first so we strip correctly
+                    )
+                except Exception:
+                    self._STYLE_SUFFIXES = []
+            stem = img_path.stem
+            ext = img_path.suffix
+            for suffix in self._STYLE_SUFFIXES:
+                if stem.endswith(suffix):
+                    original_stem = stem[:-len(suffix)]
+                    for search_dir in (getattr(app, 'GENERATED_DIR', None),
+                                       getattr(app, 'MANUAL_DIR', None)):
+                        if search_dir and search_dir.exists():
+                            candidate = search_dir / f"{original_stem}{ext}"
+                            if candidate.exists():
+                                tags = get_tags_for_image(candidate) or []
+                                if tags:
+                                    return tags
+                    break  # only one style suffix can match
+
+        # 3. Favorites → try original_image_path from entry metadata
+        if fav_item:
+            orig = fav_item.get("original_image_path")
+            if orig:
+                try:
+                    orig_path = Path(orig)
+                    if orig_path.exists() and orig_path != img_path:
+                        tags = get_tags_for_image(orig_path) or []
+                        if tags:
+                            return tags
+                except Exception:
+                    pass
+
+        # 4. Broader related-paths search (original ↔ favorite copy)
+        try:
+            for related in self._resolve_related_paths(img_path):
+                if str(related) != str(img_path):
+                    tags = get_tags_for_image(related) or []
+                    if tags:
+                        return tags
+        except Exception:
+            pass
+
+        return []
 
     # ── Icon helpers ────────────────────────────────────────────────
+    def _refresh_current_view(self):
+        """Refresh the currently active gallery view."""
+        app = self.app
+        current_view = app.gallery_view_var.get()
+        
+        if current_view == "Gallery":
+            app.load_gallery()
+        elif current_view == "Favorites":
+            tag_filter = app.get_active_tag()
+            app.load_favorites(tag_filter=tag_filter)
+        elif current_view == "Styled":
+            tag_filter = app.get_active_tag()
+            app.load_styled(tag_filter=tag_filter)
+        elif current_view == "Manual":
+            tag_filter = app.get_active_tag()
+            app.load_manual(tag_filter=tag_filter)
+        elif current_view in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
+            tag_filter = app.get_active_tag()
+            # Show loading indicator
+            app.status_var.set(f'Refreshing {current_view} images...')
+            app.root.update_idletasks()
+            # Load in background thread to prevent UI freeze
+            import threading
+            threading.Thread(target=app.load_gallery_by_ratio, args=(current_view, tag_filter), daemon=True).start()
+        else:
+            # Default to gallery if unknown view
+            app.load_gallery()
+
     def _apply_toolbar_icons(self):
         """Set icon images on gallery action buttons after theme load."""
         app = self.app
@@ -66,13 +168,17 @@ class GalleryTab:
         accent = pal.get("accent", pal["progress"])
         try:
             from icons import get_icon
-            icon_names = ["wallpaper", "star", "palette", "text_edit", "delete", "export"]
+            icon_names = ["wallpaper", "palette", "text_edit", "delete", "refresh", "export"]
             for btn, icon_name in zip(app._gallery_action_row_order, icon_names):
                 if hasattr(btn, 'configure') and icon_name:
-                    _img = get_icon(icon_name, size=14, color=accent)
-                    btn.configure(image=_img, compound="left")
-                    btn._icon_ref = _img  # prevent GC
-        except Exception:
+                    try:
+                        _img = get_icon(icon_name, size=14, color=accent)
+                        btn.configure(image=_img, compound="left")
+                        btn._icon_ref = _img  # prevent GC
+                    except Exception:
+                        pass  # Skip if icon not available
+        except Exception as e:
+            logger.error(f"Error applying toolbar icons: {e}")
             pass  # Graceful fallback — buttons still work with text-only
 
     def _fade_in_thumb(self, label_widget, photo_image, steps=4, interval=35):
@@ -175,122 +281,128 @@ class GalleryTab:
 
         # Gallery Controls — contains view selector, filters, sort, and action buttons
         app = self.app
-        filter_frame = ttk.LabelFrame(parent, text="Gallery Controls", padding=5)
+        filter_frame = ttk.LabelFrame(parent, text="Gallery Controls", padding=10)
 
         filter_frame.pack(fill='x', pady=(0, 8))
 
-        # Row 0: Action buttons
+        # Row 1: View Selection - what to view
+        view_row = ttk.Frame(filter_frame)
+        view_row.pack(fill='x', pady=(0, 8))
+
+        ttk.Label(view_row, text="View:", font=app.small_font).pack(side='left', padx=(0, 4))
+        app.gallery_view_var = tk.StringVar(value="Gallery")
+        ttk.Radiobutton(view_row, text="Gallery", variable=app.gallery_view_var,
+                        value="Gallery", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="Favs", variable=app.gallery_view_var,
+                        value="Favorites", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="Styled", variable=app.gallery_view_var,
+                        value="Styled", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="Manual", variable=app.gallery_view_var,
+                        value="Manual", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+
+        ttk.Separator(view_row, orient="vertical").pack(side="left", padx=(4, 4), fill="y")
+
+        # Even distribution spacer between View and Ratio groups
+        ttk.Frame(view_row).pack(side="left", fill="x", expand=True)
+
+        ttk.Label(view_row, text="Ratio:", font=app.small_font).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="16:9", variable=app.gallery_view_var,
+                        value="Ratio 16:9", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="Portrait", variable=app.gallery_view_var,
+                        value="Ratio 9:16", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+        ttk.Radiobutton(view_row, text="Square", variable=app.gallery_view_var,
+                        value="Ratio 1:1", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 4))
+
+        # Row 2: Image Actions - what to do with selected image
         action_row = ttk.Frame(filter_frame)
-        action_row.pack(fill='x', pady=(0, 4))
+        action_row.pack(fill='x', pady=(0, 8))
         app._gallery_action_row = action_row  # saved for view-switch repack
 
-        _btn_wallpaper = ttk.Button(action_row, text=" Set as Wallpaper",
+        def _pack_spaced(parent, *widgets):
+            """Pack widgets left with expanding spacers between them for even distribution."""
+            for i, w in enumerate(widgets):
+                w.pack(side='left')
+                if i < len(widgets) - 1:
+                    ttk.Frame(parent).pack(side='left', fill='x', expand=True)
+
+        _btn_wallpaper = ttk.Button(action_row, text="Set Wallpaper",
                    command=app._gallery_set_wallpaper)
-        _btn_wallpaper.pack(side="left", padx=(0, 6))
 
-        app._btn_save_to_fav = ttk.Button(action_row, text=" Save to Favorites",
-                   command=app._gallery_save_to_favorites)
-        app._btn_save_to_fav.pack(side="left", padx=(0, 6))
-
-        app.style_menu_btn = ttk.Menubutton(action_row, text=" Apply Style")
+        app.style_menu_btn = ttk.Menubutton(action_row, text="Apply Style")
         app.style_menu = tk.Menu(app.style_menu_btn, tearoff=0)
         for display_name, style_key in [
-            ("Vivid Enhance", "edge_enhance"), ("Monochrome BW", "bw"),
-            ("Vintage Warm", "vintage"), ("Color Pop", "posterize"),
             ("Oil Painting", "oil_painting"), ("Watercolor", "watercolor"),
+            ("Sketch", "sketch"), ("Line Art", "line_art"),
+            ("Comic Book", "comic_book"), ("Manga", "manga"),
+            ("Sepia", "sepia"), ("B&W", "bw"),
+            ("Vintage", "vintage"), ("Posterize", "posterize"),
+            ("Emboss", "emboss"), ("Edge Enhance", "edge_enhance"),
             ("Cyberpunk Neon", "cyberpunk_neon"), ("Vaporwave", "vaporwave"),
             ("Pixel Art", "pixel_art"), ("Sketch Pencil", "sketch_pencil"),
             ("Gouache", "gouache"), ("Art Deco", "art_deco"),
             ("Surreal Dali", "surreal_dali"), ("3D Render", "3d_render"),
-            ("Anime Key", "anime_key"), ("Noir BW", "noir_bw"),
+            ("Anime Key", "anime_key"), ("Noir B&W", "noir_bw"),
             ("Vintage Sepia", "vintage_sepia"), ("Pop Art", "pop_art"),
             ("Impressionist", "impressionist"),
         ]:
             app.style_menu.add_command(label=display_name,
                 command=lambda sk=style_key: app._gallery_apply_theme(sk))
         app.style_menu_btn.config(menu=app.style_menu)
-        # Not packed — Apply Style moved to center panel
 
-        _btn_text = ttk.Button(action_row, text=" Add Text",
+        _btn_text = ttk.Button(action_row, text="Add Text",
                    command=app._gallery_add_text)
-        _btn_text.pack(side="left", padx=(0, 6))
 
-        _btn_delete = ttk.Button(action_row, text=" Delete",
+        _btn_delete = ttk.Button(action_row, text="Delete",
                    command=app._gallery_delete)
-        _btn_delete.pack(side="left", padx=(0, 6))
 
-        app._btn_export_portraits = ttk.Button(action_row, text=" Export Portraits",
-                   command=app._gallery_export_portraits)
-        app._btn_export_portraits.pack(side="left", padx=(0, 6))
+        _btn_refresh = ttk.Button(action_row, text="Refresh Gallery", command=self._refresh_current_view)
+
+        _pack_spaced(action_row, _btn_wallpaper, app.style_menu_btn, _btn_text, _btn_delete, _btn_refresh)
 
         # Full ordered list — mirrors the view radio order: Gallery|Favorites|Styled|Manual
-        # Gallery=Wallpaper, Favorites=Save to Fav, Styled=Apply Style, Manual=Delete
+        # Gallery=Wallpaper, Styled=Apply Style, Manual=Delete
         app._gallery_action_row_order = [
-            _btn_wallpaper, app._btn_save_to_fav, app.style_menu_btn,
-            _btn_text, _btn_delete, app._btn_export_portraits,
+            _btn_wallpaper, app.style_menu_btn,
+            _btn_text, _btn_delete, _btn_refresh,
         ]
 
-        # Row 1: View selector
-        view_row = ttk.Frame(filter_frame)
-        view_row.pack(fill='x', pady=(0, 4))
-        ttk.Label(view_row, text="View:").pack(side='left', padx=(0, 6))
-        app.gallery_view_var = tk.StringVar(value="Gallery")
-        ttk.Radiobutton(view_row, text="Gallery", variable=app.gallery_view_var,
-                        value="Gallery", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="Favorites", variable=app.gallery_view_var,
-                        value="Favorites", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="Styled", variable=app.gallery_view_var,
-                        value="Styled", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="Manual", variable=app.gallery_view_var,
-                        value="Manual", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="16:9", variable=app.gallery_view_var,
-                        value="Ratio 16:9", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="Portrait", variable=app.gallery_view_var,
-                        value="Ratio 9:16", command=app._on_gallery_view_changed).pack(side='left', padx=(0, 6))
-        ttk.Radiobutton(view_row, text="Square", variable=app.gallery_view_var,
-                        value="Ratio 1:1", command=app._on_gallery_view_changed).pack(side='left')
+        # Row 3: Organization - sort, tag, refresh
+        org_row = ttk.Frame(filter_frame)
+        org_row.pack(fill='x')
 
-        # Row 1: Sort & Organize
-
-        ctrl_row = ttk.Frame(filter_frame)
-
-        ctrl_row.pack(fill='x', pady=2)
-
-        ttk.Label(ctrl_row, text="Sort:").pack(side='left', padx=(0, 4))
+        ttk.Label(org_row, text="Sort:", font=app.small_font).pack(side='left', padx=(0, 8))
 
         app.sort_combo_var = tk.StringVar(value="Date Newest")
 
-        app.sort_combo = ttk.Combobox(ctrl_row, textvariable=app.sort_combo_var,
+        app.sort_combo = ttk.Combobox(org_row, textvariable=app.sort_combo_var,
                                         values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
-                                        state="readonly", width=18)
-        app.sort_combo.pack(side='left', padx=(0, 8))
+                                        state="readonly", width=14)
+        app.sort_combo.pack(side='left', padx=(0, 10))
         app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
         app.sort_combo.bind("<MouseWheel>", lambda e: "break")
         app.sort_combo.bind("<Button-4>", lambda e: "break")
         app.sort_combo.bind("<Button-5>", lambda e: "break")
 
-        # --- Tag filter ---
-        ttk.Label(ctrl_row, text="Tag:").pack(side='left', padx=(8, 4))
+        ttk.Label(org_row, text="Tag:", font=app.small_font).pack(side='left', padx=(10, 8))
         app.gallery_tag_var = tk.StringVar(value='All tags')
-        app.gallery_tag_combo = ttk.Combobox(ctrl_row, textvariable=app.gallery_tag_var,
+        app.gallery_tag_combo = ttk.Combobox(org_row, textvariable=app.gallery_tag_var,
                                               values=['All tags'] + get_all_tags(),
-                                              state="readonly", width=16)
-        app.gallery_tag_combo.pack(side='left', padx=(0, 4))
+                                              state="readonly", width=12)
+        app.gallery_tag_combo.pack(side='left', padx=(0, 8))
         app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
         app.gallery_tag_combo.bind("<MouseWheel>", lambda e: "break")
         app.gallery_tag_combo.bind("<Button-4>", lambda e: "break")
         app.gallery_tag_combo.bind("<Button-5>", lambda e: "break")
-        app.gallery_tag_var.trace_add('write', lambda *a: app._on_tag_var_changed())
 
-        _btn_tag = ttk.Button(ctrl_row, text=" Tag Image", command=app._gallery_tag_selected)
-        _btn_tag.pack(side='left', padx=(0, 4))
+        _btn_tag = ttk.Button(org_row, text="Tag Image", command=app._gallery_tag_selected)
+        _btn_tag.pack(side='left', padx=(0, 8))
+        _btn_autotag = ttk.Button(org_row, text="Auto-Tag All", command=self._bulk_auto_tag)
 
-        # Auto-Tag All is in the gallery header beside Open Folder / Refresh Gallery
-        # (see app.py _build_ui)
+        # Even distribution spacer between tag controls
+        ttk.Frame(org_row).pack(side="left", fill="x", expand=True)
+        _btn_autotag.pack(side='left')
 
-        app.delete_tag_btn = ttk.Button(ctrl_row, text=" Delete Tag", command=self._confirm_delete_tag)
-        # Hidden by default — shown only when a specific tag is selected
-        # (see _on_tag_var_changed)
+        # Export Portraits button is created in app.py beside Tutorials / Open Folder
 
 
 
@@ -301,7 +413,8 @@ class GalleryTab:
         thumb_frame.pack(fill='both', expand=True)
 
         # --- Gallery canvas (shown in Gallery view) ---
-        app.gallery_canvas = tk.Canvas(thumb_frame, highlightthickness=0)
+        _init_pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+        app.gallery_canvas = tk.Canvas(thumb_frame, bg=_init_pal["bg"], highlightthickness=0)
         def _gallery_scrollbar_cmd(*args):
             app.gallery_canvas.yview(*args)
             app._on_gallery_scroll()
@@ -314,7 +427,7 @@ class GalleryTab:
         app._gallery_scroll.pack(side='right', fill='y')
 
         # --- Favorites canvas (shown in Favorites view) ---
-        app.gallery_fav_canvas = tk.Canvas(thumb_frame, highlightthickness=0)
+        app.gallery_fav_canvas = tk.Canvas(thumb_frame, bg=_init_pal["bg"], highlightthickness=0)
         gallery_fav_scroll = ttk.Scrollbar(thumb_frame, orient='vertical', command=app.gallery_fav_canvas.yview)
         app.gallery_fav_inner = ttk.Frame(app.gallery_fav_canvas, style="Inner.TFrame")
         app.gallery_fav_inner.bind("<Configure>", lambda e: app.gallery_fav_canvas.configure(
@@ -327,7 +440,7 @@ class GalleryTab:
         app.gallery_favorites_ui = {"canvas": app.gallery_fav_canvas, "inner": app.gallery_fav_inner, "mode": "favorites"}
 
         # --- Styled canvas (shown in Styled view) ---
-        app.gallery_styled_canvas = tk.Canvas(thumb_frame, highlightthickness=0)
+        app.gallery_styled_canvas = tk.Canvas(thumb_frame, bg=_init_pal["bg"], highlightthickness=0)
         gallery_styled_scroll = ttk.Scrollbar(thumb_frame, orient='vertical', command=app.gallery_styled_canvas.yview)
         app.gallery_styled_inner = ttk.Frame(app.gallery_styled_canvas, style="Inner.TFrame")
         app.gallery_styled_inner.bind("<Configure>", lambda e: app.gallery_styled_canvas.configure(
@@ -341,7 +454,7 @@ class GalleryTab:
         app.gallery_styled_cards = {}   # path -> card frame
 
         # --- Manual canvas (shown in Manual view) ---
-        app.gallery_manual_canvas = tk.Canvas(thumb_frame, highlightthickness=0)
+        app.gallery_manual_canvas = tk.Canvas(thumb_frame, bg=_init_pal["bg"], highlightthickness=0)
         gallery_manual_scroll = ttk.Scrollbar(thumb_frame, orient='vertical', command=app.gallery_manual_canvas.yview)
         app.gallery_manual_inner = ttk.Frame(app.gallery_manual_canvas, style="Inner.TFrame")
         app.gallery_manual_inner.bind("<Configure>", lambda e: app.gallery_manual_canvas.configure(
@@ -362,6 +475,40 @@ class GalleryTab:
 
         app.drag_source_index = None
 
+        # ── Mouse-wheel scrolling for all gallery canvases ─────────────
+        # We track which canvas the mouse is hovering over and route wheel
+        # events to that canvas so scrolling works without clicking first.
+        app._hover_canvas = None
+
+        def _bind_wheel(canvas):
+            """Make *canvas* scrollable via mouse-wheel on hover."""
+            def _on_enter(event):
+                app._hover_canvas = canvas
+            def _on_leave(event):
+                if app._hover_canvas is canvas:
+                    app._hover_canvas = None
+            canvas.bind('<Enter>', _on_enter)
+            canvas.bind('<Leave>', _on_leave)
+
+        _bind_wheel(app.gallery_canvas)
+        _bind_wheel(app.gallery_fav_canvas)
+        _bind_wheel(app.gallery_styled_canvas)
+        _bind_wheel(app.gallery_manual_canvas)
+
+        def _on_mousewheel(event):
+            c = app._hover_canvas
+            if c is not None:
+                c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        def _on_mousewheel_linux(event):
+            c = app._hover_canvas
+            if c is not None:
+                c.yview_scroll(int(-1 * event.delta), "units")
+
+        app.root.bind_all("<MouseWheel>", _on_mousewheel)
+        app.root.bind_all("<Button-4>", _on_mousewheel_linux)
+        app.root.bind_all("<Button-5>", _on_mousewheel_linux)
+
         
 
         app.load_gallery()  # Initial load
@@ -371,6 +518,7 @@ class GalleryTab:
         """Build the app.UI for ratio gallery (must run on main thread)."""
         app = self.app
         try:
+            logger.info(f"Building ratio gallery UI for {ratio_mode} with {len(filtered_images)} images")
             app.gallery_images = filtered_images
 
             # Clear existing gallery cards
@@ -383,24 +531,36 @@ class GalleryTab:
                 pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
                 ratio_labels = {
                     "Ratio 16:9": "16:9 widescreen",
-                    "Ratio 9:16": "Portrait (9:16)",
-                    "Ratio 1:1": "Square (1:1)",
+                    "Ratio 9:16": "Portrait",
+                    "Ratio 1:1": "Square",
                 }
                 view_label = ratio_labels.get(ratio_mode, ratio_mode)
                 if tag_filter:
                     message = f"No {view_label} images tagged '{tag_filter}'."
                 else:
                     message = f"No {view_label} images found. Generate wallpapers in this size to see them here."
+                app.gallery_inner.columnconfigure(0, weight=1)
+                app.gallery_inner.rowconfigure(0, weight=1)
                 tk.Label(
                     app.gallery_inner,
                     text=message,
-                    bg=pal["panel"], fg=pal["text"], font=app.small_font,
-                    pady=30,
-                ).grid(row=0, column=0, sticky="ew")
+                    bg=pal["bg"], fg=pal["text"], font=app.small_font,
+                    pady=10,
+                ).grid(row=0, column=0, sticky="nsew")
+                # Make the inner frame fill the entire canvas so the empty
+                # background blends with the theme instead of showing a box
+                try:
+                    cw = app.gallery_canvas.winfo_width()
+                    ch = app.gallery_canvas.winfo_height()
+                    if cw > 1 and ch > 1:
+                        app.gallery_canvas.itemconfig("inner_frame", width=cw, height=ch)
+                except Exception:
+                    pass
                 app.gallery_canvas.configure(
                     scrollregion=app.gallery_canvas.bbox("all") or (0, 0, 1, 1)
                 )
                 app.status_var.set(f'{ratio_mode}: 0 images')
+                logger.info(f"Ratio gallery UI built: 0 images")
                 return
 
             # Create placeholder cards first for immediate UI response
@@ -418,11 +578,126 @@ class GalleryTab:
             app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images (loading thumbnails...)')
 
             # Load thumbnails in background to prevent UI freeze
-            threading.Thread(target=self._load_thumbnails_lazy, args=(ratio_mode,), daemon=True).start()
+            # Bump generation counter so any previous ratio-load thread aborts
+            self._ratio_load_gen += 1
+            gen = self._ratio_load_gen
+            threading.Thread(target=self._load_thumbnails_lazy, args=(ratio_mode, gen), daemon=True).start()
+            logger.info(f"Ratio gallery UI built: {len(app.gallery_images)} images, thumbnails loading started (gen={gen})")
 
         except Exception as e:
             app.status_var.set(f'Error building ratio gallery: {e}')
 
+
+    def _create_heart_button(self, parent, img_path, pal):
+        """Create a heart button for favoriting images."""
+        app = self.app
+        try:
+            from icons import get_icon
+            accent = pal.get("accent", pal["progress"])
+            
+            # Check if image is already favorited
+            is_favorited = self._is_image_favorited(img_path)
+            heart_name = "heart_filled" if is_favorited else "heart_outline"
+            heart_icon = get_icon(heart_name, size=36, color=accent)  # Doubled from 18 to 36
+            
+            # Create button with heart icon — match parent bg so no square
+            # outline is visible around the star shape.
+            parent_bg = pal.get("panel", "#1e1e2e")
+            try:
+                parent_bg = parent.cget("bg")
+            except Exception:
+                pass
+            heart_btn = tk.Button(parent, image=heart_icon,
+                                 bg=parent_bg,
+                                 activebackground=pal.get("panel2", parent_bg),
+                                 bd=0, highlightthickness=0,
+                                 cursor="hand2", relief="flat")
+            heart_btn.image = heart_icon  # prevent GC
+            heart_btn._icon_ref = heart_icon
+            heart_btn._img_path = img_path  # store path for toggle
+            
+            # Bind click event to toggle favorite
+            heart_btn.bind('<Button-1>', lambda e, p=img_path: self._on_heart_click(e, p, heart_btn))
+            
+            return heart_btn
+        except Exception as e:
+            logger.error(f"Error creating heart button: {e}")
+            return None
+
+    def _on_heart_click(self, event, img_path, heart_btn):
+        """Handle heart button click to toggle favorite status."""
+        app = self.app
+
+        # Check current state before toggling
+        was_favorited = self._is_image_favorited(img_path)
+
+        # Toggle favorite status
+        self._toggle_image_favorite(img_path)
+
+        # Update heart icon based on the new state (opposite of old state)
+        try:
+            from icons import get_icon
+            pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+            accent = pal.get("accent", pal["progress"])
+            # If it was favorited, now it's not (outline). If it wasn't, now it is (filled)
+            heart_name = "heart_outline" if was_favorited else "heart_filled"
+            heart_icon = get_icon(heart_name, size=36, color=accent)  # Doubled from 18 to 36
+            heart_btn.configure(image=heart_icon)
+            heart_btn.image = heart_icon
+            heart_btn._icon_ref = heart_icon
+        except Exception as e:
+            logger.error(f"Error updating heart icon: {e}")
+
+        # Refresh the Favorites view so the grid stays in sync (item added or
+        # removed). Other views (Gallery/Styled/Manual/Ratio) don't need a
+        # full rebuild here — the heart icon was already updated locally
+        # above, and _is_image_favorited now also checks the favorites folder
+        # by basename, so the heart state will be correct when the user
+        # switches away and back.
+        try:
+            if app._gallery_view_mode() == "Favorites":
+                app.load_favorites()
+        except Exception as e:
+            logger.warning(f"Heart-click favorites refresh failed: {e}")
+
+    def _on_fav_heart_click(self, event, img_path, item, heart_btn):
+        """Handle heart button click on favorites card to remove from favorites."""
+        app = self.app
+        # Remove from favorites
+        try:
+            existing = load_json_list(app.FAVORITES_LOG)
+            original_resolved = Path(img_path).resolve()
+            
+            # Find and remove the item
+            favorited_index = None
+            for i, fav_item in enumerate(existing):
+                if fav_item.get('copied_image_path') and Path(fav_item.get('copied_image_path')).resolve() == original_resolved:
+                    favorited_index = i
+                    break
+            
+            if favorited_index is not None:
+                entry = existing.pop(favorited_index)
+                save_json_list(app.FAVORITES_LOG, existing)
+                
+                # Optionally delete the copied file
+                try:
+                    copied_path = entry.get('copied_image_path')
+                    if copied_path and Path(copied_path).exists():
+                        if app.FAVORITES_DIR in Path(copied_path).parents:
+                            Path(copied_path).unlink()
+                except Exception:
+                    pass
+                
+                app.status_var.set(f'💔 Removed from favorites: {Path(img_path).name}')
+            else:
+                app.status_var.set('Item not found in favorites')
+                
+        except Exception as e:
+            app.status_var.set(f'Error removing from favorites: {e}')
+            logger.error(f"Error removing from favorites: {e}")
+        
+        # Always refresh favorites view after removal
+        app.load_favorites()
 
     def _create_placeholder_card(self, img_path, row, col, index, pal, border):
         """Create a placeholder card without loading the thumbnail (for lazy loading)."""
@@ -444,8 +719,34 @@ class GalleryTab:
                              anchor="w", justify="left", padx=6, pady=2)
         name_label.grid(row=1, column=0, sticky='ew')
 
+        # File size + resolution info
+        try:
+            size_bytes = img_path.stat().st_size
+            size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
+            from PIL import Image as _PILImg
+            with _PILImg.open(img_path) as _im:
+                w_px, h_px = _im.size
+            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
+        except Exception:
+            info_text = ""
+        info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
+                              bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
+        info_label.grid(row=2, column=0, sticky='ew')
+
+        # Tags label
+        tags = get_tags_for_image(img_path) or []
+        tags_label = tk.Label(card, text=', '.join(tags[:3]),
+                              fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
+                              bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
+        tags_label.grid(row=3, column=0, sticky='ew')
+
+        # Heart button (positioned in bottom-right corner)
+        heart_btn = self._create_heart_button(card, img_path, pal)
+        if heart_btn:
+            heart_btn.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")  # Adjusted for larger icon
+
         # Store placeholder reference for later replacement
-        app.gallery_cards[str(img_path)] = (card, placeholder, name_label, row, col, index)
+        app.gallery_cards[str(img_path)] = (card, placeholder, name_label, row, col, index, heart_btn)
 
         # Bind click events to card
         card.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
@@ -453,16 +754,25 @@ class GalleryTab:
         placeholder.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
         placeholder.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
         name_label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
+        for sub in (info_label, tags_label):
+            sub.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
 
-    def _load_thumbnails_lazy(self, ratio_mode):
-        """Load thumbnails in background thread and update UI on main thread."""
+    def _load_thumbnails_lazy(self, ratio_mode, generation):
+        """Load thumbnails in background thread and update UI on main thread.
+
+        *generation* is the load-generation counter captured at dispatch time.
+        If a newer load has started, this thread aborts early.
+        """
         app = self.app
         try:
             from PIL import Image, ImageTk
 
             for idx, img_path in enumerate(app.gallery_images):
-                # Check if view changed during loading
-                if app.gallery_view_var.get() not in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
+                # Abort if a newer load cycle has started or view changed entirely
+                if generation != self._ratio_load_gen:
+                    return
+                current_view = app.gallery_view_var.get()
+                if current_view != ratio_mode:
                     return
 
                 path_str = str(img_path)
@@ -471,7 +781,12 @@ class GalleryTab:
                 if not card_data:
                     continue
 
-                card, placeholder, name_label, row, col, index = card_data
+                # Handle both 6-element (old) and 7-element (new with heart button) card data
+                if len(card_data) == 7:
+                    card, placeholder, name_label, row, col, index, heart_btn = card_data
+                else:
+                    card, placeholder, name_label, row, col, index = card_data
+                    heart_btn = None
 
                 # Check if thumbnail is already cached
                 if path_str in app.thumb_cache:
@@ -488,90 +803,38 @@ class GalleryTab:
                         logger.error(f"Thumbnail loading error for {img_path}: {e}")
                         continue
 
-                # Update UI on main thread
-                def update_card():
-                    try:
-                        # Replace placeholder with actual thumbnail
-                        placeholder.destroy()
-                        label = tk.Label(card, image=thumb, bg=pal["panel"])
-                        label.image = thumb
-                        label.grid(row=0, column=0, pady=(4, 4), padx=4)
-
-                        try:
-                            self._fade_in_thumb(label, thumb, steps=4, interval=35)
-                        except Exception:
-                            pass
-
-                        # Rebind events
-                        label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
-                        label.bind('<Double-Button-1>', lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p))
-                        label.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
-
-                        # Add file size + resolution info
-                        try:
-                            size_bytes = img_path.stat().st_size
-                            size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
-                            with Image.open(img_path) as _im:
-                                w_px, h_px = _im.size
-                            info_text = f"{w_px}×{h_px}  •  {size_str}"
-                        except Exception:
-                            info_text = ""
-
-                        info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
-                                            bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
-                        info_label.grid(row=2, column=0, sticky='ew')
-                        info_label.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
-
-                        # Update card data
-                        app.gallery_cards[path_str] = (card, name_label)
-
-                    except Exception as e:
-                        logger.error(f"UI update error for {img_path}: {e}")
-
+                # Get current palette
                 pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+
+                # Capture loop variables as defaults to avoid closure-in-loop bug.
+                # Without this, all scheduled callbacks would reference the LAST
+                # iteration's values (wrong thumbnail, wrong card, already-destroyed widget).
+                def update_card(_card=card, _placeholder=placeholder, _thumb=thumb,
+                               _img_path=img_path, _index=index, _pal=pal,
+                               _gen=generation):
+                    # Double-check generation on the main thread too
+                    if _gen != self._ratio_load_gen:
+                        return
+                    try:
+                        _placeholder.destroy()
+                        label = tk.Label(_card, image=_thumb, bg=_pal["panel"])
+                        label.grid(row=0, column=0, pady=(4, 4), padx=4)
+                        label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
+                        label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))
+                    except Exception as e:
+                        logger.error(f"Error updating card UI: {e}")
+
                 app.root.after(0, update_card)
 
             # Update status when done
-            app.root.after(0, lambda: app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images'))
+            if generation == self._ratio_load_gen:
+                def update_status():
+                    app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images')
+                app.root.after(0, update_status)
 
         except Exception as e:
-            app.root.after(0, lambda: app.status_var.set(f'Error loading thumbnails: {e}'))
-
-    def _confirm_delete_tag(self):
-        """Delete the selected tag after user confirmation."""
-        app = self.app
-        current_tag = app.gallery_tag_var.get()
-        if not current_tag or current_tag == 'All tags':
-            return
-
-        # First confirmation dialog
-        if not app._dialog.ask('Delete Tag', f'Delete tag "{current_tag}" from all images?\n\nThis cannot be undone.'):
-            return
-
-        # Second confirmation for "All tags" safety check
-        if current_tag == 'All tags':
-            if not app._dialog.ask('Confirm Delete', f'Are you absolutely sure you want to delete the "All tags" tag?\n\nThis will remove it from all images in the gallery.'):
-                return
-
-        # Delete the tag from all images
-        try:
-            from gallery_manager import get_images_by_tag, remove_tag_from_image
-
-            # Get all images with this tag
-            tagged_images = get_images_by_tag(current_tag)
-
-            # Remove the tag from each image
-            for image_path in tagged_images:
-                remove_tag_from_image(image_path, current_tag)
-
-            # Refresh the tag dropdown
-            app._refresh_gallery_tag_filter()
-
-            app.status_var.set(f'Tag "{current_tag}" deleted from {len(tagged_images)} images.')
-        except Exception as e:
-            app.status_var.set(f'Error deleting tag: {e}')
-            app._dialog.error('Error', f'Failed to delete tag: {e}')
-
+            error_msg = f'Error loading thumbnails: {e}'
+            app.root.after(0, lambda: app.status_var.set(error_msg))
 
     def _copy_prompt_to_clipboard(self):
         """Copy the current prompt text to the system clipboard."""
@@ -585,9 +848,12 @@ class GalleryTab:
             app.status_var.set("No prompt to copy.")
 
     def _bulk_auto_tag(self):
-        """Scan all generated images and auto-tag from filenames.
+        """Scan all generated/styled/manual images and auto-tag from filenames,
+        then clean up any tags referencing deleted images.
 
-        Filename format: SUBJECT_STYLE_YYYYMMDD_N.png
+        Filename formats:
+          - Generated/Manual: SUBJECT_STYLE_YYYYMMDD_N.ext
+          - Styled: SUBJECT_STYLE_YYYYMMDD_N_stylefilter.ext
         Extracts subject and style as tags for any untagged image.
         """
         import re as _re
@@ -598,28 +864,46 @@ class GalleryTab:
             app.status_var.set('Auto-tag: could not find wallpaper directories.')
             return
 
+        # Build list of directories to scan
+        search_dirs = [GENERATED_DIR, MANUAL_DIR]
+        if hasattr(app, 'STYLED_DIR') and app.STYLED_DIR.exists():
+            search_dirs.append(app.STYLED_DIR)
+
         app.status_var.set('Auto-tagging images from filenames...')
         app.root.update_idletasks()
 
-        # Pattern: SUBJECT_STYLE_YYYYMMDD_N.ext
+        # Pattern: SUBJECT_STYLE_YYYYMMDD_N.ext  (generated/manual)
         filename_re = _re.compile(r'^([a-z0-9_]+)_([a-z0-9]+)_\d{8}_\d+\.', _re.IGNORECASE)
+        # Pattern: SUBJECT_STYLE_YYYYMMDD_N_STYLEFILTER.ext  (styled)
+        styled_filename_re = _re.compile(r'^([a-z0-9_]+)_([a-z0-9]+)_\d{8}_\d+_([a-z0-9_]+)\.', _re.IGNORECASE)
 
         tagged_count = 0
         skipped_count = 0
         error_count = 0
 
-        for search_dir in [GENERATED_DIR, MANUAL_DIR]:
+        for search_dir in search_dirs:
             if not search_dir.exists():
                 continue
             for img_file in search_dir.iterdir():
                 if not img_file.is_file() or img_file.suffix.lower() not in {'.png', '.jpg', '.jpeg', '.webp'}:
                     continue
-                m = filename_re.match(img_file.name)
-                if not m:
-                    skipped_count += 1
-                    continue
-                raw_subject = m.group(1).replace('_', ' ')
-                raw_style = m.group(2).replace('_', ' ')
+
+                # Try styled pattern first (has extra _stylefilter segment)
+                m = styled_filename_re.match(img_file.name)
+                if m:
+                    raw_subject = m.group(1).replace('_', ' ')
+                    raw_style = m.group(2).replace('_', ' ')
+                    style_filter = m.group(3).replace('_', ' ')
+                else:
+                    # Fall back to standard generated/manual pattern
+                    m = filename_re.match(img_file.name)
+                    if not m:
+                        skipped_count += 1
+                        continue
+                    raw_subject = m.group(1).replace('_', ' ')
+                    raw_style = m.group(2).replace('_', ' ')
+                    style_filter = None
+
                 # Skip generic filenames
                 if raw_subject.lower() in ('wallpaper', 'unknown', 'image'):
                     skipped_count += 1
@@ -627,14 +911,23 @@ class GalleryTab:
                 tags = [raw_subject]
                 if raw_style.lower() != raw_subject.lower():
                     tags.append(raw_style)
+                if style_filter and style_filter.lower() not in (raw_subject.lower(), raw_style.lower()):
+                    tags.append(style_filter)
                 try:
                     add_tags_to_image(img_file, tags)
                     tagged_count += 1
                 except Exception:
                     error_count += 1
 
+        # Clean up tags for images that no longer exist on disk
+        try:
+            cleaned = cleanup_orphaned_tags()
+        except Exception:
+            cleaned = 0
+
         app._refresh_gallery_tag_filter()
-        app.status_var.set(f'Auto-tag complete: {tagged_count} tagged, {skipped_count} skipped, {error_count} errors')
+        cleanup_note = f', {cleaned} stale tags removed' if cleaned else ''
+        app.status_var.set(f'Auto-tag complete: {tagged_count} tagged, {skipped_count} skipped, {error_count} errors{cleanup_note}')
 
 
     def _create_manual_card(self, img_path, index, pal, border):
@@ -706,7 +999,20 @@ class GalleryTab:
         info_label.pack(fill="x")
         info_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
 
-        app.gallery_manual_cards[str(img_path)] = (card, name_label)
+        # Tags label
+        tags = get_tags_for_image(img_path) or []
+        tags_label = tk.Label(card, text=', '.join(tags[:3]),
+                              fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
+                              bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
+        tags_label.pack(fill="x")
+        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
+
+        # Heart button (positioned in bottom-right corner)
+        heart_btn = self._create_heart_button(card, img_path, pal)
+        if heart_btn:
+            heart_btn.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")  # Adjusted for larger icon
+
+        app.gallery_manual_cards[str(img_path)] = (card, name_label, heart_btn)
 
 
     def _create_styled_card(self, img_path, index, pal, border):
@@ -778,7 +1084,20 @@ class GalleryTab:
         info_label.pack(fill="x")
         info_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
 
-        app.gallery_styled_cards[str(img_path)] = (card, name_label)
+        # Tags label (fall back to original image's tags for styled copies)
+        tags = self._get_tags_with_fallback(img_path)
+        tags_label = tk.Label(card, text=', '.join(tags[:3]),
+                              fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
+                              bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
+        tags_label.pack(fill="x")
+        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
+
+        # Heart button (positioned in bottom-right corner)
+        heart_btn = self._create_heart_button(card, img_path, pal)
+        if heart_btn:
+            heart_btn.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")
+
+        app.gallery_styled_cards[str(img_path)] = (card, name_label, heart_btn)
 
 
     def _delete_styled_image(self):
@@ -856,7 +1175,7 @@ class GalleryTab:
 
 
     def _gallery_add_text(self):
-        """Add Text Overlay — improved dialog with font selection, live preview, and extra options."""
+        """Add Text Overlay — click-to-position, font selection, live preview, bold/italic fix."""
         app = self.app
         if app._gallery_view_mode() == "Favorites":
             if not app.favorite_selected_item:
@@ -892,41 +1211,46 @@ class GalleryTab:
             ("Courier New",             "cour.ttf",          ["Courier New"]),
             ("Georgia",                 "georgia.ttf",       ["Georgia"]),
             ("Impact",                  "impact.ttf",        ["Impact"]),
-            ("Palatino Linotype",       "pala.ttf",          ["Palatino Linotype", "Palatino"]),
             ("Segoe UI",                "segoeui.ttf",       ["Segoe UI"]),
+            ("Tahoma",                  "tahoma.ttf",        ["Tahoma"]),
+            ("Times New Roman",         "times.ttf",         ["Times New Roman"]),
             ("Trebuchet MS",            "trebuc.ttf",        ["Trebuchet MS"]),
             ("Verdana",                 "verdana.ttf",       ["Verdana"]),
-            ("Franklin Gothic Medium",  "framd.ttf",         ["Franklin Gothic Medium"]),
-            ("Lucida Console",          "lucon.ttf",         ["Lucida Console"]),
         ]
 
-        if sys.platform == "win32":
-            win_fonts_dir = Path(os.environ.get("WINDIR", r"C:\Windows")) / "Fonts"
-            for display, filename, _ in curated:
-                fpath = win_fonts_dir / filename
-                if fpath.exists():
-                    discovered_fonts[display] = str(fpath)
-        else:
-            # Linux / macOS: try to locate each curated font via fc-list
-            import subprocess
+        def _discover(display_name, win_file, linux_names):
+            # Try full path discovery
+            if sys.platform == "win32":
+                font_dir = Path(os.environ.get("WINDIR", r"C:\\Windows")) / "Fonts"
+                candidate = font_dir / win_file
+                if candidate.exists():
+                    discovered_fonts[display_name] = str(candidate)
+                    return True
+            # Try Linux / macOS via matplotlib / PIL
+            for ln in linux_names:
+                try:
+                    import matplotlib.font_manager as _fm
+                    for f in _fm.findSystemFonts():
+                        if ln.lower() in Path(f).stem.lower():
+                            discovered_fonts[display_name] = f
+                            return True
+                except Exception:
+                    pass
+            # Try PIL font manager (Pillow >= 10.1)
             try:
-                result = subprocess.run(
-                    ["fc-list", "--format", "%{file}|%{family}\n"],
-                    capture_output=True, text=True, timeout=5
-                )
-                fc_map = {}  # family_lower -> file_path
-                for line in result.stdout.strip().splitlines():
-                    parts = line.split("|", 1)
-                    if len(parts) == 2:
-                        fc_map[parts[1].strip().lower()] = parts[0].strip()
-                for display, _, linux_names in curated:
-                    for ln in linux_names:
-                        fpath = fc_map.get(ln.lower())
-                        if fpath:
-                            discovered_fonts[display] = fpath
-                            break
+                from PIL import FontManager
+                fm = FontManager()
+                for ln in linux_names:
+                    p = fm.findfont(ln, fallback_to_default=False)
+                    if p and Path(p).exists():
+                        discovered_fonts[display_name] = p
+                        return True
             except Exception:
                 pass
+            return False
+
+        for name, wfile, lnames in curated:
+            _discover(name, wfile, lnames)
 
         font_names = [name for name, _, _ in curated if name in discovered_fonts]
         if not font_names:
@@ -935,47 +1259,85 @@ class GalleryTab:
         # ── Create dialog ──
         dialog = tk.Toplevel(app.root)
         dialog.title("Add Text Overlay")
-        dialog.geometry("580x760")
+        dialog.geometry("920x860")
+        dialog.minsize(840, 760)
         dialog.transient(app.root)
         dialog.grab_set()
         dialog.configure(bg=pal["bg"])
-        
-        # Center the dialog
-        dialog.update_idletasks()
-        x = (dialog.winfo_screenwidth() // 2) - (dialog.winfo_width() // 2)
-        y = (dialog.winfo_screenheight() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
 
-        # ── Main layout: left controls, right preview ──
+        from utils import center_window
+        center_window(app.root, dialog)
+
+        # ── Main layout: left controls (fixed width), right preview (expanding) ──
         main_frame = ttk.Frame(dialog)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        ctrl_frame = ttk.Frame(main_frame)
-        ctrl_frame.pack(side="left", fill="y", padx=(0, 10))
-        preview_frame = ttk.Frame(main_frame)
-        preview_frame.pack(side="left", fill="both", expand=True)
+        # Left: scrollable control panel
+        ctrl_outer = ttk.Frame(main_frame, width=310)
+        ctrl_outer.pack(side="left", fill="y", padx=(0, 10))
+        ctrl_outer.pack_propagate(False)
+
+        ctrl_canvas = tk.Canvas(ctrl_outer, highlightthickness=0, bg=pal["bg"])
+        ctrl_scrollbar = ttk.Scrollbar(ctrl_outer, orient="vertical", command=ctrl_canvas.yview)
+        ctrl_frame = ttk.Frame(ctrl_canvas)
+
+        _ctrl_win_id = ctrl_canvas.create_window((0, 0), window=ctrl_frame, anchor="nw")
+        ctrl_canvas.configure(yscrollcommand=ctrl_scrollbar.set)
+
+        # When canvas resizes, stretch inner frame to match width
+        def _on_ctrl_canvas_configure(event):
+            ctrl_canvas.itemconfig(_ctrl_win_id, width=event.width)
+        ctrl_canvas.bind("<Configure>", _on_ctrl_canvas_configure)
+
+        # When inner frame content changes, update scroll region
+        def _on_ctrl_frame_configure(event):
+            ctrl_canvas.configure(scrollregion=ctrl_canvas.bbox("all"))
+        ctrl_frame.bind("<Configure>", _on_ctrl_frame_configure)
+
+        ctrl_canvas.pack(side="left", fill="both", expand=True)
+        ctrl_scrollbar.pack(side="right", fill="y")
+
+        # Mouse wheel scrolling — only when pointer is over the left panel
+        def _on_ctrl_mousewheel(event):
+            ctrl_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            return "break"
+        ctrl_canvas.bind("<MouseWheel>", _on_ctrl_mousewheel)
+        ctrl_frame.bind("<MouseWheel>", _on_ctrl_mousewheel)
+        # Also bind to all children recursively when they're mapped
+        def _bind_mousewheel_to_children(widget):
+            widget.bind("<MouseWheel>", _on_ctrl_mousewheel)
+            for child in widget.winfo_children():
+                _bind_mousewheel_to_children(child)
+        ctrl_frame.bind("<Map>", lambda e: _bind_mousewheel_to_children(ctrl_frame), add="+")
+
+        # Right: preview area (expanding)
+        right_frame = ttk.Frame(main_frame)
+        right_frame.pack(side="left", fill="both", expand=True)
 
         # ── Variables ──
         text_var = tk.StringVar()
+        custom_pos = [None, None]  # [frac_x, frac_y] or [None, None] for preset
         position_var = tk.StringVar(value="bottom-right")
         font_size_var = tk.IntVar(value=36)
         color_var = tk.StringVar(value="white")
         outline_color_var = tk.StringVar(value="black")
         outline_width_var = tk.IntVar(value=2)
         bold_var = tk.BooleanVar(value=False)
+        italic_var = tk.BooleanVar(value=False)
+        underline_var = tk.BooleanVar(value=False)
         opacity_var = tk.IntVar(value=100)
         shadow_var = tk.BooleanVar(value=False)
         font_name_var = tk.StringVar(value=font_names[0] if font_names else "Default")
 
         # ── Text input ──
         ttk.Label(ctrl_frame, text="Text:").pack(anchor="w", pady=(0, 2))
-        text_entry = ttk.Entry(ctrl_frame, textvariable=text_var, width=28)
+        text_entry = ttk.Entry(ctrl_frame, textvariable=text_var, width=30)
         text_entry.pack(fill="x", pady=(0, 8))
         text_entry.focus()
 
         # ── Font list with per-font preview ──
         ttk.Label(ctrl_frame, text="Font:").pack(anchor="w", pady=(0, 2))
-        font_listbox = tk.Listbox(ctrl_frame, height=7, exportselection=False,
+        font_listbox = tk.Listbox(ctrl_frame, height=6, exportselection=False,
                                    bg=pal["panel2"], fg=pal["text"],
                                    selectbackground=pal["accent"],
                                    selectforeground=pal["bg"],
@@ -996,7 +1358,6 @@ class GalleryTab:
                 except Exception:
                     pass
 
-        # Select first item and sync with font_name_var
         if font_names:
             font_listbox.select_set(0)
             font_name_var.set(font_names[0])
@@ -1014,25 +1375,82 @@ class GalleryTab:
         ttk.Label(size_row, text="Size:").pack(side="left")
         ttk.Spinbox(size_row, from_=12, to=200, textvariable=font_size_var, width=6).pack(side="right")
 
-        # ── Bold checkbox ──
-        ttk.Checkbutton(ctrl_frame, text="Bold", variable=bold_var).pack(anchor="w", pady=(0, 8))
+        # ── Bold / Italic / Underline row ──
+        style_row = ttk.Frame(ctrl_frame)
+        style_row.pack(fill="x", pady=(0, 8))
+        ttk.Checkbutton(style_row, text="Bold", variable=bold_var).pack(side="left")
+        ttk.Checkbutton(style_row, text="Italic", variable=italic_var).pack(side="left", padx=(12, 0))
+        ttk.Checkbutton(style_row, text="Underline", variable=underline_var).pack(side="left", padx=(12, 0))
+
+        # ── Color picker helper ──
+        def _pick_color(target_var):
+            from tkinter import colorchooser
+            try:
+                initial = target_var.get()
+                if initial.lower() == "none":
+                    initial = "#000000"
+                result = colorchooser.askcolor(initialcolor=initial, title="Choose Color",
+                                                parent=dialog)
+                if result and result[1]:
+                    target_var.set(result[1])
+            except Exception:
+                pass
 
         # ── Text color ──
         ttk.Label(ctrl_frame, text="Text Color:").pack(anchor="w", pady=(0, 2))
-        color_combo = ttk.Combobox(ctrl_frame, textvariable=color_var,
+        text_color_row = ttk.Frame(ctrl_frame)
+        text_color_row.pack(fill="x", pady=(0, 8))
+        color_combo = ttk.Combobox(text_color_row, textvariable=color_var,
                                      values=["white", "black", "red", "blue", "green",
                                              "yellow", "cyan", "magenta", "orange", "pink",
-                                             "#FF6B6B", "#4ECDC4", "#FFE66D", "#95E1D3"],
-                                     state="readonly", width=26)
-        color_combo.pack(fill="x", pady=(0, 8))
+                                             "lime", "turquoise", "navy", "maroon", "olive",
+                                             "teal", "aqua", "fuchsia", "coral", "salmon",
+                                             "gold", "khaki", "violet", "indigo",
+                                             "#FF6B6B", "4ECDC4", "FFE66D", "95E1D3",
+                                             "#C0392B", "#8E44AD", "#2980B9", "#27AE60",
+                                             "#F39C12", "#1ABC9C", "#E74C3C", "#3498DB"],
+                                     state="readonly", width=24)
+        color_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(text_color_row, text=chr(0x270F), width=3,
+                   command=lambda: _pick_color(color_var)).pack(side="right", padx=(4, 0))
+        text_swatch = tk.Canvas(text_color_row, width=24, height=20,
+                                bg=color_var.get(), highlightthickness=1,
+                                highlightbackground=pal.get("border_color", pal["panel2"]))
+        text_swatch.pack(side="right", padx=(4, 0))
+        def _update_text_swatch(*args):
+            try:
+                text_swatch.configure(bg=color_var.get())
+            except Exception:
+                pass
+        color_var.trace_add("write", _update_text_swatch)
 
         # ── Outline color ──
         ttk.Label(ctrl_frame, text="Outline Color:").pack(anchor="w", pady=(0, 2))
-        outline_combo = ttk.Combobox(ctrl_frame, textvariable=outline_color_var,
-                                      values=["black", "white", "darkgray", "none",
-                                              "#333333", "#000000"],
-                                      state="readonly", width=26)
-        outline_combo.pack(fill="x", pady=(0, 8))
+        outline_color_row = ttk.Frame(ctrl_frame)
+        outline_color_row.pack(fill="x", pady=(0, 8))
+        outline_combo = ttk.Combobox(outline_color_row, textvariable=outline_color_var,
+                                      values=["black", "white", "darkgray", "gray", "lightgray",
+                                              "red", "blue", "green", "yellow", "none",
+                                              "#333333", "#000000", "#FFFFFF", "#FF0000",
+                                              "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"],
+                                      state="readonly", width=24)
+        outline_combo.pack(side="left", fill="x", expand=True)
+        ttk.Button(outline_color_row, text=chr(0x270F), width=3,
+                   command=lambda: _pick_color(outline_color_var)).pack(side="right", padx=(4, 0))
+        outline_swatch = tk.Canvas(outline_color_row, width=24, height=20,
+                                   bg=outline_color_var.get(), highlightthickness=1,
+                                   highlightbackground=pal.get("border_color", pal["panel2"]))
+        outline_swatch.pack(side="right", padx=(4, 0))
+        def _update_outline_swatch(*args):
+            try:
+                c = outline_color_var.get()
+                if c.lower() == "none":
+                    outline_swatch.configure(bg=pal["panel2"])
+                else:
+                    outline_swatch.configure(bg=c)
+            except Exception:
+                pass
+        outline_color_var.trace_add("write", _update_outline_swatch)
 
         # ── Outline width ──
         ow_row = ttk.Frame(ctrl_frame)
@@ -1045,7 +1463,7 @@ class GalleryTab:
         opacity_label = ttk.Label(ctrl_frame, text="100%")
         opacity_label.pack(anchor="e")
         opacity_scale = ttk.Scale(ctrl_frame, from_=5, to=100, variable=opacity_var,
-                                   orient="horizontal", length=220,
+                                   orient="horizontal", length=260,
                                    command=lambda v: opacity_label.configure(text=f"{int(float(v))}%"))
         opacity_scale.set(100)
         opacity_scale.pack(fill="x", pady=(0, 8))
@@ -1053,193 +1471,318 @@ class GalleryTab:
         # ── Shadow checkbox ──
         ttk.Checkbutton(ctrl_frame, text="Drop Shadow", variable=shadow_var).pack(anchor="w", pady=(0, 8))
 
-        # ── Position ──
-        ttk.Label(ctrl_frame, text="Position:").pack(anchor="w", pady=(0, 2))
-        position_frame = ttk.Frame(ctrl_frame)
-        position_frame.pack(fill="x", pady=(0, 8))
-        positions = ["top-left", "top-right", "middle-top", "middle-bottom",
-                     "bottom-left", "bottom-right", "center"]
-        pos_labels = ["Top-Left", "Top-Right", "Mid-Top", "Mid-Bottom",
-                      "Bot-Left", "Bot-Right", "Center"]
-        for i, (pos, lbl) in enumerate(zip(positions, pos_labels)):
-            ttk.Radiobutton(position_frame, text=lbl, variable=position_var,
-                           value=pos).grid(row=i // 2, column=i % 2, sticky="w", padx=(0, 8))
+        # ── Preview area (right side) ──
+        preview_header = ttk.Frame(right_frame)
+        preview_header.pack(fill="x")
+        ttk.Label(preview_header, text="Preview", font=app.bold_font).pack(side="left")
+        pos_info_label = ttk.Label(preview_header, text="", font=app.small_font)
+        pos_info_label.pack(side="right")
 
-        # ── Preview area ──
-        ttk.Label(preview_frame, text="Preview", font=app.bold_font).pack(anchor="w", pady=(0, 4))
-        preview_canvas = tk.Canvas(preview_frame, width=320, height=180,
-                                    bg=pal["panel2"], highlightthickness=1,
-                                    highlightbackground=pal.get("border_color", pal["panel2"]))
-        preview_canvas.pack(fill="both", expand=True, pady=(0, 8))
+        preview_canvas = tk.Canvas(right_frame, bg=pal["panel2"], highlightthickness=1,
+                                    highlightbackground=pal.get("border_color", pal["panel2"]),
+                                    cursor="crosshair")
+        preview_canvas.pack(fill="both", expand=True, pady=(4, 4))
 
-        # Load the source image for preview
-        try:
-            from PIL import Image as _PILImg, ImageTk as _PILTk
-            preview_img = _PILImg.open(img_path)
-            # Scale to fit preview area
-            max_w, max_h = 320, 180
-            preview_img.thumbnail((max_w, max_h), _PILImg.Resampling.LANCZOS)
-            _preview_photo = _PILTk.PhotoImage(preview_img)
-            preview_canvas._base_photo = _preview_photo  # keep reference
-            preview_canvas.create_image(160, 90, image=_preview_photo, anchor="center")
-        except Exception:
-            preview_canvas.create_text(160, 90, text="Image unavailable", fill=pal["muted"],
-                                         font=app.small_font)
+        # Hint label below preview
+        hint_label = ttk.Label(right_frame, text="⬇ Click or drag on preview to position text",
+                                font=app.small_font)
+        hint_label.pack(anchor="w", pady=(0, 4))
+
+        # ── Quick-position presets row ──
+        preset_row = ttk.Frame(right_frame)
+        preset_row.pack(fill="x", pady=(0, 4))
+        ttk.Label(preset_row, text="Quick:", font=app.small_font).pack(side="left")
+        presets = ["Top-Left", "Top-Right", "Center", "Bot-Left", "Bot-Right"]
+        preset_keys = ["top-left", "top-right", "center", "bottom-left", "bottom-right"]
+        for lbl, key in zip(presets, preset_keys):
+            def _set_preset(k=key):
+                custom_pos[0] = None
+                custom_pos[1] = None
+                position_var.set(k)
+                pos_info_label.configure(text="")
+                update_preview()
+            ttk.Button(preset_row, text=lbl, command=_set_preset, width=8).pack(side="left", padx=2)
+
+        # ── Load the source image and track preview geometry ──
+        preview_state = {"img_w": 0, "img_h": 0, "offset_x": 0, "offset_y": 0, "scale": 1.0}
+
+        def _load_base_image():
+            try:
+                from PIL import Image as _PILImg
+                preview_img = _PILImg.open(img_path)
+                preview_state["img_w"] = preview_img.width
+                preview_state["img_h"] = preview_img.height
+                preview_state["base_img"] = preview_img
+            except Exception:
+                preview_state["img_w"] = 0
+                preview_state["img_h"] = 0
+
+        _load_base_image()
+
+        # ── Click / drag-to-position on preview canvas ──
+        def _canvas_to_frac(event):
+            cx, cy = event.x, event.y
+            iw, ih = preview_state["img_w"], preview_state["img_h"]
+            if iw == 0 or ih == 0:
+                return None, None
+            cw = preview_canvas.winfo_width()
+            ch = preview_canvas.winfo_height()
+            if cw <= 0 or ch <= 0:
+                return None, None
+            ratio = min(cw / iw, ch / ih)
+            dw, dh = int(iw * ratio), int(ih * ratio)
+            ox = (cw - dw) // 2
+            oy = (ch - dh) // 2
+            frac_x = (cx - ox) / dw if dw > 0 else 0.5
+            frac_y = (cy - oy) / dh if dh > 0 else 0.5
+            return max(0.0, min(1.0, frac_x)), max(0.0, min(1.0, frac_y))
+
+        def _on_canvas_click(event):
+            fx, fy = _canvas_to_frac(event)
+            if fx is None:
+                return
+            custom_pos[0] = fx
+            custom_pos[1] = fy
+            pos_info_label.configure(text=f"Position: {fx:.0%}, {fy:.0%}")
+            update_preview()
+
+        preview_canvas.bind("<Button-1>", _on_canvas_click)
+        preview_canvas.bind("<B1-Motion>", _on_canvas_click)
+
+        # ── Helper: resolve font with bold/italic for preview ──
+        def _get_preview_font(target_size):
+            from PIL import ImageFont as _Font
+            from style_transfer import StyleTransfer
+            st = StyleTransfer.__new__(StyleTransfer)  # borrow FONT_VARIANTS
+
+            sel_font = font_name_var.get()
+            fpath = discovered_fonts.get(sel_font)
+            want_bold = bold_var.get()
+            want_italic = italic_var.get()
+
+            if fpath:
+                font, syn_bold, syn_italic = st._resolve_font_variant(fpath, target_size, want_bold, want_italic)
+                if font is not None:
+                    return font, syn_bold, syn_italic
+
+            # Fallback system fonts
+            if want_bold and want_italic:
+                fallbacks = ["DejaVuSans-BoldOblique.ttf", "LiberationSans-BoldItalic.ttf",
+                             "FreeSansBoldOblique.ttf"]
+            elif want_bold:
+                fallbacks = ["DejaVuSans-Bold.ttf", "LiberationSans-Bold.ttf", "FreeSansBold.ttf"]
+            elif want_italic:
+                fallbacks = ["DejaVuSans-Oblique.ttf", "LiberationSans-Italic.ttf", "FreeSansOblique.ttf"]
+            else:
+                fallbacks = ["DejaVuSans.ttf", "LiberationSans.ttf", "FreeSans.ttf"]
+            for fn in fallbacks:
+                try:
+                    return _Font.truetype(fn, target_size), want_bold, want_italic
+                except Exception:
+                    continue
+            return _Font.load_default(), want_bold, want_italic
 
         # ── Live preview update ──
         def update_preview(*args):
             txt = text_var.get().strip()
             if not txt:
-                # Clear any previous text overlay and show base image
                 try:
-                    preview_canvas.delete("overlay")
-                    if hasattr(preview_canvas, '_base_photo'):
-                        preview_canvas.create_image(160, 90, image=preview_canvas._base_photo,
-                                                    anchor="center", tags="overlay_base")
+                    preview_canvas.delete("all")
+                    if "base_img" in preview_state:
+                        from PIL import Image as _PILImg, ImageTk as _PILTk
+                        bi = preview_state["base_img"].copy()
+                        cw = preview_canvas.winfo_width() or 400
+                        ch = preview_canvas.winfo_height() or 300
+                        bi.thumbnail((cw, ch), _PILImg.Resampling.LANCZOS)
+                        photo = _PILTk.PhotoImage(bi)
+                        preview_canvas.create_image(cw // 2, ch // 2, image=photo, anchor="center")
+                        preview_canvas._base_photo = photo
                 except Exception:
                     pass
+                pos_info_label.configure(text="")
                 return
 
             try:
                 from PIL import Image as _Img, ImageDraw as _Draw, ImageFont as _Font, ImageTk as _Tk
-                from style_transfer import get_style_transfer
-                import io
+                import math as _math
 
-                # Build preview at small scale
+                cw = preview_canvas.winfo_width() or 400
+                ch = preview_canvas.winfo_height() or 300
+                iw, ih = preview_state["img_w"], preview_state["img_h"]
+                if iw == 0 or ih == 0:
+                    return
+
+                # Scale to fit canvas
+                ratio = min(cw / iw, ch / ih)
+                pw, ph = int(iw * ratio), int(ih * ratio)
+                ox = (cw - pw) // 2
+                oy = (ch - ph) // 2
+
+                # Build preview image
                 with _Img.open(img_path) as src:
-                    # Scale to preview size
-                    max_pw, max_ph = 320, 180
-                    ratio = min(max_pw / src.width, max_ph / src.height)
-                    pw, ph = int(src.width * ratio), int(src.height * ratio)
                     prev = src.resize((pw, ph), _Img.Resampling.LANCZOS)
 
                 if prev.mode != 'RGBA':
                     prev = prev.convert('RGBA')
 
                 draw = _Draw.Draw(prev)
-
-                # Scale font size to preview
                 scaled_size = max(8, int(font_size_var.get() * ratio))
-
-                # Load font
-                font = None
-                sel_font = font_name_var.get()
-                fpath = discovered_fonts.get(sel_font)
-                if fpath:
-                    try:
-                        font = _Font.truetype(fpath, scaled_size)
-                    except Exception:
-                        font = None
-                if font is None:
-                    for fn in ["DejaVuSans-Bold.ttf" if bold_var.get() else "DejaVuSans.ttf",
-                               "LiberationSans-Bold.ttf" if bold_var.get() else "LiberationSans.ttf",
-                               "FreeSans.ttf"]:
-                        try:
-                            font = _Font.truetype(fn, scaled_size)
-                            break
-                        except Exception:
-                            continue
-                if font is None:
-                    font = _Font.load_default()
+                font, syn_bold, syn_italic = _get_preview_font(scaled_size)
 
                 # Calculate text position in preview coords
                 bbox = draw.textbbox((0, 0), txt, font=font)
                 tw, th = bbox[2] - bbox[0], bbox[3] - bbox[1]
                 pad = int(12 * ratio)
-                pos = position_var.get()
-                if pos == "top-left":
-                    tx, ty = pad, pad
-                elif pos == "top-right":
-                    tx, ty = pw - tw - pad, pad
-                elif pos == "middle-top":
-                    tx, ty = (pw - tw) // 2, pad
-                elif pos == "middle-bottom":
-                    tx, ty = (pw - tw) // 2, ph - th - pad
-                elif pos == "bottom-left":
-                    tx, ty = pad, ph - th - pad
-                elif pos == "bottom-right":
-                    tx, ty = pw - tw - pad, ph - th - pad
-                elif pos == "center":
-                    tx, ty = (pw - tw) // 2, (ph - th) // 2
+
+                if custom_pos[0] is not None and custom_pos[1] is not None:
+                    tx = int(custom_pos[0] * pw - tw / 2)
+                    ty = int(custom_pos[1] * ph - th / 2)
+                    tx = max(0, min(tx, pw - tw))
+                    ty = max(0, min(ty, ph - th))
                 else:
-                    tx, ty = pw - tw - pad, ph - th - pad
+                    pos = position_var.get()
+                    if pos == "top-left":
+                        tx, ty = pad, pad
+                    elif pos == "top-right":
+                        tx, ty = pw - tw - pad, pad
+                    elif pos == "middle-top":
+                        tx, ty = (pw - tw) // 2, pad
+                    elif pos == "middle-bottom":
+                        tx, ty = (pw - tw) // 2, ph - th - pad
+                    elif pos == "bottom-left":
+                        tx, ty = pad, ph - th - pad
+                    elif pos == "bottom-right":
+                        tx, ty = pw - tw - pad, ph - th - pad
+                    elif pos == "center":
+                        tx, ty = (pw - tw) // 2, (ph - th) // 2
+                    else:
+                        tx, ty = pw - tw - pad, ph - th - pad
 
                 ow = outline_width_var.get()
                 ol_color = outline_color_var.get()
 
-                # Shadow
-                if shadow_var.get():
-                    so = max(1, scaled_size // 12)
-                    for ax in range(-ow, ow + 1):
-                        for ay in range(-ow, ow + 1):
-                            draw.text((tx + ax + so, ty + ay + so), txt, font=font, fill="black")
+                # Helper: draw text with optional synthetic bold
+                def _pdraw(d, pos, fill):
+                    if syn_bold:
+                        for dx in (-0.6, 0, 0.6):
+                            for dy in (-0.6, 0, 0.6):
+                                d.text((pos[0]+dx, pos[1]+dy), txt, font=font, fill=fill)
+                    else:
+                        d.text(pos, txt, font=font, fill=fill)
 
-                # Outline
-                if ow > 0 and ol_color != "none":
-                    for ax in range(-ow, ow + 1):
-                        for ay in range(-ow, ow + 1):
-                            if ax != 0 or ay != 0:
-                                draw.text((tx + ax, ty + ay), txt, font=font, fill=ol_color)
-
-                # Text
-                t_color = color_var.get()
-                draw.text((tx, ty), txt, font=font, fill=t_color)
-
-                # Opacity
-                opa = opacity_var.get()
-                if opa < 100:
-                    alpha = int(255 * opa / 100)
-                    # Build an overlay approach — blend with background
-                    base = _Img.open(img_path).convert('RGBA')
-                    base.thumbnail((max_pw, max_ph), _Img.Resampling.LANCZOS)
-                    text_only = _Img.new('RGBA', prev.size, (0, 0, 0, 0))
-                    td = _Draw.Draw(text_only)
+                # If synthetic italic, draw onto a separate layer and shear it
+                if syn_italic:
+                    text_layer = _Img.new('RGBA', prev.size, (0, 0, 0, 0))
+                    tl_draw = _Draw.Draw(text_layer)
                     if shadow_var.get():
                         so = max(1, scaled_size // 12)
                         for ax in range(-ow, ow + 1):
                             for ay in range(-ow, ow + 1):
-                                td.text((tx + ax + so, ty + ay + so), txt, font=font, fill=(0, 0, 0, alpha))
+                                tl_draw.text((tx+ax+so, ty+ay+so), txt, font=font, fill=(0,0,0,255))
                     if ow > 0 and ol_color != "none":
-                        from PIL import ImageColor as _IC
-                        try:
-                            ol_rgb = _IC.getrgb(ol_color)
-                        except Exception:
-                            ol_rgb = (0, 0, 0)
                         for ax in range(-ow, ow + 1):
                             for ay in range(-ow, ow + 1):
                                 if ax != 0 or ay != 0:
-                                    td.text((tx + ax, ty + ay), txt, font=font, fill=(*ol_rgb, alpha))
-                    from PIL import ImageColor as _IC2
-                    try:
-                        tc_rgb = _IC2.getrgb(t_color)
-                    except Exception:
-                        tc_rgb = (255, 255, 255)
-                    td.text((tx, ty), txt, font=font, fill=(*tc_rgb, alpha))
-                    prev = _Img.alpha_composite(base, text_only)
+                                    tl_draw.text((tx+ax, ty+ay), txt, font=font, fill=ol_color)
+                    _pdraw(tl_draw, (tx, ty), color_var.get())
+                    if underline_var.get():
+                        ul_offset = max(2, int(scaled_size * 0.08))
+                        ul_thickness = max(1, int(scaled_size * 0.05))
+                        try:
+                            _m = font.getmetrics()
+                            ul_y = ty + _m[0] + ul_offset
+                        except Exception:
+                            ul_y = ty + th + ul_offset
+                        tl_draw.line([(tx, ul_y), (tx+tw, ul_y)], fill=color_var.get(), width=ul_thickness)
+                    shear = -12
+                    text_layer = text_layer.transform(
+                        prev.size, _Img.AFFINE,
+                        (1, _math.tan(_math.radians(shear)), 0, 0, 1, 0),
+                        resample=_Img.BICUBIC)
+                    # Apply opacity
+                    opa = opacity_var.get()
+                    if opa < 100:
+                        alpha = int(255 * opa / 100)
+                        r, g, b, a = text_layer.split()
+                        a = a.point(lambda px: int(px * alpha / 255))
+                        text_layer = _Img.merge('RGBA', (r, g, b, a))
+                    prev = _Img.alpha_composite(prev, text_layer)
+                else:
+                    # Direct draw path
+                    opa = opacity_var.get()
+                    if opa < 100:
+                        # Use alpha compositing for opacity
+                        alpha = int(255 * opa / 100)
+                        text_layer = _Img.new('RGBA', prev.size, (0, 0, 0, 0))
+                        td = _Draw.Draw(text_layer)
+                        if shadow_var.get():
+                            so = max(1, scaled_size // 12)
+                            _pdraw(td, (tx+so, ty+so), (0,0,0,alpha))
+                        if ow > 0 and ol_color != "none":
+                            try:
+                                ol_rgb = tuple(_Img.new("RGB")._getrgb(ol_color)) if not isinstance(ol_color, tuple) else ol_color[:3]
+                            except Exception:
+                                ol_rgb = (0, 0, 0)
+                            for ax in range(-ow, ow + 1):
+                                for ay in range(-ow, ow + 1):
+                                    if ax != 0 or ay != 0:
+                                        td.text((tx+ax, ty+ay), txt, font=font, fill=(*ol_rgb, alpha))
+                        try:
+                            tc_rgb = tuple(_Img.new("RGB")._getrgb(color_var.get()))
+                        except Exception:
+                            tc_rgb = (255, 255, 255)
+                        _pdraw(td, (tx, ty), (*tc_rgb, alpha))
+                        if underline_var.get():
+                            ul_offset = max(2, int(scaled_size * 0.08))
+                            ul_thickness = max(1, int(scaled_size * 0.05))
+                            try:
+                                _m = font.getmetrics()
+                                ul_y = ty + _m[0] + ul_offset
+                            except Exception:
+                                ul_y = ty + th + ul_offset
+                            td.line([(tx, ul_y), (tx+tw, ul_y)], fill=(*tc_rgb, alpha), width=ul_thickness)
+                        prev = _Img.alpha_composite(prev, text_layer)
+                    else:
+                        # Full opacity, no synthetic italic
+                        if shadow_var.get():
+                            so = max(1, scaled_size // 12)
+                            _pdraw(draw, (tx+so, ty+so), "black")
+                        if ow > 0 and ol_color != "none":
+                            for ax in range(-ow, ow + 1):
+                                for ay in range(-ow, ow + 1):
+                                    if ax != 0 or ay != 0:
+                                        draw.text((tx+ax, ty+ay), txt, font=font, fill=ol_color)
+                        _pdraw(draw, (tx, ty), color_var.get())
+                        if underline_var.get():
+                            ul_offset = max(2, int(scaled_size * 0.08))
+                            ul_thickness = max(1, int(scaled_size * 0.05))
+                            try:
+                                _m = font.getmetrics()
+                                ul_y = ty + _m[0] + ul_offset
+                            except Exception:
+                                ul_y = ty + th + ul_offset
+                            draw.line([(tx, ul_y), (tx+tw, ul_y)], fill=color_var.get(), width=ul_thickness)
 
                 if prev.mode == 'RGBA':
                     prev = prev.convert('RGB')
 
                 photo = _Tk.PhotoImage(prev)
                 preview_canvas.delete("all")
-                preview_canvas.create_image(pw // 2, ph // 2, image=photo, anchor="center")
-                preview_canvas._preview_photo = photo  # keep reference
+                preview_canvas.create_image(cw // 2, ch // 2, image=photo, anchor="center")
+                preview_canvas._preview_photo = photo
 
             except Exception:
                 pass  # Silent fail for preview — non-critical
 
         # Bind all controls to trigger live preview update
         for var in (text_var, font_name_var, color_var, outline_color_var,
-                    position_var, bold_var, shadow_var, opacity_var, font_size_var,
-                    outline_width_var):
-            if isinstance(var, (tk.StringVar, tk.IntVar)):
-                var.trace_add("write", update_preview)
-            elif isinstance(var, tk.BooleanVar):
-                var.trace_add("write", update_preview)
+                    position_var, bold_var, italic_var, underline_var, shadow_var,
+                    opacity_var, font_size_var, outline_width_var):
+            var.trace_add("write", update_preview)
 
-        # ── Buttons ──
-        button_frame = ttk.Frame(dialog)
-        button_frame.pack(fill="x", pady=(8, 12))
+        # ── Buttons (at bottom of right panel) ──
+        button_frame = ttk.Frame(right_frame)
+        button_frame.pack(fill="x", pady=(8, 0))
 
         def apply_text():
             text = text_var.get().strip()
@@ -1258,15 +1801,19 @@ class GalleryTab:
                 result_path = transfer.add_text_overlay(
                     img_path,
                     text,
-                    position=position_var.get(),
+                    position=position_var.get() if custom_pos[0] is None else "custom",
                     font_size=font_size_var.get(),
                     text_color=color_var.get(),
                     outline_color=outline_color_var.get() if outline_color_var.get() != "none" else None,
                     outline_width=outline_width_var.get() if outline_color_var.get() != "none" else 0,
                     font_path=fpath,
                     bold=bold_var.get(),
+                    italic=italic_var.get(),
+                    underline=underline_var.get(),
                     opacity=opacity_var.get(),
-                    shadow=shadow_var.get()
+                    shadow=shadow_var.get(),
+                    custom_x=custom_pos[0],
+                    custom_y=custom_pos[1],
                 )
                 
                 if result_path and result_path.exists():
@@ -1288,9 +1835,13 @@ class GalleryTab:
         # Bind Enter key to apply
         text_entry.bind("<Return>", lambda e: apply_text())
 
+        # Cleanup on close
+        def _on_close():
+            dialog.destroy()
+        dialog.protocol("WM_DELETE_WINDOW", _on_close)
+
         # Initial preview trigger after dialog is visible
         dialog.after(200, update_preview)
-
 
     def _gallery_apply_theme(self, style_key):
         """Apply Themes — uses resolved image path in Favorites view."""
@@ -1383,6 +1934,10 @@ class GalleryTab:
             return
         
         destination_path = Path(destination_folder)
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        export_subfolder = destination_path / f"FrogPaper_Portraits_{timestamp}"
+        export_subfolder.mkdir(parents=True, exist_ok=True)
         
         # Show initial status
         app.status_var.set("Finding portrait images...")
@@ -1402,14 +1957,18 @@ class GalleryTab:
                         "Generate some portrait wallpapers first, then try again."
                     ))
                     app.root.after(0, lambda: app.status_var.set("No portrait images found"))
+                    try:
+                        export_subfolder.rmdir()
+                    except Exception:
+                        pass
                     return
                 
                 # Update status with count
                 app.root.after(0, lambda: app.status_var.set(f"Found {len(portrait_images)} portrait images"))
-                app.root.after(0, lambda: app.status_var.set(f"Copying {len(portrait_images)} images to {destination_path.name}..."))
+                app.root.after(0, lambda: app.status_var.set(f"Copying {len(portrait_images)} images to {export_subfolder.name}..."))
                 
-                # Copy images to selected destination
-                success_count, failure_count = copy_images_to_folder(portrait_images, destination_path)
+                # Copy images to the auto-created subfolder
+                success_count, failure_count = copy_images_to_folder(portrait_images, export_subfolder)
                 
                 # Show completion status
                 if failure_count > 0:
@@ -1421,31 +1980,29 @@ class GalleryTab:
                         f"Successfully exported {success_count} portrait images"
                     ))
                 
-                # Open destination folder in Explorer
-                open_folder_in_explorer(destination_path)
+                # Open the export subfolder in Explorer
+                open_folder_in_explorer(export_subfolder)
                 
                 # Show success dialog with instructions
                 app.root.after(0, lambda: app._dialog.info(
                     "Portrait Images Exported",
                     f"Successfully exported {success_count} portrait images to:\n\n"
-                    f"{destination_path}\n\n"
-                    f"Your images are ready! \n\n"
+                    f"{export_subfolder}\n\n"
+                    f"The entire folder is ready to drag to your phone!\n\n"
                     f"Note: If your phone doesn't appear in the export dialog (MTP devices),\n"
-                    f"you can copy the images manually:\n"
+                    f"you can copy the folder manually:\n"
                     f"1. Open Windows Explorer (your phone is visible there)\n"
-                    f"2. Navigate to the exported folder above\n"
-                    f"3. Drag and drop images to your phone\n\n"
+                    f"2. Drag the folder above onto your phone\n\n"
                     f"Alternative transfer methods:\n"
                     f"• Use Windows Nearby Sharing from the exported folder\n"
                     f"• Upload to cloud storage (Google Drive, OneDrive, etc.)\n"
                     f"• Email the images to yourself\n\n"
                     f"({failure_count} images failed to copy)" if failure_count > 0 else
-                    f"Your images are ready! \n\n"
+                    f"The entire folder is ready to drag to your phone!\n\n"
                     f"Note: If your phone doesn't appear in the export dialog (MTP devices),\n"
-                    f"you can copy the images manually:\n"
+                    f"you can copy the folder manually:\n"
                     f"1. Open Windows Explorer (your phone is visible there)\n"
-                    f"2. Navigate to the exported folder above\n"
-                    f"3. Drag and drop images to your phone\n\n"
+                    f"2. Drag the folder above onto your phone\n\n"
                     f"Alternative transfer methods:\n"
                     f"• Use Windows Nearby Sharing from the exported folder\n"
                     f"• Upload to cloud storage (Google Drive, OneDrive, etc.)\n"
@@ -1560,6 +2117,16 @@ class GalleryTab:
         app = self.app
         mode = app.gallery_view_var.get()
 
+        # Ensure all canvases use the current theme background
+        pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+        canvas_bg = pal["bg"]
+        for c in (app.gallery_canvas, app.gallery_fav_canvas,
+                  app.gallery_styled_canvas, app.gallery_manual_canvas):
+            try:
+                c.configure(bg=canvas_bg, highlightthickness=0)
+            except Exception:
+                pass
+
         # Hide all view canvases first
         app.gallery_canvas.pack_forget()
         app._gallery_scroll.pack_forget()
@@ -1570,44 +2137,58 @@ class GalleryTab:
         app.gallery_manual_canvas.pack_forget()
         app._gallery_manual_scroll.pack_forget()
 
+        # Invalidate any in-flight ratio thumbnail loading so stale callbacks become no-ops
+        if mode not in ("Ratio 16:9", "Ratio 9:16", "Ratio 1:1"):
+            self._ratio_load_gen += 1
+
         # Helper: repack action row showing only the given subset in order
+        # Uses expanding spacers between widgets for even distribution
         def _repack(visible):
-            for w in app._gallery_action_row_order:
+            # Forget ALL children of the row (buttons + old spacers)
+            for w in app._gallery_action_row.winfo_children():
                 w.pack_forget()
-            for w in visible:
-                w.pack(side="left", padx=(0, 6))
+            for i, w in enumerate(visible):
+                w.pack(side='left')
+                if i < len(visible) - 1:
+                    ttk.Frame(app._gallery_action_row).pack(side='left', fill='x', expand=True)
 
         _btn_wallpaper_ref = app._gallery_action_row_order[0]
-        _btn_text_ref      = app._gallery_action_row_order[3]
-        _btn_delete_ref    = app._gallery_action_row_order[4]
-        _btn_export_ref    = app._gallery_action_row_order[5]
+        _btn_style_ref = app._gallery_action_row_order[1]
+        _btn_text_ref = app._gallery_action_row_order[2]
+        _btn_delete_ref = app._gallery_action_row_order[3]
+        _btn_refresh_ref = app._gallery_action_row_order[4]
 
         if mode == "Favorites":
             app.gallery_fav_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_fav_scroll.pack(side='right', fill='y')
-            # Favorites: Wallpaper | Add Text | Delete | Export Portraits
-            _repack([_btn_wallpaper_ref, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
+            # Favorites: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            app._repack_header_buttons(is_portrait=False)
             tag_filter = app.get_active_tag()
             app.load_favorites(tag_filter=tag_filter)
         elif mode == "Styled":
             app.gallery_styled_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_styled_scroll.pack(side='right', fill='y')
-            # Styled: Wallpaper | Save to Fav | Delete | Export Portraits  (Apply Style hidden — already styled)
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_delete_ref, _btn_export_ref])
+            # Styled: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            app._repack_header_buttons(is_portrait=False)
             tag_filter = app.get_active_tag()
             app.load_styled(tag_filter=tag_filter)
         elif mode == "Manual":
             app.gallery_manual_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_manual_scroll.pack(side='right', fill='y')
-            # Manual: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
+            # Manual: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            app._repack_header_buttons(is_portrait=False)
             tag_filter = app.get_active_tag()
             app.load_manual(tag_filter=tag_filter)
-        elif mode in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
+        elif mode == "Ratio 9:16":
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
-            # Ratio views: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
+            # Portrait view: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            # Show Export Portraits button (portrait order: Export | Open Folder | Tutorials)
+            app._repack_header_buttons(is_portrait=True)
             tag_filter = app.get_active_tag()
             # Show loading indicator
             app.status_var.set(f'Loading {mode} images...')
@@ -1615,11 +2196,26 @@ class GalleryTab:
             # Load in background thread to prevent UI freeze
             import threading
             threading.Thread(target=app.load_gallery_by_ratio, args=(mode, tag_filter), daemon=True).start()
+        elif mode in ["Ratio 16:9", "Ratio 1:1"]:
+            app.gallery_canvas.pack(side='left', fill='both', expand=True)
+            app._gallery_scroll.pack(side='right', fill='y')
+            # Other ratio views: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            app._repack_header_buttons(is_portrait=False)
+            tag_filter = app.get_active_tag()
+            # Show loading indicator
+            app.status_var.set(f'Loading {mode} images...')
+            app.root.update_idletasks()
+            # Load in background thread to prevent UI freeze
+            import threading
+            logger.info(f"Starting ratio load for {mode} with tag filter: {tag_filter}")
+            threading.Thread(target=app.load_gallery_by_ratio, args=(mode, tag_filter), daemon=True).start()
         else:  # Gallery
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
-            # Gallery: Wallpaper | Save to Fav | Add Text | Delete | Export Portraits
-            _repack([_btn_wallpaper_ref, app._btn_save_to_fav, _btn_text_ref, _btn_delete_ref, _btn_export_ref])
+            # Gallery: Wallpaper | Apply Style | Add Text | Delete | Refresh
+            _repack([_btn_wallpaper_ref, _btn_style_ref, _btn_text_ref, _btn_delete_ref, _btn_refresh_ref])
+            app._repack_header_buttons(is_portrait=False)
             # Force multiple UI updates to ensure canvas is properly visible and sized
             app.gallery_canvas.update()
             app.gallery_canvas.update_idletasks()
@@ -1673,16 +2269,6 @@ class GalleryTab:
             target.focus_set()
         except Exception:
             pass
-
-
-    def _on_tag_var_changed(self, *args):
-        """Show/hide delete tag button based on tag selection."""
-        app = self.app
-        current_tag = app.gallery_tag_var.get()
-        if current_tag and current_tag != 'All tags':
-            app.delete_tag_btn.pack(side='left', padx=(0, 4))
-        else:
-            app.delete_tag_btn.pack_forget()
 
 
     def _on_thumbnail_click(self, path, ctrl_pressed=False):
@@ -1792,12 +2378,22 @@ class GalleryTab:
 
             msg = "No favorites yet. Use 'Save to Favorites' on any image to add it here."
 
+            ui["inner"].columnconfigure(0, weight=1)
+            ui["inner"].rowconfigure(0, weight=1)
             tk.Label(
                 ui["inner"],
                 text=msg,
-                bg=pal["panel"], fg=pal["text"], font=app.small_font,
-                pady=30,
-            ).pack(fill='x', padx=20, pady=30)
+                bg=pal["bg"], fg=pal["text"], font=app.small_font,
+                pady=10,
+            ).grid(row=0, column=0, sticky="nsew", padx=20, pady=10)
+            # Fill canvas with themed background
+            try:
+                cw = ui["canvas"].winfo_width()
+                ch = ui["canvas"].winfo_height()
+                if cw > 1 and ch > 1:
+                    ui["canvas"].itemconfig("fav_inner_frame", width=cw, height=ch)
+            except Exception:
+                pass
 
             return
 
@@ -1818,14 +2414,6 @@ class GalleryTab:
 
             card.grid(row=row, column=col, padx=6, pady=6, sticky='nsew')
             card.columnconfigure(0, weight=1)
-
-            ts = item.get("timestamp") or item.get("saved_at", "")
-
-            subtitle = (ts[:19].replace("T", " ") if ts else "")
-
-            meta = subtitle or (path.name[:18] if path else "")
-
-
 
             if path and path.exists():
 
@@ -1868,10 +2456,11 @@ class GalleryTab:
 
                 tl.bind("<Button-1>", lambda e, d=item, u=ui: app._select_visual_item(u, None, d))
 
-            # Meta label shown below thumbnail or text — used by highlight/organize logic
+            # Filename label — matches Gallery view style
+            filename_text = path.name if path else ((item.get("theme_sentence") or item.get("prompt") or "")[:40])
             name_label = tk.Label(
                 card,
-                text=meta,
+                text=filename_text,
                 wraplength=220,
                 height=2,
                 font=app.small_font,
@@ -1883,6 +2472,8 @@ class GalleryTab:
                 pady=2,
             )
             name_label.pack(fill="x")
+            if path:
+                name_label.bind("<Button-1>", lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx))
 
             # File size + resolution info
             if path and path.exists():
@@ -1892,13 +2483,49 @@ class GalleryTab:
                     from PIL import Image as _PILImg
                     with _PILImg.open(path) as _im2:
                         w_px, h_px = _im2.size
-                    info_text = f"{w_px}×{h_px}  •  {size_str}"
+                    info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
                 except Exception:
                     info_text = ""
                 info_lbl = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
                                     bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
                 info_lbl.pack(fill="x")
                 info_lbl.bind("<Button-1>", lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx))
+
+            # Tags label — matches Gallery view (fall back to original image's tags)
+            if path:
+                fav_tags = self._get_tags_with_fallback(path, fav_item=item)
+                fav_tags_label = tk.Label(card, text=', '.join(fav_tags[:3]),
+                                          fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
+                                          bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
+                fav_tags_label.pack(fill="x")
+                fav_tags_label.bind("<Button-1>", lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx))
+
+            # Heart button for favorites (always filled, click to remove)
+            if path:
+                try:
+                    from icons import get_icon
+                    accent = pal.get("accent", pal["progress"])
+                    heart_icon = get_icon("heart_filled", size=36, color=accent)  # Doubled from 18 to 36
+
+                    _fav_btn_bg = pal.get("panel", "#1e1e2e")
+                    try:
+                        _fav_btn_bg = card.cget("bg")
+                    except Exception:
+                        pass
+                    heart_btn = tk.Button(card, image=heart_icon,
+                                         bg=_fav_btn_bg,
+                                         activebackground=pal.get("panel2", _fav_btn_bg),
+                                         bd=0, highlightthickness=0,
+                                         cursor="hand2", relief="flat")
+                    heart_btn.image = heart_icon
+                    heart_btn._icon_ref = heart_icon
+                    heart_btn._img_path = path  # store for theme-change re-rendering
+                    heart_btn.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")  # Adjusted position for larger icon
+                    
+                    # For favorites, clicking heart removes from favorites
+                    heart_btn.bind('<Button-1>', lambda e, p=path, d=item: self._on_fav_heart_click(e, p, d, heart_btn))
+                except Exception as e:
+                    logger.error(f"Error creating favorites heart button: {e}")
 
             # Register card so organize-mode highlight and index lookup work
             cards[card_idx] = (card, name_label, item)
@@ -1988,15 +2615,7 @@ class GalleryTab:
         app = self.app
         # Check if tag UI exists - if not, just reload current view without tag filtering
         if not hasattr(app, 'gallery_tag_var') or not hasattr(app, 'gallery_tag_combo'):
-            view_mode = app._gallery_view_mode()
-            if view_mode == "Gallery":
-                app.load_gallery()
-            elif view_mode == "Favorites":
-                app.load_favorites()
-            elif view_mode == "Styled":
-                app.load_styled()
-            elif view_mode == "Manual":
-                app.load_manual()
+            self._refresh_current_view()
             if status_msg:
                 app.status_var.set(status_msg)
             return
@@ -2015,31 +2634,19 @@ class GalleryTab:
         # Force the readonly combobox to visually reflect the new value
         app.gallery_tag_combo.set(new_selection)
 
-        # Determine effective filter after potential selection change
-        effective_tag = app.gallery_tag_var.get()
-        tag_filter = effective_tag if effective_tag != 'All tags' else None
-        # Special handling for 'Untagged' - pass it as-is to indicate untagged filter
-        if effective_tag == 'Untagged':
-            tag_filter = 'Untagged'
-
-        # Reload current view
-        view_mode = app._gallery_view_mode()
-        if view_mode == "Gallery":
-            app.load_gallery()
-        elif view_mode == "Favorites":
-            app.load_favorites()
-        elif view_mode == "Styled":
-            app.load_styled()
-        elif view_mode == "Manual":
-            app.load_manual()
+        # Reload current view (handles all modes including ratio views)
+        self._refresh_current_view()
 
         # Show status message
         if status_msg:
             app.status_var.set(status_msg)
-        elif tag_filter:
-            app.status_var.set(f'{view_mode} filtered by tag: {effective_tag}')
         else:
-            app.status_var.set(f'{view_mode} reloaded (no tag filter)')
+            effective_tag = app.gallery_tag_var.get()
+            view_mode = app._gallery_view_mode()
+            if effective_tag and effective_tag != 'All tags':
+                app.status_var.set(f'{view_mode} filtered by tag: {effective_tag}')
+            else:
+                app.status_var.set(f'{view_mode} reloaded')
 
 
     def _render_visible_cards(self):
@@ -2253,6 +2860,8 @@ class GalleryTab:
             for child in card.winfo_children():
                 if isinstance(child, tk.Label) and child is not name_label:
                     child.config(bg=bg, fg=pal["text"])
+                elif isinstance(child, tk.Button):
+                    child.config(bg=bg, activebackground=pal["panel2"])
 
 
     def _update_gallery_highlight(self, selected_path):
@@ -2270,10 +2879,11 @@ class GalleryTab:
         surface = pal.get("surface", pal["panel2"])
         
         for path_str, card_data in app.gallery_cards.items():
-            # Handle variable-length card data (some have 2, 3, or 6 elements)
+            # Handle variable-length card data (some have 2, 3, 4, or 6 elements)
             card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
             name_label = card_data[1] if len(card_data) > 1 else None
             tags_label = card_data[2] if len(card_data) > 2 else None
+            heart_btn = card_data[3] if len(card_data) > 3 else None
             
             is_multi_sel = path_str in app.selected_gallery_paths
             is_primary = app.selected_gallery_path and path_str == str(app.selected_gallery_path)
@@ -2298,6 +2908,8 @@ class GalleryTab:
             for child in card.winfo_children():
                 if isinstance(child, tk.Label):
                     child.config(bg=bg)
+                elif isinstance(child, tk.Button):
+                    child.config(bg=bg, activebackground=pal["panel2"])
 
 
     def _update_manual_highlight(self, selected_path):
@@ -2306,7 +2918,12 @@ class GalleryTab:
         pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
         sel_str = str(selected_path) if selected_path else None
 
-        for path_str, (card, name_label) in app.gallery_manual_cards.items():
+        for path_str, card_data in app.gallery_manual_cards.items():
+            # Handle variable-length card data (2 or 3 elements)
+            card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
+            name_label = card_data[1] if len(card_data) > 1 else None
+            heart_btn = card_data[2] if len(card_data) > 2 else None
+            
             is_sel = path_str == sel_str
             accent = pal.get("accent", pal["progress"])
             border = pal.get("border_color", pal["panel2"])
@@ -2319,6 +2936,8 @@ class GalleryTab:
             for child in card.winfo_children():
                 if isinstance(child, tk.Label) and child is not name_label:
                     child.config(bg=bg)
+                elif isinstance(child, tk.Button):
+                    child.config(bg=bg, activebackground=pal["panel2"])
 
 
     def _update_styled_highlight(self, selected_path):
@@ -2327,7 +2946,12 @@ class GalleryTab:
         pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
         sel_str = str(selected_path) if selected_path else None
 
-        for path_str, (card, name_label) in app.gallery_styled_cards.items():
+        for path_str, card_data in app.gallery_styled_cards.items():
+            # Handle variable-length card data (2 or 3 elements)
+            card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
+            name_label = card_data[1] if len(card_data) > 1 else None
+            heart_btn = card_data[2] if len(card_data) > 2 else None
+            
             is_sel = path_str == sel_str
             accent = pal.get("accent", pal["progress"])
             border = pal.get("border_color", pal["panel2"])
@@ -2340,6 +2964,8 @@ class GalleryTab:
             for child in card.winfo_children():
                 if isinstance(child, tk.Label) and child is not name_label:
                     child.config(bg=bg)
+                elif isinstance(child, tk.Button):
+                    child.config(bg=bg, activebackground=pal["panel2"])
 
 
     def _widget_to_card_index(self, widget):
@@ -2697,9 +3323,12 @@ class GalleryTab:
         for sub in (name_label, info_label, tags_label):
             sub.bind('<Button-1>', lambda e, p=img_path, idx=index: app.on_card_click(e, p, idx))
 
-        
+        # Heart button (positioned in bottom-right corner)
+        heart_btn = self._create_heart_button(card, img_path, pal)
+        if heart_btn:
+            heart_btn.place(relx=1.0, rely=1.0, x=-12, y=-12, anchor="se")  # Adjusted for larger icon
 
-        app.gallery_cards[str(img_path)] = (card, name_label, tags_label)
+        app.gallery_cards[str(img_path)] = (card, name_label, tags_label, heart_btn)
 
 
     def delete_selected(self):
@@ -2732,31 +3361,81 @@ class GalleryTab:
 
             return
 
-        # Delete the copied file from favorites/ folder if it exists
-        copied_path = target.get("copied_image_path")
-        if copied_path:
+        # Delete the copied file from favorites/ folder if it exists.
+        # Resolve the favorites-folder path from BOTH the in-memory target
+        # (which may have had copied_image_path overwritten by load_favorites)
+        # and the original disk JSON entry, to be robust.
+        try:
+            existing_on_disk = load_json_list(app.FAVORITES_LOG)
+        except Exception:
+            existing_on_disk = []
+        target_key = target.get("saved_at")
+        target_prompt = target.get("prompt")
+        target_image_path = target.get("image_path") or target.get("copied_image_path")
+        target_name = Path(target_image_path).name if target_image_path else None
+
+        # Locate the matching on-disk entry so we preserve its original
+        # original_image_path / copied_image_path when we save the trimmed list.
+        disk_match = None
+        for item in existing_on_disk:
+            if target_key is not None and item.get("saved_at") == target_key \
+                    and item.get("prompt") == target_prompt:
+                disk_match = item
+                break
+        if disk_match is None and target_name:
+            for item in existing_on_disk:
+                for k in ("image_path", "copied_image_path"):
+                    v = item.get(k)
+                    if v and Path(v).name == target_name:
+                        disk_match = item
+                        break
+                if disk_match is not None:
+                    break
+
+        # Pick the favorites-folder file path to delete
+        file_to_delete = None
+        if disk_match:
+            for k in ("copied_image_path", "image_path"):
+                v = disk_match.get(k) or target.get(k)
+                if v and Path(v).exists() and app.FAVORITES_DIR in Path(v).parents:
+                    file_to_delete = Path(v)
+                    break
+        if file_to_delete is None:
+            v = target.get("copied_image_path") or target.get("image_path")
+            if v:
+                try:
+                    p = Path(v)
+                    if p.exists() and p.is_file() and app.FAVORITES_DIR in p.parents:
+                        file_to_delete = p
+                except Exception:
+                    pass
+        if file_to_delete is not None:
             try:
-                copied_file = Path(copied_path)
-                if copied_file.exists() and copied_file.is_file():
-                    copied_file.unlink()
+                file_to_delete.unlink()
             except Exception:
                 pass  # Ignore file deletion errors
 
-        updated = [item for item in app.favorites if item is not target]
-
-        if len(updated) == len(app.favorites):
-
-            for i, item in enumerate(app.favorites):
-
-                if item.get("saved_at") == target.get("saved_at") and item.get("prompt") == target.get("prompt"):
-
-                    del app.favorites[i]
-
-                    updated = app.favorites
-
-                    break
-
+        # Save the trimmed list back to disk. We deliberately use the
+        # existing_on_disk list (preserving each entry's original fields
+        # like original_image_path) rather than app.favorites, because
+        # load_favorites() overwrites image_path / copied_image_path in
+        # memory with the favorites-folder path — writing that back would
+        # silently clobber the link to the source image.
+        if disk_match is not None:
+            updated = [item for item in existing_on_disk if item is not disk_match]
+        else:
+            # Fallback: remove by saved_at+prompt, else leave the list alone
+            updated = [item for item in existing_on_disk
+                       if not (target_key is not None
+                               and item.get("saved_at") == target_key
+                               and item.get("prompt") == target_prompt)]
         save_json_list(app.FAVORITES_LOG, updated)
+
+        # Keep app.favorites in sync so subsequent UI reads are consistent
+        try:
+            app.favorites = [item for item in app.favorites if item is not target]
+        except Exception:
+            pass
 
         app.favorite_selected_item = None
 
@@ -2802,10 +3481,29 @@ class GalleryTab:
             
             if image_to_copy:
                 original_resolved = Path(image_to_copy).resolve()
-                # Check if already favorited by comparing resolved paths
-                if any(item.get('copied_image_path') and Path(item.get('copied_image_path')).resolve() == original_resolved for item in existing):
+                # Check if already favorited by comparing resolved paths.
+                # Must check BOTH copied_image_path AND original_image_path
+                # against the source image, otherwise the check never matches.
+                if any(
+                    (item.get('copied_image_path') and Path(item.get('copied_image_path')).resolve() == original_resolved)
+                    or (item.get('original_image_path') and Path(item.get('original_image_path')).resolve() == original_resolved)
+                    for item in existing
+                ):
                     app.status_var.set("Image already in favorites.")
                     return
+                # Basename fallback: catch favorites created by older app
+                # versions that don't have original_image_path set.
+                try:
+                    target_name = Path(image_to_copy).name.lower()
+                    if target_name and app.FAVORITES_DIR.exists():
+                        for f in app.FAVORITES_DIR.iterdir():
+                            if (f.is_file()
+                                    and f.suffix.lower() in app.IMAGE_EXTS
+                                    and f.name.lower() == target_name):
+                                app.status_var.set("Image already in favorites.")
+                                return
+                except Exception:
+                    pass
 
             # Determine the final image path for the favorite
             final_image_path = None
@@ -2881,6 +3579,23 @@ class GalleryTab:
     def load_favorites(self, tag_filter=None):
         """Load favorites."""
         app = self.app
+        # Purge JSON entries for files that were deleted outside the app
+        try:
+            self._purge_stale_favorites_log()
+        except Exception as e:
+            logger.warning(f"load_favorites: purge failed: {e}")
+
+        # One-shot repair: backfill missing original_image_path on entries
+        # whose source file can be located in generated/manual/styled dirs.
+        # This is what makes the heart icon on the Gallery/Styled/Manual
+        # views correctly show as filled for favorites that were created by
+        # older app versions or migrated from the legacy top-level favorites
+        # folder (where original_image_path was never recorded).
+        try:
+            self._backfill_original_image_paths()
+        except Exception as e:
+            logger.warning(f"load_favorites: backfill failed: {e}")
+
         raw_favorites = load_json_list(app.FAVORITES_LOG)
 
         # --- Authoritative source: files present in FAVORITES_DIR ---
@@ -3212,12 +3927,22 @@ class GalleryTab:
         if n == 0:
             # Empty-state message for main Gallery view
             pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+            app.gallery_inner.columnconfigure(0, weight=1)
+            app.gallery_inner.rowconfigure(0, weight=1)
             tk.Label(
                 app.gallery_inner,
                 text="No wallpapers yet. Generate or add images to get started.",
-                bg=pal["panel"], fg=pal["text"], font=app.small_font,
-                pady=30,
-            ).grid(row=0, column=0, sticky="ew")
+                bg=pal["bg"], fg=pal["text"], font=app.small_font,
+                pady=10,
+            ).grid(row=0, column=0, sticky="nsew")
+            # Fill canvas with themed background
+            try:
+                cw = app.gallery_canvas.winfo_width()
+                ch = app.gallery_canvas.winfo_height()
+                if cw > 1 and ch > 1:
+                    app.gallery_canvas.itemconfig("inner_frame", width=cw, height=ch)
+            except Exception:
+                pass
         else:
             for idx in range(n):
                 app._make_gallery_placeholder(idx, idx // cols, idx % cols)
@@ -3251,6 +3976,7 @@ class GalleryTab:
 
             # Collect images from manual and generated directories
             raw_images = collect_wallpapers([app.MANUAL_DIR, GENERATED_DIR]) or []
+            logger.info(f"Collected {len(raw_images)} raw images for ratio {ratio_mode}")
 
             # Cache for image dimensions to avoid repeated PIL opens (ratio-specific)
             if not hasattr(app, '_ratio_cache'):
@@ -3282,6 +4008,7 @@ class GalleryTab:
                     return False
 
             filtered_images = [img for img in raw_images if matches_ratio(img)]
+            logger.info(f"Filtered to {len(filtered_images)} images matching ratio {ratio_mode}")
 
             # Apply tag filter if specified
             if tag_filter:
@@ -3326,10 +4053,26 @@ class GalleryTab:
                     filtered_images.sort(key=lambda f: f.name.lower())
 
             # Schedule UI updates on main thread
-            app.root.after(0, lambda: app._build_ratio_gallery_ui(filtered_images, ratio_mode, tag_filter))
+            def update_ui():
+                try:
+                    logger.info(f"UI update callback triggered for {len(filtered_images)} images")
+                    app._build_ratio_gallery_ui(filtered_images, ratio_mode, tag_filter)
+                    logger.info("UI update completed successfully")
+                    # Force canvas update to ensure images render
+                    app.gallery_canvas.update_idletasks()
+                    app.gallery_canvas.update()
+                except Exception as e:
+                    error_msg = f'Error building ratio UI: {e}'
+                    app.status_var.set(error_msg)
+                    logger.error(f'Error building ratio UI: {e}')
+            
+            logger.info("Scheduling UI update on main thread")
+            app.root.after(0, update_ui)
 
         except Exception as e:
-            app.root.after(0, lambda: app.status_var.set(f'Error loading ratio view: {e}'))
+            error_msg = f'Error loading ratio view: {e}'
+            app.root.after(0, lambda: app.status_var.set(error_msg))
+            logger.error(f'Error loading ratio view: {e}')
 
 
     def load_manual(self, tag_filter=None):
@@ -3411,12 +4154,22 @@ class GalleryTab:
                     msg = f"No manual images tagged '{tag_filter}'."
                 else:
                     msg = "No manual images yet. Add images to the Manual folder to see them here."
+                app.gallery_manual_inner.columnconfigure(0, weight=1)
+                app.gallery_manual_inner.rowconfigure(0, weight=1)
                 tk.Label(
                     app.gallery_manual_inner,
                     text=msg,
-                    bg=pal["panel"], fg=pal["text"], font=app.small_font,
-                    pady=30,
-                ).grid(row=0, column=0, sticky="ew")
+                    bg=pal["bg"], fg=pal["text"], font=app.small_font,
+                    pady=10,
+                ).grid(row=0, column=0, sticky="nsew")
+                # Fill canvas with themed background
+                try:
+                    cw = app.gallery_manual_canvas.winfo_width()
+                    ch = app.gallery_manual_canvas.winfo_height()
+                    if cw > 1 and ch > 1:
+                        app.gallery_manual_canvas.itemconfig("manual_inner_frame", width=cw, height=ch)
+                except Exception:
+                    pass
 
             app.gallery_manual_canvas.configure(
                 scrollregion=app.gallery_manual_canvas.bbox("all") or (0, 0, 1, 1)
@@ -3598,12 +4351,22 @@ class GalleryTab:
                     msg = f"No styled images tagged '{tag_filter}'."
                 else:
                     msg = "No styled images yet. Apply a style filter to any image to create one."
+                app.gallery_styled_inner.columnconfigure(0, weight=1)
+                app.gallery_styled_inner.rowconfigure(0, weight=1)
                 tk.Label(
                     app.gallery_styled_inner,
                     text=msg,
-                    bg=pal["panel"], fg=pal["text"], font=app.small_font,
-                    pady=30,
-                ).grid(row=0, column=0, sticky="ew")
+                    bg=pal["bg"], fg=pal["text"], font=app.small_font,
+                    pady=10,
+                ).grid(row=0, column=0, sticky="nsew")
+                # Fill canvas with themed background
+                try:
+                    cw = app.gallery_styled_canvas.winfo_width()
+                    ch = app.gallery_styled_canvas.winfo_height()
+                    if cw > 1 and ch > 1:
+                        app.gallery_styled_canvas.itemconfig("styled_inner_frame", width=cw, height=ch)
+                except Exception:
+                    pass
 
             app.gallery_styled_canvas.configure(
                 scrollregion=app.gallery_styled_canvas.bbox("all") or (0, 0, 1, 1)
@@ -3618,6 +4381,10 @@ class GalleryTab:
     def on_card_click(self, event, path, index):
         """Handle card click - delegate to _on_thumbnail_click with Ctrl check."""
         app = self.app
+        # Check if the click was on a heart button
+        if event.widget and isinstance(event.widget, tk.Button):
+            # Let the heart button handler deal with it
+            return
         ctrl_pressed = (event.state & 0x4) != 0  # Check if Ctrl key is pressed
         app._on_thumbnail_click(path, ctrl_pressed)
 
@@ -3730,16 +4497,14 @@ class GalleryTab:
         # Create style dialog
 
         style_dialog = tk.Toplevel(app.root)
-
         style_dialog.title("Apply Artistic Style")
-
-        style_dialog.geometry("560x780")
-
-        style_dialog.minsize(520, 640)
-
+        style_dialog.geometry("560x960")
+        style_dialog.minsize(520, 820)
         style_dialog.transient(app.root)
-
         style_dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, style_dialog)
 
         
 
@@ -3761,29 +4526,55 @@ class GalleryTab:
 
             ("original", "Original (no filter)"),
 
-            ("oil_painting", "Oil Painting (thick brushstrokes)"),
+            ("oil_painting", "Oil Painting (thick brushstrokes, blended colors)"),
 
-            ("watercolor", "Watercolor (soft edges)"),
+            ("watercolor", "Watercolor (soft edges, color blooms)"),
 
-            ("sketch", "Sketch (line art)"),
+            ("sketch", "Sketch (line art, pen-like strokes)"),
 
-            ("line_art", "Line Art (high contrast)"),
+            ("line_art", "Line Art (high contrast, minimal color)"),
 
-            ("comic_book", "Comic Book (bold lines)"),
+            ("comic_book", "Comic Book (bold lines, limited palette)"),
 
-            ("manga", "Manga (clean lines)"),
+            ("manga", "Manga (clean lines, high contrast)"),
 
-            ("sepia", "Sepia (warm brown tones)"),
+            ("sepia", "Sepia (warm brown tones, vintage)"),
 
-            ("bw", "B&W (grayscale)"),
+            ("bw", "B&W (grayscale, no color)"),
 
-            ("vintage", "Vintage (aged look)"),
+            ("vintage", "Vintage (aged, faded look)"),
 
-            ("posterize", "Posterize (reduced colors)"),
+            ("posterize", "Posterize (reduced color palette)"),
 
-            ("emboss", "Emboss (3D relief)"),
+            ("emboss", "Emboss (3D relief effect)"),
 
-            ("edge_enhance", "Edge Enhance (sharpened)"),
+            ("edge_enhance", "Edge Enhance (sharpened edges)"),
+
+            ("cyberpunk_neon", "Cyberpunk Neon (neon glow, dark shadows)"),
+
+            ("vaporwave", "Vaporwave (retro synth, purple/pink palette)"),
+
+            ("pixel_art", "Pixel Art (retro 8-bit style)"),
+
+            ("sketch_pencil", "Sketch Pencil (charcoal-like texture)"),
+
+            ("gouache", "Gouache (opaque watercolor, matte finish)"),
+
+            ("art_deco", "Art Deco (geometric patterns, gold accents)"),
+
+            ("surreal_dali", "Surreal Dali (dreamlike, melting forms)"),
+
+            ("3d_render", "3D Render (digital 3D style, glossy)"),
+
+            ("anime_key", "Anime Key (cel shading, vibrant colors)"),
+
+            ("noir_bw", "Noir B&W (high contrast, dramatic shadows)"),
+
+            ("vintage_sepia", "Vintage Sepia (aged photo, warm tones)"),
+
+            ("pop_art", "Pop Art (bold colors, comic style)"),
+
+            ("impressionist", "Impressionist (soft brushstrokes, light effects)"),
 
         ]
 
@@ -3957,6 +4748,224 @@ class GalleryTab:
             app._gallery_placeholders.pop(idx, None)
 
 
+    def _is_image_favorited(self, img_path):
+        """Check if an image is already in favorites.
+
+        Matches against the favorites log by either:
+          1. Exact resolved-path match on copied_image_path OR original_image_path, OR
+          2. Basename match against any image file currently present in the
+             favorites folder (handles entries missing original_image_path,
+             e.g. favorites created by older app versions or migrated from the
+             legacy top-level favorites/ folder).
+        """
+        app = self.app
+        try:
+            existing = load_json_list(app.FAVORITES_LOG)
+            original_resolved = Path(img_path).resolve()
+            # 1. Exact resolved-path match against JSON entries
+            for item in existing:
+                cp = item.get('copied_image_path')
+                op = item.get('original_image_path')
+                if cp and Path(cp).exists() and Path(cp).resolve() == original_resolved:
+                    return True
+                if op and Path(op).exists() and Path(op).resolve() == original_resolved:
+                    return True
+            # 2. Basename fallback: look for a file with the same name in the
+            #    favorites folder. This catches favorites whose JSON entry is
+            #    missing original_image_path (old/migrated favorites).
+            try:
+                target_name = Path(img_path).name.lower()
+                if target_name and app.FAVORITES_DIR.exists():
+                    for f in app.FAVORITES_DIR.iterdir():
+                        if not f.is_file():
+                            continue
+                        if f.suffix.lower() not in app.IMAGE_EXTS:
+                            continue
+                        if f.name.lower() == target_name:
+                            return True
+            except Exception:
+                pass
+            return False
+        except Exception:
+            return False
+
+    def _backfill_original_image_paths(self):
+        """One-shot repair pass: for each favorites.json entry that is missing
+        original_image_path, try to find a source image (in generated/manual/
+        styled folders) with the same basename and backfill it.
+
+        Idempotent — only writes when at least one entry is repaired. Safe to
+        call at startup or whenever the favorites view is loaded.
+        """
+        app = self.app
+        try:
+            existing = load_json_list(app.FAVORITES_LOG)
+            if not existing:
+                return 0
+            search_dirs = []
+            from set_wallpaper import MANUAL_DIR, GENERATED_DIR
+            search_dirs.append(MANUAL_DIR)
+            search_dirs.append(GENERATED_DIR)
+            if hasattr(app, 'STYLED_DIR'):
+                search_dirs.append(app.STYLED_DIR)
+            # Build a basename -> resolved path index for fast lookup
+            index = {}
+            for d in search_dirs:
+                try:
+                    if not d.exists():
+                        continue
+                    for f in d.iterdir():
+                        if not f.is_file():
+                            continue
+                        if f.suffix.lower() not in app.IMAGE_EXTS:
+                            continue
+                        index.setdefault(f.name.lower(), f.resolve())
+                except Exception:
+                    continue
+            changed = 0
+            for item in existing:
+                op = item.get('original_image_path')
+                if op and Path(op).exists():
+                    continue
+                # Pick the basename from whichever path field is available
+                guess_name = None
+                for key in ('image_path', 'copied_image_path', 'original_image_path'):
+                    v = item.get(key)
+                    if v:
+                        guess_name = Path(v).name
+                        break
+                if not guess_name:
+                    continue
+                match = index.get(guess_name.lower())
+                if match:
+                    item['original_image_path'] = str(match)
+                    changed += 1
+            if changed:
+                save_json_list(app.FAVORITES_LOG, existing)
+                logger.info(f"Backfilled original_image_path on {changed} favorites entries")
+            return changed
+        except Exception as e:
+            logger.warning(f"_backfill_original_image_paths failed: {e}")
+            return 0
+
+    def _purge_stale_favorites_log(self):
+        """Remove FAVORITES_LOG entries whose copied_image_path no longer exists on disk.
+
+        This keeps the JSON in sync when the user manually deletes image files
+        from the favorites folder outside the app.
+        """
+        app = self.app
+        try:
+            existing = load_json_list(app.FAVORITES_LOG)
+            if not existing:
+                return
+            before = len(existing)
+            cleaned = []
+            for item in existing:
+                cp = item.get('copied_image_path') or item.get('image_path')
+                if cp and Path(cp).exists():
+                    cleaned.append(item)
+            if len(cleaned) < before:
+                save_json_list(app.FAVORITES_LOG, cleaned)
+                logger.info(f"Purged {before - len(cleaned)} stale entries from favorites.json")
+        except Exception as e:
+            logger.warning(f"_purge_stale_favorites_log failed: {e}")
+
+    def _toggle_image_favorite(self, img_path):
+        """Toggle an image's favorite status (add or remove)."""
+        app = self.app
+        try:
+            existing = load_json_list(app.FAVORITES_LOG)
+            original_resolved = Path(img_path).resolve()
+            
+            # Check if already favorited (check both copied and original paths)
+            # Skip entries where the file no longer exists on disk
+            favorited_index = None
+            for i, item in enumerate(existing):
+                cp = item.get('copied_image_path')
+                op = item.get('original_image_path')
+                if cp and Path(cp).exists() and Path(cp).resolve() == original_resolved:
+                    favorited_index = i
+                    break
+                if op and Path(op).exists() and Path(op).resolve() == original_resolved:
+                    favorited_index = i
+                    break
+            
+            if favorited_index is not None:
+                # Remove from favorites
+                entry = existing.pop(favorited_index)
+                save_json_list(app.FAVORITES_LOG, existing)
+                
+                # Optionally delete the copied file
+                try:
+                    copied_path = entry.get('copied_image_path')
+                    if copied_path and Path(copied_path).exists():
+                        # Only delete if it's in the favorites folder
+                        if app.FAVORITES_DIR in Path(copied_path).parents:
+                            Path(copied_path).unlink()
+                except Exception:
+                    pass  # Ignore deletion errors
+                
+                app.load_favorites()
+                app.status_var.set(f'💔 Removed from favorites: {Path(img_path).name}')
+                return False
+            else:
+                # Add to favorites
+                path_str = str(img_path)
+                final_image_path = None
+                needs_copy = True
+                
+                # Check if the selected image is already inside wallpapers/favorites/
+                if app.FAVORITES_DIR in Path(img_path).parents:
+                    final_image_path = Path(img_path)
+                    needs_copy = False
+                else:
+                    # Need to copy to favorites folder
+                    dest_filename = Path(img_path).name
+                    dest_path = app.FAVORITES_DIR / dest_filename
+                    
+                    # Handle filename collisions
+                    counter = 2
+                    while dest_path.exists():
+                        if dest_path.resolve() == original_resolved:
+                            final_image_path = dest_path
+                            needs_copy = False
+                            break
+                        
+                        stem = Path(img_path).stem
+                        suffix = Path(img_path).suffix
+                        dest_filename = f"{stem}_fav{counter}{suffix}"
+                        dest_path = app.FAVORITES_DIR / dest_filename
+                        counter += 1
+                    
+                    if needs_copy:
+                        final_image_path = dest_path
+                        try:
+                            import shutil
+                            shutil.copy2(img_path, dest_path)
+                        except Exception as e:
+                            app._dialog.error('Error', f'Failed to copy image to favorites folder:\n{e}')
+                            return False
+                
+                # Create metadata entry
+                entry = {
+                    'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    'original_image_path': path_str,
+                    'image_path': str(final_image_path),
+                    'copied_image_path': str(final_image_path) if needs_copy else None,
+                    'theme_sentence': f'Gallery favorite: {Path(img_path).name}'
+                }
+                
+                existing.append(entry)
+                save_json_list(app.FAVORITES_LOG, existing)
+                app.load_favorites()
+                app.status_var.set(f'❤️ Added to favorites: {Path(img_path).name}')
+                return True
+                
+        except Exception as e:
+            app.status_var.set(f'Error toggling favorite: {e}')
+            return False
+
     def save_gallery_to_favorites(self):
 
         """Add selected to favorites by copying to wallpapers/favorites/ folder."""
@@ -3973,12 +4982,37 @@ class GalleryTab:
         path_str = str(app.selected_gallery_path)
         original_resolved = app.selected_gallery_path.resolve()
         
-        # Check if already favorited by comparing resolved paths
-        if any(item.get('copied_image_path') and Path(item.get('copied_image_path')).resolve() == original_resolved for item in existing):
+        # Check if already favorited by comparing resolved paths.
+        # NOTE: must check BOTH copied_image_path (favorites-folder path) AND
+        # original_image_path (source gallery path) against the gallery image,
+        # otherwise the duplicate check never matches and the user can add
+        # the same image over and over.
+        if any(
+            (item.get('copied_image_path') and Path(item.get('copied_image_path')).resolve() == original_resolved)
+            or (item.get('original_image_path') and Path(item.get('original_image_path')).resolve() == original_resolved)
+            for item in existing
+        ):
 
             app.status_var.set(f'Image already in favorites.')
 
             return
+
+        # Basename fallback: if a file with the same name already exists in
+        # the favorites folder, treat it as already favorited. This catches
+        # favorites created by older app versions or migrated from the
+        # legacy top-level favorites/ folder that don't have a matching
+        # original_image_path.
+        try:
+            target_name = app.selected_gallery_path.name.lower()
+            if target_name and app.FAVORITES_DIR.exists():
+                for f in app.FAVORITES_DIR.iterdir():
+                    if (f.is_file()
+                            and f.suffix.lower() in app.IMAGE_EXTS
+                            and f.name.lower() == target_name):
+                        app.status_var.set(f'Image already in favorites.')
+                        return
+        except Exception:
+            pass
 
         # Determine the final image path for the favorite
         final_image_path = None
@@ -4201,12 +5235,9 @@ class GalleryTab:
         dialog.geometry("500x400")
         dialog.transient(app.root)
         dialog.grab_set()
-        
-        # Center the dialog
-        dialog.update_idletasks()
-        x = app.root.winfo_x() + (app.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
-        y = app.root.winfo_y() + (app.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
-        dialog.geometry(f"+{x}+{y}")
+
+        from utils import center_window
+        center_window(app.root, dialog)
         
         # Get existing tags
         existing_tags = get_all_tags()

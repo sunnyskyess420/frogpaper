@@ -292,6 +292,9 @@ class SessionManager:
         dialog.transient(app.root)
         dialog.grab_set()
 
+        from utils import center_window
+        center_window(app.root, dialog)
+
         ttk.Label(dialog, text="Select a session to restore:").pack(anchor="w", padx=14, pady=(14, 4))
 
         list_frame = ttk.Frame(dialog)
@@ -400,6 +403,9 @@ class SessionManager:
         dialog.resizable(False, False)
         dialog.transient(app.root)
         dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, dialog)
 
         ttk.Label(dialog, text="Session name:").pack(anchor="w", padx=14, pady=(14, 0))
         _subj = (app.get_active_subject() or "").strip().title() or "Session"

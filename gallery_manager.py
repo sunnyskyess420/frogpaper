@@ -288,6 +288,60 @@ def remove_tag_from_image(image_path: str | Path, tag: str) -> None:
             _save_tags_json(data)
 
 
+def cleanup_orphaned_tags() -> int:
+    """Remove tag rows that reference images no longer on disk.
+
+    Also removes tags that have zero remaining image associations.
+    Returns the number of tag rows cleaned up.
+    """
+    db = _get_db()
+    if db is not None:
+        session = db.get_db_session()
+        try:
+            from database import ImageTag
+
+            # Find all distinct image_paths referenced in the tag table
+            rows = session.query(ImageTag.image_path).distinct().all()
+            removed = 0
+            for (path_str,) in rows:
+                if not Path(path_str).exists():
+                    # Image no longer on disk — delete all its tag rows
+                    count = session.query(ImageTag).filter(
+                        ImageTag.image_path == path_str
+                    ).delete()
+                    removed += count
+
+            # Also remove any tags that now have zero images (double-pass safety)
+            from sqlalchemy import func
+            remaining_tags = session.query(ImageTag.tag).distinct().all()
+            for (tag,) in remaining_tags:
+                cnt = session.query(func.count(ImageTag.id)).filter(
+                    ImageTag.tag == tag
+                ).scalar()
+                if cnt == 0:
+                    session.query(ImageTag).filter(ImageTag.tag == tag).delete()
+
+            session.commit()
+            return removed
+        except Exception:
+            session.rollback()
+            raise
+        finally:
+            session.close()
+    else:
+        with _tags_lock:
+            data = _load_tags_json()
+            paths_to_remove = [
+                p for p in data["tags"] if not Path(p).exists()
+            ]
+            removed = sum(1 for p in paths_to_remove)
+            for p in paths_to_remove:
+                del data["tags"][p]
+            if paths_to_remove:
+                _save_tags_json(data)
+            return removed
+
+
 def get_all_tags() -> list[str]:
     """Get all unique tags across the gallery."""
     db = _get_db()
@@ -461,7 +515,11 @@ def get_folder_structure() -> dict:
 
 
 def delete_image_and_tags(image_path: str | Path) -> None:
-    """Delete an image and its tags from DB."""
+    """Delete an image and its tags from DB.
+
+    Also removes any tags that no longer have any associated images
+    (orphaned tags) so the tag dropdown always reflects the current state.
+    """
     image_path = Path(image_path)
     if image_path.exists():
         image_path.unlink()
@@ -473,8 +531,24 @@ def delete_image_and_tags(image_path: str | Path) -> None:
         try:
             from database import ImageTag, PromptParam
 
+            # Collect tags that this image had before deleting them
+            image_tags = [
+                row.tag for row in
+                session.query(ImageTag.tag).filter(ImageTag.image_path == image_path_str).all()
+            ]
+
             session.query(ImageTag).filter(ImageTag.image_path == image_path_str).delete()
             session.query(PromptParam).filter(PromptParam.image_path == image_path_str).delete()
+
+            # Remove orphaned tags (tags with zero remaining images)
+            from sqlalchemy import func
+            for tag in image_tags:
+                remaining = session.query(func.count(ImageTag.id)).filter(
+                    ImageTag.tag == tag
+                ).scalar()
+                if remaining == 0:
+                    session.query(ImageTag).filter(ImageTag.tag == tag).delete()
+
             session.commit()
         except Exception:
             session.rollback()
@@ -485,6 +559,15 @@ def delete_image_and_tags(image_path: str | Path) -> None:
         with _tags_lock:
             data = _load_tags_json()
             data["tags"].pop(image_path_str, None)
+            # Remove orphaned tags from JSON fallback too
+            if data["tags"]:
+                all_remaining_tags = set()
+                for entry in data["tags"].values():
+                    all_remaining_tags.update(entry.get("tags", []))
+            else:
+                all_remaining_tags = set()
+            # No further action needed for JSON — tags are per-image,
+            # so removing the image entry already removes its tag entries.
             _save_tags_json(data)
 
 

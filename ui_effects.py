@@ -677,6 +677,8 @@ class RoundedButton:
         self.fill_color = fill_color
         self.text_color = text_color
         self._text = text
+        self.width = width
+        self.height = height
         self.radius = radius
         self.font = font
         self.command = command

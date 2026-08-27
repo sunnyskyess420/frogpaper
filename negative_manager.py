@@ -1,17 +1,18 @@
 """
 negative_manager.py
 -------------------
-Manage negative prompts: presets, style defaults, smart negatives.
+Manage negative prompts: presets, style defaults, smart negatives, custom terms.
 """
 
 import json
 import re
 from pathlib import Path
 
-from utils import get_app_dir
+from utils import get_app_dir, atomic_write_json
 
 BASE_DIR = get_app_dir()
 PRESETS_FILE = BASE_DIR / "negative_presets.json"
+CUSTOM_NEGATIVES_FILE = BASE_DIR / "custom_negatives.json"
 
 
 def load_negative_presets() -> dict:
@@ -123,3 +124,85 @@ def get_preset_description(preset_key: str) -> str:
     data = load_negative_presets()
     preset = data.get("presets", {}).get(preset_key, {})
     return preset.get("description", "")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  CUSTOM NEGATIVE TERMS (user-curated, persistent)
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Module-level cache so we don't re-read the file on every checkbox toggle
+_custom_cache = None
+
+
+def load_custom_negatives() -> list[dict]:
+    """Load custom negative terms from disk.
+
+    Returns a list of dicts: [{"term": "bad hands", "enabled": True}, ...]
+    """
+    global _custom_cache
+    if _custom_cache is not None:
+        return _custom_cache
+    if not CUSTOM_NEGATIVES_FILE.exists():
+        _custom_cache = []
+        return _custom_cache
+    try:
+        with open(CUSTOM_NEGATIVES_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        _custom_cache = data.get("custom_terms", [])
+        return _custom_cache
+    except Exception:
+        _custom_cache = []
+        return _custom_cache
+
+
+def _invalidate_custom_cache():
+    """Force reload from disk on next access."""
+    global _custom_cache
+    _custom_cache = None
+
+
+def save_custom_negatives(terms: list[dict]) -> None:
+    """Save custom negative terms to disk.
+
+    Args:
+        terms: list of {"term": str, "enabled": bool}
+    """
+    global _custom_cache
+    data = {"custom_terms": terms}
+    atomic_write_json(CUSTOM_NEGATIVES_FILE, data)
+    _custom_cache = terms
+
+
+def add_custom_negative(term: str) -> None:
+    """Add a new custom negative term (enabled by default).
+
+    Deduplicates against existing terms (case-insensitive).
+    """
+    terms = load_custom_negatives()
+    # Check for duplicate (case-insensitive)
+    existing_lower = {t["term"].lower() for t in terms}
+    if term.strip().lower() not in existing_lower:
+        terms.append({"term": term.strip(), "enabled": True})
+        save_custom_negatives(terms)
+
+
+def remove_custom_negative(term: str) -> None:
+    """Remove a custom negative term by its text."""
+    terms = load_custom_negatives()
+    terms = [t for t in terms if t["term"].lower() != term.strip().lower()]
+    save_custom_negatives(terms)
+
+
+def set_custom_negative_enabled(term: str, enabled: bool) -> None:
+    """Toggle a custom negative term's enabled state."""
+    terms = load_custom_negatives()
+    for t in terms:
+        if t["term"].lower() == term.strip().lower():
+            t["enabled"] = enabled
+            break
+    save_custom_negatives(terms)
+
+
+def get_enabled_custom_negatives() -> list[str]:
+    """Return just the enabled custom negative term strings."""
+    return [t["term"] for t in load_custom_negatives() if t.get("enabled")]

@@ -758,6 +758,9 @@ class PromptTab:
         win.grab_set()
         app._recipe_win = win
 
+        from utils import center_window
+        center_window(app.root, win)
+
         container = ttk.Frame(win, padding=10)
         container.pack(fill="both", expand=True)
 
@@ -773,7 +776,7 @@ class PromptTab:
 
 
     def _open_settings_window(self):
-        """Open Settings in a modal Toplevel window, building content fresh."""
+        """Open Settings in a non-modal Toplevel window, building content fresh."""
         app = self.app
         if hasattr(app, "_settings_win") and app._settings_win and app._settings_win.winfo_exists():
             app._settings_win.lift()
@@ -782,10 +785,12 @@ class PromptTab:
 
         win = tk.Toplevel(app.root)
         win.title("FrogPaper — Settings")
-        win.geometry("700x600")
+        win.geometry("980x700")
         win.transient(app.root)
-        win.grab_set()
         app._settings_win = win
+
+        from utils import center_window
+        center_window(app.root, win)
 
         # Build settings content directly inside this window
         container = ttk.Frame(win)
@@ -793,7 +798,6 @@ class PromptTab:
         app._build_settings_tab(container)
 
         def _on_close():
-            win.grab_release()
             win.destroy()
             app._settings_win = None
 
@@ -811,6 +815,9 @@ class PromptTab:
         dialog.resizable(True, True)
         dialog.transient(app.root)
         dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, dialog)
 
         ttk.Label(dialog, text="Name:").pack(anchor="w", padx=14, pady=(12, 0))
         name_var = tk.StringVar(value=source.name)
@@ -1110,22 +1117,28 @@ class PromptTab:
         app = self.app
         # Update sidebar widget if it exists
         sidebar_widget = getattr(app, name, None)
-        if sidebar_widget and hasattr(sidebar_widget, "delete") and hasattr(sidebar_widget, "insert"):
+        if sidebar_widget is not None:
             try:
-                sidebar_widget.delete(0, tk.END)
-                sidebar_widget.insert(0, value)
+                if isinstance(sidebar_widget, ttk.Combobox):
+                    # For ttk.Combobox (readonly), use .set() instead of delete/insert
+                    sidebar_widget.set(value)
+                elif hasattr(sidebar_widget, "delete") and hasattr(sidebar_widget, "insert"):
+                    sidebar_widget.delete(0, tk.END)
+                    sidebar_widget.insert(0, value)
             except Exception:
                 pass
         # Update PB Quick Build widget if it exists
         refs = app._get_pb_quick_refs()
         if refs and name in refs:
             widget = refs[name]
-            if hasattr(widget, "delete") and hasattr(widget, "insert"):
-                try:
+            try:
+                if isinstance(widget, ttk.Combobox):
+                    widget.set(value)
+                elif hasattr(widget, "delete") and hasattr(widget, "insert"):
                     widget.delete(0, tk.END)
                     widget.insert(0, value)
-                except Exception:
-                    pass
+            except Exception:
+                pass
 
 
     def _set_active_var(self, name, value):
@@ -1279,7 +1292,7 @@ class PromptTab:
 
         # ── Scrollable canvas wrapper ─────────────────────────────────────────
         canvas = tk.Canvas(parent, highlightthickness=0)
-        scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview)
+        scroll = ttk.Scrollbar(parent, orient="vertical", command=canvas.yview, style="Vertical.TScrollbar")
         inner = ttk.Frame(canvas, style="Inner.TFrame")
         inner.bind("<Configure>", lambda e: canvas.configure(scrollregion=canvas.bbox("all")))
         _pb_win = canvas.create_window((0, 0), window=inner, anchor="nw")
@@ -1290,6 +1303,15 @@ class PromptTab:
 
         inner.columnconfigure(0, weight=1)
         app.prompt_builder_canvas = canvas
+
+        # Mouse-wheel scrolling — register with the app's hover-based router
+        def _on_enter(event):
+            app._hover_canvas = canvas
+        def _on_leave(event):
+            if app._hover_canvas is canvas:
+                app._hover_canvas = None
+        canvas.bind('<Enter>', _on_enter)
+        canvas.bind('<Leave>', _on_leave)
 
         # ── Quick Build Prompts ──────────────────────────────────────────────────────
         qb_frame = ttk.LabelFrame(inner, text="Quick Build Prompts", padding=(10, 6))
@@ -1452,6 +1474,9 @@ class PromptTab:
         dialog.resizable(False, False)
         dialog.transient(app.root)
         dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, dialog)
 
         ttk.Label(dialog, text="Select a prompt to delete:", font=("TkDefaultFont", 10, "bold")).pack(pady=(12, 8), padx=12, anchor="w")
 
@@ -1807,8 +1832,12 @@ class PromptTab:
 
 
     def get_active_mood(self):
-        # Prompt Builder uses "atmosphere" instead of "mood"
         app = self.app
+        # Check prompt_builder_values first (populated from sidebar widgets during generate)
+        mood = app.prompt_builder_values.get("mood", "")
+        if mood:
+            return mood
+        # Fall back to reading the widget directly
         mood = app._get_active_text("mood_entry", "")
         logger.debug(f"get_active_mood returning: '{mood}'")
         return mood
@@ -1978,6 +2007,9 @@ class PromptTab:
         dialog.resizable(True, True)
         dialog.transient(app.root)
         dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, dialog)
 
         header = ttk.Label(
             dialog,
@@ -2181,6 +2213,9 @@ class PromptTab:
         dialog.transient(app.root)
         dialog.grab_set()
 
+        from utils import center_window
+        center_window(app.root, dialog)
+
         header = ttk.Label(
             dialog,
             text="Save the current Prompt Builder Quick Build configuration as a Quick Prompt.",
@@ -2236,6 +2271,9 @@ class PromptTab:
         dialog.resizable(False, False)
         dialog.transient(app.root)
         dialog.grab_set()
+
+        from utils import center_window
+        center_window(app.root, dialog)
 
         header = ttk.Label(
             dialog,

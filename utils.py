@@ -51,7 +51,6 @@ BASE_DIR = get_app_dir()
 CONFIG_FILE = BASE_DIR / "config.json"
 
 _BUNDLED_DATA_FILES = [
-    "config.example.json",
     "keywords.json",
     "negative_presets.json",
     "presets.json",
@@ -59,6 +58,13 @@ _BUNDLED_DATA_FILES = [
     "templates.json",
     "prompt_library.json",
 ]
+
+# Bundled template that is shipped inside the EXE. On first launch it is copied
+# to `config.json` beside the EXE if no config exists yet. We never bundle
+# `config.json` itself, because the developer's local copy may contain real
+# HuggingFace / Google / Dropbox / OneDrive credentials that must NOT be
+# baked into the binary.
+_BUNDLED_CONFIG_TEMPLATE = "config.template.json"
 
 
 def seed_bundled_files() -> None:
@@ -76,16 +82,18 @@ def seed_bundled_files() -> None:
                 shutil.copy2(src, dst)
             except Exception as e:
                 logger.warning("Could not copy bundled file %s: %s", name, e)
-    
-    # Special handling: copy config.example.json to config.json if config.json doesn't exist
-    config_example = bundle / "config.example.json"
-    config_target = app / "config.json"
-    if config_example.exists() and not config_target.exists():
+
+    # Seed a clean config.json from the bundled template if the user doesn't
+    # already have one. This keeps the EXE self-bootstrapping on first run
+    # without ever bundling the developer's real secrets.
+    template_src = bundle / _BUNDLED_CONFIG_TEMPLATE
+    config_dst = app / "config.json"
+    if template_src.exists() and not config_dst.exists():
         try:
-            shutil.copy2(config_example, config_target)
-            logger.info("Created config.json from config.example.json")
+            shutil.copy2(template_src, config_dst)
+            logger.info("Seeded fresh config.json from bundled template")
         except Exception as e:
-            logger.warning("Could not create config.json from example: %s", e)
+            logger.warning("Could not seed config.json from template: %s", e)
 
 
 def load_json_list(path: Path) -> list:
@@ -156,45 +164,33 @@ def get_huggingface_token() -> str:
     token = os.environ.get("HUGGINGFACE_TOKEN", "").strip()
     if token:
         return token
-    # Priority 2: OS credential manager via keyring (no plaintext fallback)
+    # Priority 2: OS credential manager via keyring
     try:
         import keyring
         token = (keyring.get_password("FrogPaper", "huggingface_token") or "").strip()
         if token:
             return token
     except ImportError:
-        logger.warning("keyring not installed - cannot retrieve token securely")
-    except Exception as e:
-        logger.warning(f"keyring error: {e}")
-    return ""
+        pass  # keyring not installed — fall through to config
+    except Exception:
+        pass  # keyring backend error — fall through to config
+    # Priority 3: config.json (plaintext fallback)
+    try:
+        config = load_config()
+        token = (config.get("huggingface_token") or "").strip()
+        return token
+    except Exception:
+        return ""
 
 
 def has_huggingface_token() -> bool:
     return bool(get_huggingface_token())
 
 
-def save_huggingface_token(token: str) -> None:
-    """Save Hugging Face token to OS credential manager.
-    
-    Args:
-        token: Hugging Face token string to store
-    """
-    try:
-        import keyring
-        keyring.set_password("FrogPaper", "huggingface_token", token)
-        logger.info("Hugging Face token saved to keyring")
-    except ImportError:
-        logger.error("keyring not installed - cannot save token securely")
-        raise RuntimeError("keyring library is required for secure credential storage")
-    except Exception as e:
-        logger.error(f"keyring failed: {e}")
-        raise
-
-
 def get_oauth_token(provider: str) -> str:
     """Get OAuth token for a cloud provider.
     
-    Only uses OS credential manager via keyring for security.
+    Priority: keyring (OS credential manager) → config.json (plaintext fallback)
     
     Args:
         provider: Provider name (e.g., "google_drive", "onedrive", "dropbox")
@@ -202,17 +198,25 @@ def get_oauth_token(provider: str) -> str:
     Returns:
         OAuth token string, or empty string if not found.
     """
-    # Only use OS credential manager via keyring (no plaintext fallback)
+    # Priority 1: OS credential manager via keyring
     try:
         import keyring
         token = (keyring.get_password("FrogPaper", f"oauth_{provider}") or "").strip()
         if token:
             return token
     except ImportError:
-        logger.warning("keyring not installed - cannot retrieve OAuth token securely")
-    except Exception as e:
-        logger.warning(f"keyring error for {provider}: {e}")
-    return ""
+        pass  # keyring not installed — fall through to config
+    except Exception:
+        pass  # keyring backend error — fall through to config
+    
+    # Priority 2: config.json (plaintext fallback - for migration/debugging only)
+    try:
+        config = load_config()
+        oauth_tokens = config.get("oauth_tokens", {})
+        token = (oauth_tokens.get(provider) or "").strip()
+        return token
+    except Exception:
+        return ""
 
 
 def save_oauth_token(provider: str, token: str) -> None:
@@ -227,11 +231,21 @@ def save_oauth_token(provider: str, token: str) -> None:
         keyring.set_password("FrogPaper", f"oauth_{provider}", token)
         logger.info(f"OAuth token saved to keyring for {provider}")
     except ImportError:
-        logger.error("keyring not installed - cannot save OAuth token securely")
-        raise RuntimeError("keyring library is required for secure credential storage")
+        logger.warning("keyring not installed, falling back to config.json")
+        # Fallback to config.json (less secure)
+        config = load_config()
+        if "oauth_tokens" not in config:
+            config["oauth_tokens"] = {}
+        config["oauth_tokens"][provider] = token
+        save_config(config)
     except Exception as e:
-        logger.error(f"keyring failed for {provider}: {e}")
-        raise
+        logger.warning(f"keyring failed ({e}), falling back to config.json")
+        # Fallback to config.json (less secure)
+        config = load_config()
+        if "oauth_tokens" not in config:
+            config["oauth_tokens"] = {}
+        config["oauth_tokens"][provider] = token
+        save_config(config)
 
 
 def delete_oauth_token(provider: str) -> None:

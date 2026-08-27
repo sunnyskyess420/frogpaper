@@ -4,8 +4,9 @@ prompt_builder.py
 Builds structured, high-quality prompts for AI image generation.
 
 Design principles:
-  - Fixed section order: subject → scene → lighting → mood → palette → composition → style → quality → negatives
-  - Subject lock: subject named at start AND repeated in the composition anchor
+  - Fixed section order: mood+subject → scene → lighting → palette → composition → style → quality → negatives
+  - Mood+subject lock: mood directly modifies the subject at the very start (e.g. "Ominous Cat"),
+    subject repeated in the composition anchor
   - Detail budget: max 3–5 scene details to avoid token dilution
   - Per-mode quality phrasing: stylized / realistic / product-photo / surreal differ intentionally
   - Per-mode negative suffix baked in at build time for tighter model compliance
@@ -35,13 +36,15 @@ def clean_text(value: str) -> str:
     return value
 
 
-def _subject_anchor(subject: str) -> str:
+def _subject_anchor(subject: str, mood: str = "") -> str:
     """
     Subject lock — opening clause.
+    Mood directly modifies the subject: e.g. "Ominous Cat".
     States the subject clearly, sets focal-point expectations,
     enforces visibility and framing constraints.
     """
     subject = clean_text(subject)
+    mood = clean_text(mood)
     if not subject:
         import random
         subject_positions = [
@@ -53,15 +56,23 @@ def _subject_anchor(subject: str) -> str:
         return random.choice(subject_positions)
     
     import random
-    cap = subject.capitalize()
+
+    # Build the mood+subject display phrase: "Ominous Cat" or just "Cat"
+    if mood:
+        # Use the first word of the mood (handles multi-word moods like "darkly ominous")
+        mood_word = mood.split()[0].capitalize()
+        display_subject = f"{mood_word} {subject}"
+    else:
+        display_subject = subject
+    cap = display_subject.capitalize()
     
     # Add variety to subject positioning while maintaining visibility
     subject_positions = [
-        f"Single main subject: {subject}. {cap} is fully visible, centered, and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
-        f"Single main subject: {subject}. {cap} is fully visible with dynamic positioning and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
-        f"Single main subject: {subject}. {cap} is fully visible with rule-of-thirds placement and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
-        f"Single main subject: {subject}. {cap} is fully visible with off-center composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}",
-        f"Single main subject: {subject}. {cap} is fully visible with asymmetric composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {subject}"
+        f"Single main subject: {display_subject}. {cap} is fully visible, centered, and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {display_subject}",
+        f"Single main subject: {display_subject}. {cap} is fully visible with dynamic positioning and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {display_subject}",
+        f"Single main subject: {display_subject}. {cap} is fully visible with rule-of-thirds placement and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {display_subject}",
+        f"Single main subject: {display_subject}. {cap} is fully visible with off-center composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {display_subject}",
+        f"Single main subject: {display_subject}. {cap} is fully visible with asymmetric composition and not cropped. {cap} is the dominant focal point with sharp detail. {cap} must be clearly recognizable and unmistakably identifiable as {subject}. Nothing obscures or competes with {display_subject}"
     ]
     
     return random.choice(subject_positions)
@@ -449,15 +460,14 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     Build a structured, high-quality prompt from a theme dict.
 
     Section order (fixed):
-      1. Subject lock (opening anchor)
+      1. Mood+Subject lock (opening anchor — mood directly modifies subject)
       2. Scene / environment (detail-budgeted, max 4 items)
       3. Lighting
-      4. Mood
-      5. Colour palette
-      6. Composition anchor (repeats subject — subject lock #2)
-      7. Style descriptor
-      8. Quality constraints (mode-specific)
-      9. Hard exclusions (no text, watermark, etc.)
+      4. Colour palette
+      5. Composition anchor (repeats subject — subject lock #2)
+      6. Style descriptor
+      7. Quality constraints (mode-specific)
+      8. Hard exclusions (no text, watermark, etc.)
 
     Args:
         theme: Theme dict with components
@@ -513,9 +523,10 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     is_humanoid = any(k in subject_lower for k in HUMANOID_KEYWORDS)
 
     # ------------------------------------------------------------------
-    # 1. Subject lock — opening anchor
+    # 1. Mood+Subject lock — opening anchor
+    #    Mood directly modifies the subject: "Ominous Cat" not "Cat"
     # ------------------------------------------------------------------
-    s1_subject = _subject_anchor(subject)
+    s1_subject = _subject_anchor(subject, mood)
 
     # ------------------------------------------------------------------
     # 2. Scene / environment — use the theme sentence which now includes
@@ -590,34 +601,27 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     s3_lighting = lighting if lighting else ""
 
     # ------------------------------------------------------------------
-    # 4. Mood — adjective chain only (no "atmosphere" suffix in the value);
-    #    we add the framing word here so it appears in the right section,
-    #    never as a prefix to the subject.
+    # 4. Colour palette (mood is now in the subject anchor above)
     # ------------------------------------------------------------------
-    s4_mood = f"{mood} mood" if mood else ""
+    s4_palette = palette if palette else ""
 
     # ------------------------------------------------------------------
-    # 5. Colour palette
+    # 5. Composition anchor — subject repeated for lock #2
     # ------------------------------------------------------------------
-    s5_palette = palette if palette else ""
+    s5_composition = _composition_anchor(subject, scenic_mode, composition)
 
     # ------------------------------------------------------------------
-    # 6. Composition anchor — subject repeated for lock #2
-    # ------------------------------------------------------------------
-    s6_composition = _composition_anchor(subject, scenic_mode, composition)
-
-    # ------------------------------------------------------------------
-    # 7. Style descriptor
+    # 6. Style descriptor
     #    art_style from theme prefixes the mode base (e.g. "cyberpunk" + base)
     # ------------------------------------------------------------------
     style_base = cfg["style_base"]
     full_style = f"{art_style}, {style_base}" if art_style else style_base
-    s7_style = f"Rendered as: {full_style}"
+    s6_style = f"Rendered as: {full_style}"
 
     # ------------------------------------------------------------------
-    # 8. Quality constraints — mode-specific, no generic catch-all
+    # 7. Quality constraints — mode-specific, no generic catch-all
     # ------------------------------------------------------------------
-    s8_quality = f"{cfg['quality_lead']}. {cfg['quality_close']}. Ultra-high detail, 8K resolution"
+    s7_quality = f"{cfg['quality_lead']}. {cfg['quality_close']}. Ultra-high detail, 8K resolution"
 
     # Humanoid anatomy safety block
     if is_humanoid:
@@ -632,32 +636,31 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
                 "Anatomy lock: two hands only, five fingers per hand, correct hand orientation, no reversed hands, "
                 "no extra hands or arms, no fused fingers; face clearly visible, not hidden by hood or mask"
             )
-        s8_quality = s8_quality + ". " + anatomy_block
+        s7_quality = s7_quality + ". " + anatomy_block
 
     # Creature anatomy safety block — subject-specific rules for non-humanoid creatures
     creature_pos, creature_neg = get_creature_anatomy(subject)
     if creature_pos and not is_humanoid:
-        s8_quality = s8_quality + ". " + creature_pos
+        s7_quality = s7_quality + ". " + creature_pos
 
     # ------------------------------------------------------------------
-    # 9. Hard exclusions (always present)
+    # 8. Hard exclusions (always present)
     # ------------------------------------------------------------------
-    s9_exclusions = ""
+    s8_exclusions = ""
 
     # ------------------------------------------------------------------
     # Assemble — skip empty sections, join with ". "
-    # The atmosphere is now properly included in the theme sentence from build_sentence()
+    # Mood is now baked into the subject anchor (section 1).
     # ------------------------------------------------------------------
     sections = [
         s1_subject,
         s2_scene,
         s3_lighting,
-        s4_mood,
-        s5_palette,
-        s6_composition,
-        s7_style,
-        s8_quality,
-        s9_exclusions,
+        s4_palette,
+        s5_composition,
+        s6_style,
+        s7_quality,
+        s8_exclusions,
     ]
     prompt_text = ". ".join(s for s in sections if s).strip()
     if not prompt_text.endswith("."):

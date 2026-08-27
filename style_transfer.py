@@ -11,6 +11,7 @@ from PIL import Image, ImageFilter, ImageEnhance, ImageOps
 from pathlib import Path
 from typing import Optional, Tuple
 import os
+import math
 import logging
 
 from utils import get_app_dir
@@ -649,6 +650,124 @@ class StyleTransfer:
         """Get human-readable style name."""
         return self.available_styles.get(style, style)
     
+    # Maps base font filenames to their bold/italic/bold-italic variants.
+    # Covers Windows, macOS, and common Linux font packages.
+    FONT_VARIANTS = {
+        # Arial family
+        "arial.ttf":             {"bold": "arialbd.ttf", "italic": "ariali.ttf", "bold_italic": "arialbi.ttf"},
+        "arialmt.ttf":           {"bold": "arialbd.ttf", "italic": "ariali.ttf", "bold_italic": "arialbi.ttf"},
+        # Calibri family
+        "calibri.ttf":           {"bold": "calibrib.ttf", "italic": "calibrii.ttf", "bold_italic": "calibriz.ttf"},
+        # Cambria family
+        "cambria.ttc":           {"bold": "cambriab.ttf", "italic": "cambriai.ttf", "bold_italic": "cambriaz.ttf"},
+        # Comic Sans
+        "comic.ttf":             {"bold": "comicbd.ttf", "italic": "comici.ttf", "bold_italic": "comicz.ttf"},
+        "comicsansms.ttf":       {"bold": "comicbd.ttf", "italic": "comici.ttf", "bold_italic": "comicz.ttf"},
+        # Consolas
+        "consola.ttf":           {"bold": "consolab.ttf", "italic": "consolai.ttf", "bold_italic": "consolaz.ttf"},
+        "consolas.ttf":          {"bold": "consolab.ttf", "italic": "consolai.ttf", "bold_italic": "consolaz.ttf"},
+        # Courier New
+        "cour.ttf":              {"bold": "courbd.ttf", "italic": "couri.ttf", "bold_italic": "courbi.ttf"},
+        "cournew.ttf":           {"bold": "courbd.ttf", "italic": "couri.ttf", "bold_italic": "courbi.ttf"},
+        "couri.ttf":             {"bold": "courbi.ttf"},
+        "courbd.ttf":            {"italic": "courbi.ttf"},
+        # Georgia
+        "georgia.ttf":           {"bold": "georgiab.ttf", "italic": "georgiai.ttf", "bold_italic": "georgiaz.ttf"},
+        # Impact (no variants)
+        # Times New Roman
+        "times.ttf":             {"bold": "timesbd.ttf", "italic": "timesi.ttf", "bold_italic": "timesbi.ttf"},
+        "timesnewroman.ttf":     {"bold": "timesbd.ttf", "italic": "timesi.ttf", "bold_italic": "timesbi.ttf"},
+        "timesnr.ttf":           {"bold": "timesbd.ttf", "italic": "timesi.ttf", "bold_italic": "timesbi.ttf"},
+        # Verdana
+        "verdana.ttf":           {"bold": "verdanab.ttf", "italic": "verdanai.ttf", "bold_italic": "verdanaz.ttf"},
+        # Trebuchet
+        "trebuc.ttf":            {"bold": "trebucbd.ttf", "italic": "trebucit.ttf", "bold_italic": "trebucbi.ttf"},
+        # Tahoma
+        "tahoma.ttf":            {"bold": "tahomabd.ttf", "italic": "tahomai.ttf"},
+        # Linux / cross-platform
+        "dejavusans.ttf":        {"bold": "DejaVuSans-Bold.ttf", "italic": "DejaVuSans-Oblique.ttf", "bold_italic": "DejaVuSans-BoldOblique.ttf"},
+        "dejavusans-bold.ttf":   {"italic": "DejaVuSans-BoldOblique.ttf"},
+        "dejavusans-oblique.ttf":{"bold": "DejaVuSans-BoldOblique.ttf"},
+        "liberationsans.ttf":    {"bold": "LiberationSans-Bold.ttf", "italic": "LiberationSans-Italic.ttf", "bold_italic": "LiberationSans-BoldItalic.ttf"},
+        "liberationsans-bold.ttf":{"italic": "LiberationSans-BoldItalic.ttf"},
+        "freesans.ttf":          {"bold": "FreeSansBold.ttf", "italic": "FreeSansOblique.ttf", "bold_italic": "FreeSansBoldOblique.ttf"},
+        "freeserif.ttf":         {"bold": "FreeSerifBold.ttf", "italic": "FreeSerifItalic.ttf", "bold_italic": "FreeSerifBoldItalic.ttf"},
+        "freemono.ttf":          {"bold": "FreeMonoBold.ttf", "italic": "FreeMonoOblique.ttf", "bold_italic": "FreeMonoBoldOblique.ttf"},
+    }
+
+    def _resolve_font_variant(self, font_path: str, font_size: int,
+                              bold: bool = False, italic: bool = False):
+        """Resolve the correct font file for bold/italic, with synthetic fallback."""
+        from PIL import ImageFont
+
+        if not font_path:
+            return None, False, False  # font, needs_synthetic_bold, needs_synthetic_italic
+
+        p = Path(font_path)
+        stem_lower = p.stem.lower()
+        parent = p.parent
+        ext = p.suffix
+
+        # Not bold or italic → just load the base font
+        if not bold and not italic:
+            try:
+                return ImageFont.truetype(str(p), font_size), False, False
+            except Exception:
+                return None, False, False
+
+        # Determine which variant we need
+        if bold and italic:
+            variant_key = "bold_italic"
+        elif bold:
+            variant_key = "bold"
+        elif italic:
+            variant_key = "italic"
+        else:
+            variant_key = None
+
+        # Strategy 1: Look up the filename in FONT_VARIANTS
+        filename_lower = p.name.lower()
+        variant_file = self.FONT_VARIANTS.get(filename_lower, {}).get(variant_key) if variant_key else None
+        if variant_file:
+            candidate = parent / variant_file
+            if candidate.exists():
+                try:
+                    return ImageFont.truetype(str(candidate), font_size), False, False
+                except Exception:
+                    pass
+
+        # Strategy 2: Try common naming patterns in the same directory
+        # e.g. replace "Regular"/"-Regular" stem fragment with "Bold" etc.
+        if variant_key:
+            suffixes_map = {
+                "bold": ["Bold", "SemiBold", "DemiBold", "Heavy", "ExtraBold"],
+                "italic": ["Italic", "Oblique", "It"],
+                "bold_italic": ["BoldItalic", "Bold_Italic", "BdIt", "BoldOblique"],
+            }
+            for suffix in suffixes_map.get(variant_key, []):
+                candidate = parent / f"{suffix}{ext}"
+                if candidate.exists():
+                    try:
+                        return ImageFont.truetype(str(candidate), font_size), False, False
+                    except Exception:
+                        continue
+            # Try replacing style fragment in stem
+            for old in ["regular", "bold", "italic", "medium", "light", "thin"]:
+                if old in stem_lower:
+                    new_stem = stem_lower.replace(old, suffixes_map[variant_key][0].lower())
+                    candidate = parent / f"{new_stem}{ext}"
+                    if candidate.exists():
+                        try:
+                            return ImageFont.truetype(str(candidate), font_size), False, False
+                        except Exception:
+                            continue
+
+        # Strategy 3: Fall back to base font + flag synthetic rendering
+        try:
+            return ImageFont.truetype(str(p), font_size), bold, italic
+        except Exception:
+            return None, bold, italic
+
     @staticmethod
     def _color_to_rgb(color_str: str) -> tuple:
         """Convert a color name or hex string to an (R, G, B) tuple."""
@@ -657,32 +776,63 @@ class StyleTransfer:
             return ImageColor.getrgb(color_str)
         except Exception:
             return (255, 255, 255)
-    
-    def add_text_overlay(self, image_path: Path, text: str, 
-                        position: str = "bottom-right", 
+
+    @staticmethod
+    def _draw_text_with_style(draw, pos, text, font, fill,
+                              needs_synthetic_bold: bool = False,
+                              needs_synthetic_italic: bool = False,
+                              italic_layer: "Image.Image" = None):
+        """Draw text, applying synthetic bold (multi-stroke) and/or italic (affine shear).
+
+        If needs_synthetic_italic is True, *italic_layer* must be a blank RGBA image
+        the same size as the target, with its own draw object managed by the caller.
+        The caller is responsible for compositing the sheared layer afterward.
+        """
+        x, y = pos
+        if needs_synthetic_bold:
+            # Draw text at 4 sub-pixel offsets to thicken strokes
+            for dx in (-0.5, 0, 0.5):
+                for dy in (-0.5, 0, 0.5):
+                    if dx == 0 and dy == 0:
+                        draw.text((x + dx, y + dy), text, font=font, fill=fill)
+                    else:
+                        draw.text((x + dx, y + dy), text, font=font, fill=fill)
+        else:
+            draw.text((x, y), text, font=font, fill=fill)
+
+    def add_text_overlay(self, image_path: Path, text: str,
+                        position: str = "bottom-right",
                         font_size: int = 36,
                         text_color: str = "white",
                         outline_color: str = "black",
                         outline_width: int = 2,
                         font_path: str = None,
                         bold: bool = False,
+                        italic: bool = False,
+                        underline: bool = False,
                         opacity: int = 100,
-                        shadow: bool = False) -> Optional[Path]:
+                        shadow: bool = False,
+                        custom_x: float = None,
+                        custom_y: float = None) -> Optional[Path]:
         """
         Add text overlay to an image.
         
         Args:
             image_path: Path to the original image
             text: Text to overlay
-            position: Position of text ("top-left", "top-right", "bottom-left", "bottom-right", "center", "middle-top", "middle-bottom")
+            position: Position preset ("top-left", "top-right", etc.) Ignored if custom_x/custom_y are set.
             font_size: Font size in pixels
             text_color: Text color (name or hex)
             outline_color: Outline/stroke color (name or hex)
             outline_width: Outline stroke width
             font_path: Path to a .ttf font file (None = auto-detect default)
             bold: Use bold variant of the font if available
+            italic: Use italic variant of the font if available
+            underline: Draw underline beneath text
             opacity: Text opacity 0-100 (100 = fully opaque)
             shadow: Add drop shadow behind text
+            custom_x: Custom X position as fraction of image width (0.0-1.0)
+            custom_y: Custom Y position as fraction of image height (0.0-1.0)
             
         Returns:
             Path to the image with text overlay, or None if failed
@@ -706,21 +856,37 @@ class StyleTransfer:
             from PIL import ImageDraw, ImageFont
             draw = ImageDraw.Draw(img)
             
-            # Load font
+            # Load font — resolve bold/italic variants using FONT_VARIANTS map
             font = None
+            needs_synthetic_bold = False
+            needs_synthetic_italic = False
+
             if font_path:
-                try:
-                    font = ImageFont.truetype(font_path, font_size)
-                except Exception:
-                    font = None
+                font, needs_synthetic_bold, needs_synthetic_italic = \
+                    self._resolve_font_variant(font_path, font_size, bold, italic)
+
             if font is None:
                 # Try to use a common system font
-                for font_name in ["arial.ttf", "Arial.ttf",
-                                  "DejaVuSans-Bold.ttf" if bold else "DejaVuSans.ttf",
-                                  "LiberationSans-Bold.ttf" if bold else "LiberationSans.ttf",
-                                  "FreeSans-Bold.ttf" if bold else "FreeSans.ttf"]:
+                if bold and italic:
+                    fallback_names = ["arialbi.ttf", "DejaVuSans-BoldOblique.ttf",
+                                      "LiberationSans-BoldItalic.ttf",
+                                      "FreeSansBoldOblique.ttf", "FreeSansBold.ttf"]
+                elif bold:
+                    fallback_names = ["arialbd.ttf", "DejaVuSans-Bold.ttf",
+                                      "LiberationSans-Bold.ttf",
+                                      "FreeSansBold.ttf", "FreeSans.ttf"]
+                elif italic:
+                    fallback_names = ["ariali.ttf", "DejaVuSans-Oblique.ttf",
+                                      "LiberationSans-Italic.ttf",
+                                      "FreeSansOblique.ttf", "FreeSans.ttf"]
+                else:
+                    fallback_names = ["arial.ttf", "Arial.ttf",
+                                      "DejaVuSans.ttf",
+                                      "LiberationSans.ttf",
+                                      "FreeSans.ttf"]
+                for fn in fallback_names:
                     try:
-                        font = ImageFont.truetype(font_name, font_size)
+                        font = ImageFont.truetype(fn, font_size)
                         break
                     except Exception:
                         continue
@@ -735,8 +901,15 @@ class StyleTransfer:
             # Calculate position
             img_width, img_height = img.size
             padding = 20
-            
-            if position == "top-left":
+
+            # Custom position overrides preset
+            if custom_x is not None and custom_y is not None:
+                x = int(custom_x * img_width - text_width / 2)
+                y = int(custom_y * img_height - text_height / 2)
+                # Clamp to image bounds
+                x = max(0, min(x, img_width - text_width))
+                y = max(0, min(y, img_height - text_height))
+            elif position == "top-left":
                 x = padding
                 y = padding
             elif position == "top-right":
@@ -758,51 +931,111 @@ class StyleTransfer:
                 x = (img_width - text_width) // 2
                 y = (img_height - text_height) // 2
             else:
-                # Default to bottom-right
                 x = img_width - text_width - padding
                 y = img_height - text_height - padding
-            
-            # Draw drop shadow (offset 3px down-right)
-            if shadow:
-                shadow_offset = max(2, font_size // 12)
-                for adj_x in range(-outline_width, outline_width + 1):
-                    for adj_y in range(-outline_width, outline_width + 1):
-                        draw.text((x + adj_x + shadow_offset, y + adj_y + shadow_offset),
-                                  text, font=font, fill="black")
-            
-            # Draw outline/stroke first
-            if outline_width > 0:
-                for adj_x in range(-outline_width, outline_width + 1):
-                    for adj_y in range(-outline_width, outline_width + 1):
-                        if adj_x != 0 or adj_y != 0:
-                            draw.text((x + adj_x, y + adj_y), text, font=font, fill=outline_color)
-            
-            # Draw main text
-            draw.text((x, y), text, font=font, fill=text_color)
-            
-            # Apply opacity if less than 100%
-            if opacity < 100:
-                # Create a text-only mask and composite it
+
+            # Helper to draw text (with optional synthetic bold)
+            def _draw(draw_ctx, pos, fill):
+                if needs_synthetic_bold:
+                    for dx in (-0.6, 0, 0.6):
+                        for dy in (-0.6, 0, 0.6):
+                            draw_ctx.text((pos[0] + dx, pos[1] + dy), text, font=font, fill=fill)
+                else:
+                    draw_ctx.text(pos, text, font=font, fill=fill)
+
+            # If synthetic italic, draw onto a separate layer and shear it
+            import math
+            if needs_synthetic_italic:
+                text_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
+                tl_draw = ImageDraw.Draw(text_layer)
+                _txt_rgb = self._color_to_rgb(text_color)
+                _ol_rgb = self._color_to_rgb(outline_color)
+                # Shadow on italic layer
+                if shadow:
+                    so = max(2, font_size // 12)
+                    _draw(tl_draw, (x + so, y + so), (0, 0, 0, 255))
+                # Outline on italic layer
+                if outline_width > 0:
+                    for ax in range(-outline_width, outline_width + 1):
+                        for ay in range(-outline_width, outline_width + 1):
+                            if ax != 0 or ay != 0:
+                                tl_draw.text((x + ax, y + ay), text, font=font, fill=(*_ol_rgb, 255))
+                # Main text on italic layer
+                _draw(tl_draw, (x, y), (*_txt_rgb, 255))
+                # Underline on italic layer
+                if underline:
+                    ul_offset = max(2, int(font_size * 0.08))
+                    ul_thickness = max(1, int(font_size * 0.05))
+                    try:
+                        _m = font.getmetrics()
+                        ul_y = y + _m[0] + ul_offset
+                    except Exception:
+                        ul_y = y + text_height + ul_offset
+                    tl_draw.line([(x, ul_y), (x + text_width, ul_y)],
+                                  fill=(*_txt_rgb, 255), width=ul_thickness)
+                # Shear the layer for italic effect
+                shear_angle = -12  # degrees
+                text_layer = text_layer.transform(
+                    img.size, Image.AFFINE,
+                    (1, math.tan(math.radians(shear_angle)), 0, 0, 1, 0),
+                    resample=Image.BICUBIC
+                )
+                # Apply opacity if needed
+                if opacity < 100:
+                    alpha = int(255 * opacity / 100)
+                    r, g, b, a = text_layer.split()
+                    a = a.point(lambda px: int(px * alpha / 255))
+                    text_layer = Image.merge('RGBA', (r, g, b, a))
+                img = Image.alpha_composite(img, text_layer)
+            elif opacity < 100:
+                # Opacity path (no synthetic italic)
                 alpha = int(255 * opacity / 100)
                 text_layer = Image.new('RGBA', img.size, (0, 0, 0, 0))
                 text_draw = ImageDraw.Draw(text_layer)
-                # Re-draw text onto the transparent layer
                 if shadow:
-                    shadow_offset = max(2, font_size // 12)
-                    for adj_x in range(-outline_width, outline_width + 1):
-                        for adj_y in range(-outline_width, outline_width + 1):
-                            text_draw.text((x + adj_x + shadow_offset, y + adj_y + shadow_offset),
-                                           text, font=font, fill=(0, 0, 0, alpha))
+                    so = max(2, font_size // 12)
+                    _draw(text_draw, (x + so, y + so), (0, 0, 0, alpha))
                 if outline_width > 0:
-                    for adj_x in range(-outline_width, outline_width + 1):
-                        for adj_y in range(-outline_width, outline_width + 1):
-                            if adj_x != 0 or adj_y != 0:
-                                ol_rgb = self._color_to_rgb(outline_color)
-                                text_draw.text((x + adj_x, y + adj_y),
-                                               text, font=font, fill=(*ol_rgb, alpha))
-                txt_rgb = self._color_to_rgb(text_color)
-                text_draw.text((x, y), text, font=font, fill=(*txt_rgb, alpha))
+                    _ol_rgb = self._color_to_rgb(outline_color)
+                    for ax in range(-outline_width, outline_width + 1):
+                        for ay in range(-outline_width, outline_width + 1):
+                            if ax != 0 or ay != 0:
+                                text_draw.text((x + ax, y + ay), text, font=font, fill=(*_ol_rgb, alpha))
+                _txt_rgb = self._color_to_rgb(text_color)
+                _draw(text_draw, (x, y), (*_txt_rgb, alpha))
+                if underline:
+                    ul_offset = max(2, int(font_size * 0.08))
+                    ul_thickness = max(1, int(font_size * 0.05))
+                    try:
+                        _m = font.getmetrics()
+                        ul_y = y + _m[0] + ul_offset
+                    except Exception:
+                        ul_y = y + text_height + ul_offset
+                    text_draw.line([(x, ul_y), (x + text_width, ul_y)],
+                                    fill=(*_txt_rgb, alpha), width=ul_thickness)
                 img = Image.alpha_composite(img, text_layer)
+            else:
+                # Direct draw path (full opacity, no synthetic italic)
+                if shadow:
+                    so = max(2, font_size // 12)
+                    _draw(draw, (x + so, y + so), "black")
+                if outline_width > 0:
+                    for ax in range(-outline_width, outline_width + 1):
+                        for ay in range(-outline_width, outline_width + 1):
+                            if ax != 0 or ay != 0:
+                                draw.text((x + ax, y + ay), text, font=font, fill=outline_color)
+                _draw(draw, (x, y), text_color)
+                if underline:
+                    ul_offset = max(2, int(font_size * 0.08))
+                    ul_thickness = max(1, int(font_size * 0.05))
+                    try:
+                        metrics = font.getmetrics()
+                        ascent = metrics[0]
+                        ul_y = y + ascent + ul_offset
+                    except Exception:
+                        ul_y = y + text_height + ul_offset
+                    draw.line([(x, ul_y), (x + text_width, ul_y)],
+                              fill=text_color, width=ul_thickness)
             
             # Convert back to RGB if original wasn't RGBA
             if image_path.suffix.lower() in ['.jpg', '.jpeg']:

@@ -54,6 +54,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 |---|---|
 | **Three-Column Layout** | Sidebar controls, center preview, right gallery panel — everything visible at once |
 | **Sidebar Controls** | 6 structured dropdowns + negative prompt builder, all action buttons at the top |
+| **Pinned Favorites (★)** | Every dropdown item has a star button — pinned choices rise to a "★ FAVORITES" section at the top of each list; manage them all under Settings > Advanced > Favorite Dropdown Items |
 | **Negative Prompt Builder** | Preset checkboxes with term counts, custom terms, live preview, smart negatives |
 | **3 AI Providers** | Pollinations.ai (free), Cloudflare Workers AI (free tier), HuggingFace Inference |
 | **Multiple Models** | FLUX.1-Krea-dev, FLUX Realism, FLUX Anime, FLUX 3D, Turbo, SDXL, SD 3.5 Large, custom |
@@ -84,6 +85,9 @@ All action buttons sit at the **top** for instant access, followed by a separato
 - **Settings** — full-width, opens the Settings dialog
 
 **Configuration Dropdowns:**
+
+Every dropdown item carries a ☆ star button on its row. Click the star to **pin** that choice: pinned items move into a "★ FAVORITES" section at the top of the list and are shown with a ★ prefix when selected, so your go-to subjects and styles are always one click away. Click the star again to unpin. The full favorites manager lives in **Settings > Advanced > Favorite Dropdown Items**.
+
 - **Subject** — What to generate (frog, dragon, owl, cat, 100+ options)
 - **Mode** — Artistic style: Stylized, Realistic, Cinematic, Anime, Dark Fantasy, Painterly, Pixel Art, Minimalist, Product Photo, Surreal
 - **Lighting** — Light source (neon, volumetric, monitor glow, blacklight, bloom, etc.)
@@ -101,7 +105,7 @@ All action buttons sit at the **top** for instant access, followed by a separato
 
 ### Center Panel — Preview
 
-- **Apply Style** menubutton — 19 filters applied to the current preview image
+- **Apply Style** menubutton — 25 filters applied to the current preview image
 - **Image Preview** — large display area; double-click for fullscreen view
 - **Image details** — filename, resolution, file size below the preview
 - **Slideshow countdown** — progress bar showing time until next wallpaper
@@ -118,15 +122,18 @@ All action buttons sit at the **top** for instant access, followed by a separato
 
 ### Settings Window
 
-Opened via the Settings button, **Ctrl+S**, or tray menu. Sections:
+Opened via the Settings button, **Ctrl+S**, or tray menu. Opens in a resizable window with a **sidebar navigation** on the left and card-based sections on the right. Changes are staged with a sticky **Save Settings** bar at the bottom (an "Unsaved changes" indicator appears as you edit), and the whole window re-colors live if you switch themes while it is open:
 
-| Section | Controls |
+| Category | Cards & Controls |
 |---|---|
-| **Appearance** | UI theme (13 themes), dimension preset (16:9 / Portrait / Square) |
-| **Generation** | AI provider (Pollinations/Cloudflare/HuggingFace), API tokens, model selection, custom model |
-| **Gallery & Slideshow** | Slideshow controls, interval slider (1–60 min), source, order, skip duplicates, fullscreen pause, wallpaper output format (PNG/JPEG/WebP), quality |
-| **Window Behavior** | Minimize to tray, run on Windows startup, auto-generate on startup, startup subject |
-| **Advanced** | Keep Subject Literal, Smart Negatives, keyword expansion mappings, morning auto-wallpaper scheduler |
+| **General** | App theme (13 themes), wallpaper resolution preset (16:9 / Portrait / Square) |
+| **Generation** | AI provider (Pollinations/Cloudflare/HuggingFace), API tokens, Cloudflare Account ID, model selection + custom model |
+| **Appearance** | Wallpaper output format (PNG/JPEG/WebP), JPEG quality |
+| **Startup** | Run on Windows startup, auto-generate on launch + startup subject, system tray behavior |
+| **Slideshow** | Slideshow enable + interval slider (1–60 min), fullscreen auto-pause, source & order, skip duplicates |
+| **Cloud & Backup** | Google Drive / OneDrive / Dropbox connection cards — each with credential fields and a built-in "How to get your credentials" guide that is **expanded by default** with **clickable website links** (opens in your browser); auto-backup schedule |
+| **Advanced** | Generation behavior (Smart Negatives, Keep subject exact), keyword expansion mappings, **Favorite Dropdown Items** manager, morning auto-wallpaper scheduler |
+| **Help** | Built-in tutorials (Quick Start, Feature Tour, Interactive Practice, Model Setup) and help resources |
 
 ---
 
@@ -301,6 +308,64 @@ AppData/FrogPaper/
 ---
 
 ## Changelog
+
+### v1.3.0 - Safer Builds, Smarter Updates, Pinned Favorites
+**New Features:**
+- **Pinned Favorites in Dropdowns**: Star your favorite subjects, styles, lighting, moods, and color families for quick access from the prompt builder
+- **"Skip This Version" Button**: When an update notification appears, users can skip a specific release and won't be nagged again until an even newer version ships
+
+**Improvements:**
+- **Redesigned Settings Page**: The entire settings experience has been rebuilt with a sidebar-navigation layout and card-based sections. Each setting group (Generation, Cloud Storage, Slideshow, Scheduler, etc.) now lives in its own collapsible card with status badges, consistent label/control rows, and inline help resources. The result is a cleaner, more premium-feeling settings page that scales better as new options are added
+- **Update Checker Fixed**: The "Update Available" popup no longer appears on every launch when the app is already up-to-date. The previous release reported the wrong internal version, causing a false-positive update prompt on every start — this is now resolved
+- **Safer Credential Handling**: API tokens and OAuth secrets are no longer bundled into the EXE at build time. A clean `config.template.json` is bundled instead and seeded to `config.json` beside the EXE on first launch. Existing users' configs are never overwritten
+- **Pre-build Secret Check**: The build pipeline now runs `prebuild_check.py` before PyInstaller packs the EXE. If any non-empty secret is detected in `config.json` or `config.template.json`, the build aborts with exit code 2 — no EXE is produced
+
+**Technical:**
+- New `settings_components.py` module providing reusable UI primitives: `StatusBadge`, `SettingRow`, `SettingCard`, `ExpandableSection`, `HelpResourceCard`, `SidebarNav`, `CloudProviderCard`
+- `settings_tab.py` rewritten around the new component system with sidebar navigation
+- Removed `config.json` from `FrogPaper.spec` `datas=[...]`; replaced with `config.template.json`
+- `utils.seed_bundled_files()` now seeds `config.json` from the bundled template on first launch
+- `build_installer.bat` ships `config.template.json` renamed to `config.json` with `onlyifdoesntexist` flag
+- Added `prebuild_check.py` as a pre-build gate (scans for `hf_…`, `GOCSPX-…`, `AIza…`, `ya29.`, Dropbox `sl.`, and other suspicious patterns)
+- Bumped `APP_VERSION` to `1.3.0` to align with installer and GitHub release tag
+- Added `SECURITY_NOTES.md` documenting the secure build flow and key-rotation procedure
+- `update_checker.py` persists `skipped_update_version` in `config.json` so the skip choice survives across launches
+
+**Fixes:**
+- **Theme rendering repaired**: A sprite-naming bug left 9 themed controls (scrollbars, arrows, empty states) permanently baked grey in every theme; all 93 sprites now render with the active theme's colors, and classic widgets no longer flip back to grey after a theme switch
+- **Button text contrast engine**: Button label colors are now validated against their real painted background (WCAG) at theme-apply time — fixes invisible white-on-light text on the Neon Cyber Light theme and prevents the same class of bug in any future theme; dark themes are byte-identical to before
+- **Pinned-favorites popup crash**: Opening a pinned dropdown popup under certain themes could raise `unknown color name` — fixed
+- **Settings usability**: The Settings window is larger (980×700); cloud setup guides now word-wrap to the full card width, auto-size to show every step without inner scrolling, start expanded, and render all website references (including bare domains like `dash.cloudflare.com`) as clickable links that open in the default browser — the same clickable-link treatment applies to website mentions inside the Tutorials window
+
+### v1.2.0 - Cloud Sync Integration
+**New Features:**
+- **Cloud Storage Integration**: Full OAuth support for Google Drive, OneDrive, and Dropbox
+- **Automatic Sync**: Real-time file monitoring triggers automatic cloud sync when images are added, modified, or deleted
+- **Sync Manager**: Delta sync engine with conflict resolution and favorites protection
+- **OAuth Credential Management**: Secure cloud provider authentication via system credential manager
+- **Cloud Provider UI**: Dedicated setup cards with step-by-step OAuth configuration guides
+
+**Improvements:**
+- Enhanced update checker with better markdown formatting and smarter release note truncation
+- Improved tag system with style suffix handling for better tag fallback on styled images
+- Better thread management for gallery operations with stale thread cancellation
+- Added proper logging configuration with INFO level
+- Removed NLTK dependency (no longer needed)
+
+**Technical:**
+- Added `cloud_providers.py` for OAuth and API integration
+- Added `sync_manager.py` for cloud sync engine with delta sync
+- Added `file_watcher.py` for real-time file system monitoring
+- Enhanced `update_checker.py` with comprehensive markdown cleaning
+- Updated `settings_tab.py` with cloud provider connection cards
+- Added cloud provider dependencies: google-api-python-client, google-auth-oauthlib, msal, dropbox, watchdog
+
+### v1.1.1 - Update Checker
+**New Features:**
+- Background update check on app startup
+- Themed popup notification when a newer version is found
+- One-click download link to the latest release
+- Completely silent when app is up-to-date
 
 ### v1.1.0 - Portrait Export Feature
 **New Features:**

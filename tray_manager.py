@@ -389,13 +389,14 @@ class TrayManager:
 
 
     def _tray_toggle_slideshow(self, icon=None, item=None):
-            """Start, pause, or resume slideshow depending on current state."""
-            app = self.app
-            def _do():
-                if not app.slideshow.running:
-                    app.slideshow.start()
-                elif app.slideshow.paused:
-                    app.slideshow.resume()
-                else:
-                    app.slideshow.pause()
-            app.root.after(0, _do)
+        """Start, pause, or resume slideshow depending on current state."""
+        app = self.app
+        def _do():
+            if not app.slideshow.running:
+                app.slideshow.start()
+            elif app.slideshow.paused:
+                app.slideshow.resume()
+            else:
+                app.slideshow.pause()
+        app.root.after(0, _do)
+

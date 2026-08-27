@@ -33,40 +33,33 @@ DROPBOX_REDIRECT_URI = "http://localhost:8080/callback"
 
 
 def load_config_credentials():
-    """Load OAuth credentials from keyring."""
+    """Load OAuth credentials from config.json."""
     global GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET
     global ONEDRIVE_CLIENT_ID, ONEDRIVE_CLIENT_SECRET
     global DROPBOX_APP_KEY, DROPBOX_APP_SECRET
     
     try:
-        import keyring
+        from utils import load_config
+        config = load_config()
         
-        google_id = keyring.get_password("FrogPaper", "google_client_id")
-        google_secret = keyring.get_password("FrogPaper", "google_client_secret")
-        if google_id:
-            GOOGLE_CLIENT_ID = google_id
-        if google_secret:
-            GOOGLE_CLIENT_SECRET = google_secret
+        if config.get("google_client_id"):
+            GOOGLE_CLIENT_ID = config["google_client_id"]
+        if config.get("google_client_secret"):
+            GOOGLE_CLIENT_SECRET = config["google_client_secret"]
         
-        onedrive_id = keyring.get_password("FrogPaper", "onedrive_client_id")
-        onedrive_secret = keyring.get_password("FrogPaper", "onedrive_client_secret")
-        if onedrive_id:
-            ONEDRIVE_CLIENT_ID = onedrive_id
-        if onedrive_secret:
-            ONEDRIVE_CLIENT_SECRET = onedrive_secret
+        if config.get("onedrive_client_id"):
+            ONEDRIVE_CLIENT_ID = config["onedrive_client_id"]
+        if config.get("onedrive_client_secret"):
+            ONEDRIVE_CLIENT_SECRET = config["onedrive_client_secret"]
         
-        dropbox_key = keyring.get_password("FrogPaper", "dropbox_app_key")
-        dropbox_secret = keyring.get_password("FrogPaper", "dropbox_app_secret")
-        if dropbox_key:
-            DROPBOX_APP_KEY = dropbox_key
-        if dropbox_secret:
-            DROPBOX_APP_SECRET = dropbox_secret
+        if config.get("dropbox_app_key"):
+            DROPBOX_APP_KEY = config["dropbox_app_key"]
+        if config.get("dropbox_app_secret"):
+            DROPBOX_APP_SECRET = config["dropbox_app_secret"]
             
-        logger.info("Loaded OAuth credentials from keyring")
-    except ImportError:
-        logger.warning("keyring not installed - OAuth credentials not loaded")
+        logger.info("Loaded OAuth credentials from config")
     except Exception as e:
-        logger.warning(f"Failed to load OAuth credentials from keyring: {e}")
+        logger.warning(f"Failed to load OAuth credentials from config: {e}")
 
 
 # Load credentials on module import

@@ -471,6 +471,56 @@ def _draw_folder_move(s: int, c: str) -> Image.Image:
     return img
 
 
+def _draw_heart_outline(s: int, c: str) -> Image.Image:
+    """Star outline icon (empty star) — uses theme colour *c*."""
+    img, d = _img(s)
+    lw = max(2, int(s * 0.08))
+    cx, cy = s / 2, s / 2
+    outer = s * 0.40
+    inner = s * 0.17
+
+    # Use the theme colour for the outline so the star blends with the palette
+    outline_color = c
+
+    # Draw star outline using lines
+    pts = []
+    for i in range(10):
+        a = math.pi / 2 + i * math.pi / 5
+        r = outer if i % 2 == 0 else inner
+        pts.append((cx + r * math.cos(a), cy - r * math.sin(a)))
+
+    # Draw outline by connecting points
+    for i in range(len(pts)):
+        d.line([pts[i], pts[(i + 1) % len(pts)]], fill=outline_color, width=lw)
+
+    return img
+
+
+def _draw_heart_filled(s: int, c: str) -> Image.Image:
+    """Star filled icon (filled star) — uses theme colour *c*."""
+    img, d = _img(s)
+    cx, cy = s / 2, s / 2
+    outer = s * 0.40
+    inner = s * 0.17
+
+    # Use the theme colour for fill (keeps it themed, not hard red)
+    fill_color = c
+    outline_color = c
+    lw = max(2, int(s * 0.08))
+
+    # Draw star points
+    pts = []
+    for i in range(10):
+        a = math.pi / 2 + i * math.pi / 5
+        r = outer if i % 2 == 0 else inner
+        pts.append((cx + r * math.cos(a), cy - r * math.sin(a)))
+
+    # Fill the star
+    d.polygon(pts, fill=fill_color, outline=outline_color, width=lw)
+
+    return img
+
+
 # ── Registry ─────────────────────────────────────────────────────────
 _DRAW_FUNCS = {
     "image": _draw_image,
@@ -500,6 +550,8 @@ _DRAW_FUNCS = {
     "check": _draw_check,
     "tag": _draw_tag,
     "folder_move": _draw_folder_move,
+    "heart_outline": _draw_heart_outline,
+    "heart_filled": _draw_heart_filled,
 }
 
 

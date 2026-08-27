@@ -3,12 +3,14 @@ from tkinter import ttk
 import logging
 from typing import Callable, Optional, Dict, List
 
+from settings_components import linkify_text_widget
+
 logger = logging.getLogger(__name__)
 
 
 class TutorialManager:
     """Manages the tutorial system including quick start, feature tour, and interactive practice."""
-    
+
     def __init__(self, app):
         self.app = app
         self.current_tutorial = None
@@ -16,8 +18,16 @@ class TutorialManager:
         self.tutorial_window = None
         self.highlight_frame = None
         self.is_active = False
-        
-        # Tutorial definitions
+        self._init_tutorials()
+
+    def _pal(self):
+        """Return the current theme's colour palette."""
+        return self.app.THEMES.get(
+            getattr(self.app, "current_theme_name", "darkforest"),
+            self.app.THEMES["darkforest"],
+        )
+
+    def _init_tutorials(self):
         self.tutorials = {
             "quick_start": {
                 "title": "Quick Start Guide",
@@ -252,7 +262,7 @@ class TutorialManager:
                 "action": None
             }
         ]
-    
+
     def start_tutorial(self, tutorial_id: str):
         """Start a specific tutorial."""
         if tutorial_id not in self.tutorials:
@@ -272,17 +282,22 @@ class TutorialManager:
         
         self.tutorial_window = tk.Toplevel(self.app.root)
         self.tutorial_window.title(self.current_tutorial["title"])
-        self.tutorial_window.geometry("600x500")
+        self.tutorial_window.geometry("700x600")
         self.tutorial_window.resizable(True, True)
-        self.tutorial_window.minsize(500, 400)
+        self.tutorial_window.minsize(600, 500)
+
+        from utils import center_window
+        center_window(self.app.root, self.tutorial_window)
         
-        # Make window stay on top
-        self.tutorial_window.attributes('-topmost', True)
+        # Keep tutorial on top of main window but allow interaction with it
+        self.tutorial_window.transient(self.app.root)  # Makes tutorial stay above main window
+        self.tutorial_window.lift()  # Bring to front
         
-        # Style the window
-        self.tutorial_window.configure(bg=self.app.UI.get("surface", "#1a1a1f"))
+        # Style the window — use theme palette colours
+        pal = self._pal()
+        self.tutorial_window.configure(bg=pal["bg"])
         
-        # Main container
+        # Main container — use default TFrame (bg matches window)
         main_container = ttk.Frame(self.tutorial_window)
         main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
@@ -291,7 +306,7 @@ class TutorialManager:
             main_container,
             text=self.current_tutorial["title"],
             font=("Segoe UI", 18, "bold"),
-            foreground=self.app.UI.get("frog", "#4ade80")
+            foreground=pal["accent"]
         )
         title_label.pack(pady=(0, 5))
         
@@ -300,12 +315,12 @@ class TutorialManager:
             main_container,
             text=self.current_tutorial["description"],
             font=("Segoe UI", 11),
-            foreground=self.app.UI.get("text_secondary", "#9ca3af")
+            foreground=pal["muted"]
         )
         desc_label.pack(pady=(0, 10))
         
         # Scrollable content area
-        canvas = tk.Canvas(main_container, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
+        canvas = tk.Canvas(main_container, highlightthickness=0, bg=pal["bg"])
         scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -314,28 +329,54 @@ class TutorialManager:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
-        
+
+        # Make the scrollable frame fill the canvas width
+        def _resize_scrollable(event):
+            canvas.itemconfig(canvas.find_withtag("all")[0], width=event.width)
+        canvas.bind("<Configure>", _resize_scrollable)
+
+        # Mouse-wheel scrolling — register with the app's hover-based router
+        def _on_enter(event):
+            self.app._hover_canvas = canvas
+        def _on_leave(event):
+            if self.app._hover_canvas is canvas:
+                self.app._hover_canvas = None
+        canvas.bind('<Enter>', _on_enter)
+        canvas.bind('<Leave>', _on_leave)
+
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Step content with better padding
-        self.step_content = ttk.Label(
+        # Step content with better padding - use Text widget for selectable/copyable content
+        # Use a smaller height and auto-resize based on content
+        self.step_content = tk.Text(
             scrollable_frame,
-            text="",
             font=("Segoe UI", 12),
-            wraplength=500,
-            justify="left"
+            wrap="word",
+            width=60,
+            height=1,
+            bg=pal["bg"],
+            fg=pal["text"],
+            highlightthickness=0,
+            padx=10,
+            pady=10,
+            relief="flat",
+            borderwidth=0,
+            selectbackground=pal["selected_bg"],
+            selectforeground=pal["selected_fg"],
+            inactiveselectbackground=pal["bg"],
         )
         self.step_content.pack(pady=15, padx=10)
+        self.step_content.config(state="disabled")  # Make read-only but selectable
         
         # Progress indicator
         self.progress_label = ttk.Label(
             scrollable_frame,
             text="",
             font=("Segoe UI", 11, "bold"),
-            foreground=self.app.UI.get("frog", "#4ade80")
+            foreground=pal["accent"]
         )
         self.progress_label.pack(pady=(15, 15))
         
@@ -373,8 +414,21 @@ class TutorialManager:
         
         step = self.current_tutorial["steps"][self.current_step]
         
-        # Update content
-        self.step_content.config(text=step["content"])
+        # Update content in Text widget
+        self.step_content.config(state="normal")
+        self.step_content.delete(1.0, tk.END)
+        self.step_content.insert(tk.END, step["content"])
+        # Auto-resize: count lines and set height to fit content
+        line_count = int(self.step_content.index('end-1c').split('.')[0])
+        self.step_content.config(height=max(line_count + 1, 3))
+        # Make website references clickable (same treatment as the cloud
+        # "How to get your credentials" guides in Settings).  Bare domains
+        # like dash.cloudflare.com open with an https:// prefix.
+        self._step_links = linkify_text_widget(
+            self.step_content,
+            link_color=self._pal().get("accent", "#60a5fa"),
+        )
+        self.step_content.config(state="disabled")
         
         # Update progress
         progress_text = f"Step {self.current_step + 1} of {len(self.current_tutorial['steps'])}"
@@ -426,7 +480,7 @@ class TutorialManager:
         action_map = {
             "show_prompt_builder": lambda: self.app._show_tab("prompt") if hasattr(self.app, '_show_tab') else None,
             "show_gallery": lambda: self.app._show_tab("gallery") if hasattr(self.app, '_show_tab') else None,
-            "show_settings": lambda: self.app._show_tab("settings") if hasattr(self.app, '_show_tab') else None,
+            "show_settings": lambda: self.app._show_tab("settings") if hasattr(self.app, '_show_tab') else None
         }
         
         if action in action_map:
@@ -511,9 +565,13 @@ class TutorialManager:
         menu_window.resizable(True, True)
         menu_window.minsize(400, 450)
         menu_window.attributes('-topmost', True)
+
+        from utils import center_window
+        center_window(self.app.root, menu_window)
         
-        # Style the window
-        menu_window.configure(bg=self.app.UI.get("surface", "#1a1a1f"))
+        # Style the window — use theme palette colours
+        pal = self._pal()
+        menu_window.configure(bg=pal["bg"])
         
         # Main container
         main_container = ttk.Frame(menu_window)
@@ -524,12 +582,12 @@ class TutorialManager:
             main_container,
             text="🎓 FrogPaper Tutorials",
             font=("Segoe UI", 20, "bold"),
-            foreground=self.app.UI.get("frog", "#4ade80")
+            foreground=pal["accent"]
         )
         title_label.pack(pady=(0, 15))
         
         # Scrollable area for tutorial options
-        canvas = tk.Canvas(main_container, highlightthickness=0, bg=self.app.UI.get("surface", "#1a1a1f"))
+        canvas = tk.Canvas(main_container, highlightthickness=0, bg=pal["bg"])
         scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
         
@@ -538,8 +596,23 @@ class TutorialManager:
             lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
         )
         
-        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="n")
         canvas.configure(yscrollcommand=scrollbar.set)
+
+        # Make the scrollable frame fill the canvas width
+        def _resize_scrollable(event):
+            canvas.itemconfig(canvas.find_withtag("all")[0], width=event.width)
+        canvas.bind("<Configure>", _resize_scrollable)
+        
+        # Mouse-wheel scrolling — register with the app's hover-based router
+        # (set up by gallery_tab) so it doesn't override gallery scrolling.
+        def _on_enter(event):
+            self.app._hover_canvas = canvas
+        def _on_leave(event):
+            if self.app._hover_canvas is canvas:
+                self.app._hover_canvas = None
+        canvas.bind('<Enter>', _on_enter)
+        canvas.bind('<Leave>', _on_leave)
         
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
@@ -551,12 +624,16 @@ class TutorialManager:
             ("interactive_practice", "🎨 Interactive Practice", "Guided wallpaper generation"),
             ("model_setup", "🤖 Model Setup Guide", "Configure AI providers and models")
         ]
-        
+
+        # Centering wrapper — constrains card width and centers content
+        center_frame = ttk.Frame(scrollable_frame)
+        center_frame.pack(fill="x", expand=True)
+
         for tutorial_id, title, description in tutorials_info:
             is_completed = self.is_tutorial_completed(tutorial_id)
             
             # Tutorial card
-            card_frame = ttk.Frame(scrollable_frame, padding=18)
+            card_frame = ttk.Frame(center_frame, padding=18)
             card_frame.pack(fill="x", pady=10)
             
             # Tutorial title
@@ -564,7 +641,7 @@ class TutorialManager:
                 card_frame,
                 text=title,
                 font=("Segoe UI", 13, "bold"),
-                foreground=self.app.UI.get("text_primary", "#f0f0f2")
+                foreground=pal["text"]
             )
             title_label.pack(anchor="w")
             
@@ -573,7 +650,7 @@ class TutorialManager:
                 card_frame,
                 text=description,
                 font=("Segoe UI", 11),
-                foreground=self.app.UI.get("text_secondary", "#9ca3af")
+                foreground=pal["muted"]
             )
             desc_label.pack(anchor="w", pady=(5, 12))
             
@@ -594,14 +671,14 @@ class TutorialManager:
                 status_label = ttk.Label(
                     button_row,
                     text="✓ Completed",
-                    foreground=self.app.UI.get("frog", "#4ade80"),
+                    foreground=pal["success_color"],
                     font=("Segoe UI", 11, "bold")
                 )
                 status_label.pack(side="right")
         
         # Close button
         close_button = ttk.Button(
-            scrollable_frame,
+            center_frame,
             text="Close",
             command=menu_window.destroy
         )

@@ -634,6 +634,8 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
             parts.append(f"in a {_color_phrase(color)}")
         if lighting:
             parts.append(f"under {lighting}")
+        if mood:
+            parts.append(f"the scene is steeped in a {mood} atmosphere, every element reinforcing the {mood} tone")
         return ", ".join(parts), subject_negatives
 
     # Theme-aware scene building
@@ -657,6 +659,10 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
                     scene_layers.append("with " + ", ".join(remaining))
             else:
                 scene_layers.append("set in " + ", ".join(env_details))
+
+        # Mood layer — always included when mood is set, even with subject_lock
+        if mood:
+            scene_layers.append(f"the scene is steeped in a {mood} atmosphere, every element reinforcing the {mood} tone")
 
         # Color + lighting layer
         if color and lighting:
@@ -695,6 +701,10 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
             if theme_elements:
                 scene_layers.append("featuring " + ", ".join(theme_elements))
 
+        # Mood layer — always included when mood is set, even with subject_lock
+        if mood:
+            scene_layers.append(f"the scene is steeped in a {mood} atmosphere, every element reinforcing the {mood} tone")
+
         # Color + lighting
         if lighting:
             scene_layers.append(f"under {lighting}")
@@ -719,6 +729,10 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
     if clean_elements:
         scene_layers.append("with " + ", ".join(clean_elements))
     
+    # Mood layer — always included when mood is set, even with subject_lock
+    if mood:
+        scene_layers.append(f"the scene is steeped in a {mood} atmosphere, every element reinforcing the {mood} tone")
+
     if lighting:
         scene_layers.append(f"under {lighting}")
     if color:

@@ -2,7 +2,8 @@ import sys
 import os
 
 # App version - single source of truth for version string
-APP_VERSION = "1.1.1"
+# Must match the AppVersion in build_installer.bat and the GitHub release tag.
+APP_VERSION = "1.3.0"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -1029,6 +1030,60 @@ THEME_VARIABLE_OPTIONS = {
     "atmosphere": _merge_options(_BASE_ATMOSPHERE_OPTIONS, LEGACY_ATMOSPHERE_OPTIONS),
 }
 
+# ── WCAG contrast helpers ─────────────────────────────────────────────────
+# Some light themes ship button_fg colours designed for their saturated
+# accent buttons (neoncyber_light uses pure white).  Plain buttons are
+# painted on the light panel2 sprite, where such text is invisible.
+# These helpers let apply_theme validate each foreground against the
+# surface it is actually painted on and fall back to a readable colour.
+
+def _rel_luminance(hex_color):
+    """WCAG relative luminance of a hex colour (0.0 – 1.0)."""
+    try:
+        h = str(hex_color).strip().lstrip("#")
+        if len(h) == 3:
+            h = "".join(ch * 2 for ch in h)
+        if len(h) != 6:
+            return 0.0
+        def _chan(v):
+            v = v / 255.0
+            return v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4
+        r, g, b = (int(h[i:i + 2], 16) for i in (0, 2, 4))
+        return 0.2126 * _chan(r) + 0.7152 * _chan(g) + 0.0722 * _chan(b)
+    except Exception:
+        return 0.0
+
+
+def _contrast_ratio(c1, c2):
+    """WCAG contrast ratio between two colours (1.0 – 21.0)."""
+    l1, l2 = _rel_luminance(c1), _rel_luminance(c2)
+    if l1 < l2:
+        l1, l2 = l2, l1
+    return (l1 + 0.05) / (l2 + 0.05) if l2 > 0 else 21.0
+
+
+def _readable_fg(preferred, fallback_dark, fallback_light, surface,
+                 min_ratio=3.0):
+    """Return a foreground that is actually readable on *surface*.
+
+    Keeps *preferred* whenever it reaches *min_ratio* contrast on the
+    surface (preserving every theme whose palette already works).
+    Otherwise returns whichever fallback — dark or light — reads better.
+    """
+    try:
+        if _contrast_ratio(preferred, surface) >= min_ratio:
+            return preferred
+    except Exception:
+        pass
+    try:
+        return (fallback_dark
+                if _contrast_ratio(fallback_dark, surface)
+                >= _contrast_ratio(fallback_light, surface)
+                else fallback_light)
+    except Exception:
+        return preferred
+
+
 THEMES = {
 
     # ── Dark Moss / Lily Pad (default) ────────────────────────────────
@@ -1311,31 +1366,31 @@ THEMES = {
 
     # ── Neon Cyber ────────────────────────────────────────────────────
     "neoncyber": {
-        "bg":          "#08000f",
-        "panel":       "#100018",
-        "panel2":      "#180028",
-        "surface":     "#200035",
-        "text":        "#eedeff",
-        "muted":       "#8844aa",
-        "entrybg":     "#0c0015",
-        "entryfg":     "#e0ccff",
-        "tabbg":       "#160025",
-        "tabsel":      "#6600bb",
-        "accent":      "#c040ff",
-        "progress":    "#aa00ee",
-        "actions":     ["#6600cc","#7700ee","#8800ff","#aa22ff","#cc44ff","#dd66ff"],
-        "button_fg":   "#f8d8ff",
-        "button_hover":"#9900dd",
-        "scrollbar_bg":"#100018",
-        "scrollbar_fg":"#aa00ee",
-        "selected_bg": "#6600bb",
+        "bg":          "#12081e",
+        "panel":       "#1a1030",
+        "panel2":      "#241840",
+        "surface":     "#2e2050",
+        "text":        "#f0eaff",
+        "muted":       "#b080d0",
+        "entrybg":     "#160c24",
+        "entryfg":     "#e8daff",
+        "tabbg":       "#1e1438",
+        "tabsel":      "#3a1870",
+        "accent":      "#c864ff",
+        "progress":    "#a040e0",
+        "actions":     ["#5020a0","#6030b8","#7040d0","#8850e0","#a060f0","#b878ff"],
+        "button_fg":   "#f8ecff",
+        "button_hover":"#7a30c0",
+        "scrollbar_bg":"#1a1030",
+        "scrollbar_fg":"#7a40c0",
+        "selected_bg": "#4a2090",
         "selected_fg": "#ffffff",
-        "border_color":"#3a0066",
-        "separator":   "#180028",
-        "success_color":"#00ffcc",
-        "error_color": "#ff0055",
-        "warning_color":"#ffee00",
-        "tag_fg":      "#dd66ff",
+        "border_color":"#442878",
+        "separator":   "#2a1848",
+        "success_color":"#40e0b0",
+        "error_color": "#ff4070",
+        "warning_color":"#ffd040",
+        "tag_fg":      "#d090ff",
         "heading_font_size": 12, "label_font_weight": "bold",
         # Default special effects (disabled)
         "glow_color":   "",
@@ -1586,32 +1641,32 @@ THEMES = {
 
     # ── Neon Cyber Light — daytime cyberpunk ───────────────────────────────
     "neoncyber_light": {
-        "bg":          "#f5e8ff",   # light purple background
-        "panel":       "#e8d0f5",   # light purple panel
-        "panel2":      "#d8b8e8",   # lighter purple
-        "surface":     "#faf4ff",   # near-white surface
-        "text":        "#2a1040",   # deep purple text
-        "muted":       "#6a30a0",   # mid purple
-        "entrybg":     "#fcf8ff",   # near-white entry
-        "entryfg":     "#2a1040",   # dark purple text
-        "tabbg":       "#d8c0e8",   # tab bar light
-        "tabsel":      "#b070e0",   # selected tab — bright purple
-        "accent":      "#9b30ff",   # vivid neon purple accent
-        "progress":    "#8800cc",   # deep purple progress
-        "actions":     ["#6a00b3","#7b1fa2","#8800cc","#9b30ff","#ab47bc","#bb66dd"],
-        "button_fg":   "#2a1040",
-        "button_hover": "#7b1fa2",
+        "bg":          "#f8f0ff",   # very light lavender background
+        "panel":       "#eee0f8",   # light purple panel
+        "panel2":      "#e0ccf0",   # medium lavender
+        "surface":     "#fcf8ff",   # near-white surface
+        "text":        "#1e0838",   # very deep purple text
+        "muted":       "#7a48a8",   # readable mid purple
+        "entrybg":     "#fefcff",   # near-white entry
+        "entryfg":     "#1e0838",   # deep purple text
+        "tabbg":       "#e4d4f2",   # tab bar light
+        "tabsel":      "#c888e8",   # selected tab — softer purple
+        "accent":      "#8828e0",   # vivid purple accent
+        "progress":    "#7020c0",   # deep purple progress
+        "actions":     ["#6018a0","#7020b8","#8028d0","#9038e0","#a048f0","#b060f8"],
+        "button_fg":   "#ffffff",
+        "button_hover": "#7020b8",
         "button_hover_fg": "#ffffff",
-        "scrollbar_bg":"#e8d0f5",
-        "scrollbar_fg":"#8800cc",
-        "selected_bg": "#b070e0",
-        "selected_fg": "#ffffff",
-        "border_color":"#c090d0",
-        "separator":   "#d8b8e8",
-        "success_color":"#00aa88",
-        "error_color": "#cc0044",
-        "warning_color":"#cc8800",
-        "tag_fg":      "#8800cc",
+        "scrollbar_bg":"#eee0f8",
+        "scrollbar_fg":"#9038e0",
+        "selected_bg": "#d0a0f0",
+        "selected_fg": "#1e0838",
+        "border_color":"#c8a0d8",
+        "separator":   "#e0ccf0",
+        "success_color":"#008868",
+        "error_color": "#cc2244",
+        "warning_color":"#b87800",
+        "tag_fg":      "#7020b8",
         "heading_font_size": 12, "label_font_weight": "bold",
         # Default special effects (disabled)
         "glow_color":   "",
@@ -1998,7 +2053,14 @@ class ThemedDialog:
         for i, label in enumerate(reversed(buttons)):
             is_primary = (i == 0)
             bg = accent if is_primary else pal["panel2"]
-            fg = pal["button_fg"]
+            # Secondary buttons sit on the panel2 surface — a white
+            # button_fg (neoncyber_light) would be invisible there.
+            if is_primary:
+                fg = _readable_fg(pal["button_fg"], "#111111",
+                                  "#ffffff", accent)
+            else:
+                fg = _readable_fg(pal["text"], "#111111",
+                                  "#ffffff", pal["panel2"])
             if UI_EFFECTS_AVAILABLE and is_primary:
                 btn = RoundedButton(
                     btn_row, text=label, width=80, height=30,
@@ -2721,6 +2783,17 @@ class FrogPaperApp:
 
         We use pal["bg"] (not pal["panel"]) because the cloud cards live
         directly on the settings scroll area which uses the theme background.
+
+        NOTE: This walker is COMPONENT-AWARE — if a child widget is tagged
+        with ``_fp_component`` (i.e. it is the outer frame of a
+        SettingCard / SettingRow / ExpandableSection / HelpResourceCard /
+        CloudProviderCard managed by ``settings_tab.py``), we skip it
+        entirely so that ``SettingsTab._retheme_settings_popup`` (which
+        calls each component's ``update_theme``) is the single source of
+        truth for the component's colours.  Without this guard, this
+        walker would repaint the card bodies to ``pal["bg"]`` and erase
+        the card-vs-page visual distinction, producing the "grey instead
+        of theme color" bug in the settings area.
         """
         bg = pal["bg"]
         muted = pal["muted"]
@@ -2733,6 +2806,11 @@ class FrogPaperApp:
             try:
                 for child in parent.winfo_children():
                     try:
+                        # Skip widgets owned by a settings component —
+                        # the component's own update_theme handles it.
+                        if getattr(child, "_fp_component", None) is not None:
+                            continue
+
                         if isinstance(child, tk.Frame):
                             # Separator frames (height=1) get the separator colour
                             if child.cget("height") == 1 and child.cget("width") == 0:
@@ -2871,6 +2949,58 @@ class FrogPaperApp:
             except tk.TclError:
                 pass
 
+        # 6) Custom Negatives list — placeholder, × remove buttons
+        # These tk.Label widgets are created with hardcoded ``fg="gray"``
+        # in ``_rebuild_custom_neg_ui``.  Without this pass they stay grey
+        # after every theme change, which is the most visible part of
+        # the "neon cyber colors appear grey" bug in the prompt builder.
+        if hasattr(self, "_cn_frame") and self._cn_frame is not None and self._cn_frame.winfo_exists():
+            try:
+                for row in self._cn_frame.winfo_children():
+                    try:
+                        for child in row.winfo_children():
+                            if isinstance(child, tk.Label):
+                                txt = (child.cget("text") or "").strip()
+                                if txt == "×":
+                                    # × remove button — keep its hover
+                                    # behaviour but use muted as the
+                                    # resting colour so it matches the
+                                    # theme instead of staying grey.
+                                    child.configure(bg=bg, fg=muted)
+                                    # Re-bind hover so <Leave> restores
+                                    # the muted colour (not "gray").
+                                    def _on_enter(lbl=child):
+                                        try:
+                                            lbl.configure(fg="#ff6666")
+                                        except tk.TclError:
+                                            pass
+                                    def _on_leave(lbl=child):
+                                        try:
+                                            lbl.configure(fg=muted)
+                                        except tk.TclError:
+                                            pass
+                                    child.unbind("<Enter>")
+                                    child.unbind("<Leave>")
+                                    child.bind("<Enter>", lambda e, f=_on_enter: f())
+                                    child.bind("<Leave>", lambda e, f=_on_leave: f())
+                                else:
+                                    child.configure(bg=bg, fg=muted)
+                    except tk.TclError:
+                        continue
+                # Walk direct tk.Label children too (the "No saved
+                # terms yet" placeholder is packed directly in
+                # _cn_frame when there are no terms).
+                for child in self._cn_frame.winfo_children():
+                    try:
+                        if isinstance(child, tk.Label):
+                            txt = (child.cget("text") or "").strip()
+                            if txt and txt != "×":
+                                child.configure(bg=bg, fg=muted)
+                    except tk.TclError:
+                        continue
+            except tk.TclError:
+                pass
+
     def apply_theme(self, theme_name):
         if theme_name not in THEMES:
             theme_name = "darkforest"
@@ -2898,6 +3028,20 @@ class FrogPaperApp:
             except Exception:
                 pass
 
+        # ── Kill sv_ttk's async palette re-grey (ROOT CAUSE of grey areas) ──
+        # sv_ttk binds configure_colors() to <<ThemeChanged>>, which fires
+        # ASYNCHRONOUSLY after this method finishes.  configure_colors()
+        # calls tk_setPalette() with sv_ttk's own neutral colours
+        # (#1c1c1c bg / #fafafa fg for dark) — silently repainting every
+        # classic tk widget in the sidebar / prompt builder back to sv_ttk
+        # grey AFTER we apply the FrogPaper palette below.
+        if SV_TTK_AVAILABLE:
+            try:
+                from sv_ttk_fix import disable_classic_palette_regrey
+                disable_classic_palette_regrey(self.root)
+            except Exception as e:
+                logger.warning("Could not disable sv_ttk palette re-grey: %s", e)
+
         # ── Replace sv_ttk's base sprites with themed colours ──
         # sv_ttk bakes grey (dark) or light grey (light) PNG backgrounds
         # into all widget images.  This recolours every sprite to match
@@ -2913,6 +3057,27 @@ class FrogPaperApp:
         accent = pal.get("accent", pal["progress"])
         border = pal.get("border_color", pal["panel2"])
         surface = pal.get("surface", pal["panel2"])
+
+        # ── Contrast-safe button foregrounds ──────────────────────────
+        # Validate the theme's button_fg against each button's ACTUAL
+        # painted surface.  neoncyber_light ships button_fg=#ffffff for
+        # its accent buttons, which vanished on the light panel2 button
+        # sprites (white-on-light, ratio 1.5).  Threshold is 2.0 — low
+        # enough to keep every legible dark-theme palette untouched
+        # (their pale-on-accent ratios are ≈2.4+) — only catastrophic
+        # combos like white-on-lavender get repaired.
+        accent_btn_fg = _readable_fg(pal["button_fg"], "#111111",
+                                     "#ffffff", accent, min_ratio=2.0)
+        plain_btn_fg = _readable_fg(pal["button_fg"], "#111111",
+                                    "#ffffff", pal["panel2"], min_ratio=2.0)
+        progress_btn_fg = _readable_fg(pal["button_fg"], "#111111",
+                                       "#ffffff", pal["progress"],
+                                       min_ratio=2.0)
+        # Pressed buttons use the tabsel surface; prefer the already-
+        # validated plain button fg so light tabs stay readable.
+        pressed_btn_fg = _readable_fg(plain_btn_fg, "#111111",
+                                      "#ffffff", pal["tabsel"],
+                                      min_ratio=2.0)
 
         style.configure(".",
             background=pal["bg"],
@@ -2948,8 +3113,8 @@ class FrogPaperApp:
             background=pal["bg"],
             foreground=pal["text"],
             highlightColor=accent,
-            selectBackground=pal["tabsel"],
-            selectForeground=pal["text"],
+            selectBackground=pal["selected_bg"],
+            selectForeground=pal["selected_fg"],
             activeBackground=accent,
             activeForeground=pal["text"],
             troughColor=pal["panel2"],
@@ -2966,7 +3131,7 @@ class FrogPaperApp:
         
         style.configure("TButton",
             background=pal["panel2"],
-            foreground=pal["button_fg"],
+            foreground=plain_btn_fg,
             relief="flat",
             borderwidth=0,
             padding=(8, 5),
@@ -2975,36 +3140,38 @@ class FrogPaperApp:
             # Lily pad rounded corners (simulated with border)
             bordercolor=border if button_radius == 0 else pal.get("glow_color", accent),
         )
-        hover_fg = pal.get("button_hover_fg", pal["button_fg"])
+        hover_fg = _readable_fg(
+            pal.get("button_hover_fg", plain_btn_fg),
+            "#111111", "#ffffff", hover_color, min_ratio=2.0)
         style.map("TButton",
             background=[("active", hover_color), ("hover", hover_color), ("pressed", pal["tabsel"])],
-            foreground=[("active", hover_fg), ("hover", hover_fg), ("pressed", hover_fg)],
+            foreground=[("active", hover_fg), ("hover", hover_fg), ("pressed", pressed_btn_fg)],
             relief=[("active", "flat"), ("hover", "flat"), ("pressed", "flat")],
             bordercolor=[("focus", focus_color)],
         )
 
         style.configure("Accent.TButton",
             background=accent,
-            foreground=pal["button_fg"],
+            foreground=accent_btn_fg,
             relief="flat",
             borderwidth=0,
             padding=(8, 5),
         )
         style.map("Accent.TButton",
             background=[("active", self._lighten_color(accent, 20)), ("hover", self._lighten_color(accent, 20)), ("pressed", self._darken_color(accent, 20))],
-            foreground=[("active", pal["button_fg"]), ("hover", pal["button_fg"]), ("pressed", pal["button_fg"])],
+            foreground=[("active", accent_btn_fg), ("hover", accent_btn_fg), ("pressed", accent_btn_fg)],
         )
 
         style.configure("Active.TButton",
             background=pal["progress"],
-            foreground=pal["button_fg"],
+            foreground=progress_btn_fg,
             relief="flat",
             borderwidth=0,
             padding=(8, 5),
         )
         style.map("Active.TButton",
             background=[("active", self._lighten_color(pal["progress"], 20)), ("hover", self._lighten_color(pal["progress"], 20)), ("pressed", self._darken_color(pal["progress"], 20))],
-            foreground=[("active", pal["button_fg"]), ("hover", pal["button_fg"]), ("pressed", pal["button_fg"])],
+            foreground=[("active", progress_btn_fg), ("hover", progress_btn_fg), ("pressed", progress_btn_fg)],
         )
 
         # Bioluminescent glow effect for FrogSwamp themes
@@ -3028,8 +3195,8 @@ class FrogPaperApp:
         style.configure("TCombobox",
             fieldbackground=pal["bg"],
             foreground=pal["text"],
-            selectbackground=pal["tabsel"],
-            selectforeground=pal["text"],
+            selectbackground=pal["selected_bg"],
+            selectforeground=pal["selected_fg"],
             relief="flat",
             borderwidth=0,
             padding=(4, 3),
@@ -3038,7 +3205,7 @@ class FrogPaperApp:
         style.map("TCombobox",
             fieldbackground=[("focus", pal["panel2"]), ("readonly", pal["bg"])],
             foreground=[("readonly", pal["text"])],
-            selectbackground=[("active", hover_color), ("readonly", pal["tabsel"])],
+            selectbackground=[("active", hover_color), ("readonly", pal["selected_bg"])],
         )
 
         style.configure("TCheckbutton",
@@ -3125,7 +3292,7 @@ class FrogPaperApp:
         # ── Enhanced TButton padding for icon+text compound buttons ──
         style.configure("Icon.TButton",
             background=pal["panel2"],
-            foreground=pal["button_fg"],
+            foreground=plain_btn_fg,
             relief="flat",
             borderwidth=0,
             padding=(6, 5, 10, 5),  # extra right padding when icon is present
@@ -3134,7 +3301,7 @@ class FrogPaperApp:
         )
         style.map("Icon.TButton",
             background=[("active", pal["button_hover"]), ("hover", pal["button_hover"]), ("pressed", pal["tabsel"])],
-            foreground=[("active", pal.get("button_hover_fg", pal["button_fg"])), ("hover", pal.get("button_hover_fg", pal["button_fg"]))],
+            foreground=[("active", hover_fg), ("hover", hover_fg), ("pressed", pressed_btn_fg)],
         )
 
         # ── Separator spacing ──
@@ -3192,16 +3359,16 @@ class FrogPaperApp:
                 bg=pal["entrybg"],
                 fg=pal["entryfg"],
                 insertbackground=pal["text"],
-                selectbackground=pal["tabsel"],
-                selectforeground=pal["text"],
+                selectbackground=pal["selected_bg"],
+                selectforeground=pal["selected_fg"],
             )
         elif hasattr(self, "prompt_text"):
             self.prompt_text.configure(
                 bg=pal["entrybg"],
                 fg=pal["entryfg"],
                 insertbackground=pal["text"],
-                selectbackground=pal["tabsel"],
-                selectforeground=pal["text"],
+                selectbackground=pal["selected_bg"],
+                selectforeground=pal["selected_fg"],
             )
 
         canvas_bg = pal["bg"]
@@ -3266,7 +3433,19 @@ class FrogPaperApp:
         if hasattr(self, "preview_details_frame"):
             self.preview_details_frame.configure(style="Inner.TFrame")
         if hasattr(self, "progress_overlay_label"):
-            self.progress_overlay_label.configure(bg=accent, fg=pal["button_fg"])
+            self.progress_overlay_label.configure(bg=accent, fg=accent_btn_fg)
+        # The image preview's progress overlay label is created in
+        # prompt_tab.py:1390 with no explicit colours, so without this
+        # re-theme it stays on whatever tk_setPalette chose at creation
+        # time — which on some platforms renders as a flat grey pill
+        # instead of the themed accent colour.
+        if hasattr(self, "image_progress_overlay_label") and self.image_progress_overlay_label.winfo_exists():
+            try:
+                self.image_progress_overlay_label.configure(
+                    bg=accent, fg=accent_btn_fg,
+                )
+            except (tk.TclError, AttributeError):
+                pass
 
         if hasattr(self, "templatevarscrollcanvas"):
             self.templatevarscrollcanvas.configure(bg=pal["panel"], highlightthickness=0)
@@ -3314,8 +3493,8 @@ class FrogPaperApp:
             self.themelist.configure(
                 bg=pal["entrybg"],
                 fg=pal["entryfg"],
-                selectbackground=pal["tabsel"],
-                selectforeground=pal["text"],
+                selectbackground=pal["selected_bg"],
+                selectforeground=pal["selected_fg"],
             )
 
         # Theme the new sidebar elements (tk.Frame / tk.Label widgets)
@@ -3342,18 +3521,18 @@ class FrogPaperApp:
                 pass
             else:
                 self._generate_btn.configure(
-                    bg=accent, fg=pal["button_fg"],
+                    bg=accent, fg=accent_btn_fg,
                     activebackground=pal["button_hover"],
-                    activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
+                    activeforeground=hover_fg,
                 )
         if hasattr(self, "_generate_prompt_btn"):
             if UI_EFFECTS_AVAILABLE and hasattr(self, '_rounded_prompt_btn') and self._rounded_prompt_btn:
                 pass
             else:
                 self._generate_prompt_btn.configure(
-                    bg=accent, fg=pal["button_fg"],
+                    bg=accent, fg=accent_btn_fg,
                     activebackground=pal["button_hover"],
-                    activeforeground=pal.get("button_hover_fg", pal["button_fg"]),
+                    activeforeground=hover_fg,
                 )
 
         # ── Re-theme the settings popup (if open) ──
@@ -3367,17 +3546,240 @@ class FrogPaperApp:
             except Exception:
                 pass
 
+        # ── De-grey any classic widgets still holding sv_ttk / system
+        # neutral colours from earlier this session (exact-match
+        # replacement — intentionally-coloured widgets are untouched).
+        try:
+            self._retheme_sv_ttk_classic_widgets(pal)
+        except Exception as e:
+            logger.debug("classic widget de-grey pass failed: %s", e)
+
+        # ── Deferred safety pass ──
+        # Any <<ThemeChanged>> handlers that still fire after this method
+        # (or third-party palette flips) get corrected on the next idle
+        # cycle: the classic-widget de-grey runs again and the ttk '.'
+        # base style is re-asserted with the FrogPaper palette.
+        try:
+            self.root.after_idle(
+                lambda p=dict(pal): self._reassert_theme_palette(p))
+        except Exception:
+            pass
+
         config = load_config()
         config["app_theme"] = theme_name
         save_config(config)
 
+    # ── sv_ttk de-greying helpers ────────────────────────────────────────
+
+    def _sv_ttk_palette_colors(self):
+        """Read sv_ttk's neutral palettes from both theme namespaces."""
+        colors = {"bg": set(), "fg": set(), "selbg": set(),
+                  "selfg": set(), "disfg": set()}
+        for ns in ("ttk::theme::sv_dark", "ttk::theme::sv_light"):
+            for key in ("bg", "fg", "selbg", "selfg", "disfg"):
+                try:
+                    v = self.root.tk.call("set", f"{ns}::colors(-{key})")
+                    if isinstance(v, str) and v.startswith("#"):
+                        colors[key].add(v.lower())
+                except Exception:
+                    pass
+        return colors
+
+    def _retheme_sv_ttk_classic_widgets(self, pal):
+        """Replace leftover sv_ttk / system neutral colours on classic tk widgets.
+
+        tk_setPalette can only recolor widgets that still hold the
+        PREVIOUS palette value.  Widgets that were already re-greyed by
+        sv_ttk's asynchronous configure_colors() (or created while sv_ttk
+        owned the option database) keep their neutral colours forever —
+        visible as grey patches in the sidebar and prompt builder.
+
+        This walker fixes them with EXACT colour matching, so any widget
+        that was intentionally styled (accent buttons, overlays, icons)
+        is never touched.
+
+        Subtree awareness: classic widgets inside the sidebar are painted
+        pal["panel"] (the sidebar surface), everything else pal["bg"].
+        """
+        sv = self._sv_ttk_palette_colors()
+
+        grey_bg = set(sv["bg"]) | {
+            "#1c1c1c", "#292929", "#fafafa", "#f9f9f9", "#f0f0f0",
+            "#e7e7e7", "#e0e0e0", "#d9d9d9", "#d4d0c8", "#cccccc",
+            "systembuttonface", "system3dface", "systemwindow",
+        }
+        grey_fg = set(sv["fg"]) | {
+            "#fafafa", "#1c1c1c", "systembuttontext", "systemwindowtext",
+        }
+        grey_selbg = set(sv["selbg"]) | {"#2f60d8", "systemhighlight"}
+        grey_selfg = set(sv["selfg"]) | {"systemhighlighttext"}
+        grey_disfg = set(sv["disfg"]) | {"#595959", "#a0a0a0",
+                                         "systemdisabledtext"}
+
+        base_bg = pal["bg"]
+        panel = pal.get("panel", base_bg)
+        accent = pal.get("accent", pal.get("progress", ""))
+        text_fg = pal.get("text", "#ffffff")
+        muted = pal.get("muted", "#888888")
+
+        # Intentional button colours — never recolor their fg
+        keep_fg_bgs = {accent.lower(),
+                       str(pal.get("button_hover", "")).lower(),
+                       str(pal.get("progress", "")).lower()}
+
+        # Subtree anchors that use the panel surface
+        anchors = []
+        for attr in ("_sidebar_outer",):
+            w = getattr(self, attr, None)
+            if w is not None:
+                try:
+                    anchors.append((str(w), panel))
+                except Exception:
+                    pass
+
+        def _norm(c):
+            if not isinstance(c, str) or not c:
+                return None
+            c = c.strip().lower()
+            if c.startswith("#") and len(c) == 4:
+                c = "#" + "".join(ch * 2 for ch in c[1:])
+            return c
+
+        def _bg_for_path(path):
+            for prefix, col in anchors:
+                if path == prefix or path.startswith(prefix + "."):
+                    return col
+            return base_bg
+
+        def _walk(widget):
+            try:
+                children = widget.winfo_children()
+            except Exception:
+                return
+            for child in children:
+                try:
+                    cls = child.winfo_class()
+                    path = str(child)
+                except Exception:
+                    continue
+                if not cls.startswith("T"):
+                    try:
+                        cfg = set(child.configure())
+                        new_bg = _bg_for_path(path)
+                        cur_bg = None
+                        for opt in ("bg", "background"):
+                            if opt in cfg:
+                                cur_bg = _norm(child.cget(opt))
+                                break
+                        target_bg = new_bg
+
+                        def _set(option, value):
+                            try:
+                                child.configure({option: value})
+                            except (tk.TclError, Exception):
+                                pass
+
+                        # Background-family → themed surface
+                        if cur_bg in grey_bg:
+                            for opt in ("bg", "background"):
+                                if opt in cfg:
+                                    _set(opt, target_bg)
+                            if "highlightbackground" in cfg:
+                                _set("highlightbackground", target_bg)
+
+                        # highlightcolor (focus ring) → accent
+                        if "highlightcolor" in cfg:
+                            cur_hl = _norm(child.cget("highlightcolor"))
+                            if cur_hl in grey_selbg:
+                                _set("highlightcolor", accent)
+
+                        # Foreground-family → themed text
+                        for opt in ("fg", "foreground", "activeforeground"):
+                            if opt in cfg:
+                                cur = _norm(child.cget(opt))
+                                if cur in grey_fg:
+                                    # Skip intentionally-contrasting buttons
+                                    if cur_bg in keep_fg_bgs:
+                                        continue
+                                    _set(opt, text_fg)
+
+                        # Active background → hover colour
+                        if "activebackground" in cfg:
+                            cur_ab = _norm(child.cget("activebackground"))
+                            if cur_ab in grey_selbg:
+                                _set("activebackground",
+                                     pal.get("button_hover", accent))
+
+                        # Selection colours
+                        if "selectbackground" in cfg:
+                            cur_sb = _norm(child.cget("selectbackground"))
+                            if cur_sb in (grey_selbg | grey_bg):
+                                _set("selectbackground",
+                                     pal.get("selected_bg", accent))
+                        if "selectforeground" in cfg:
+                            cur_sf = _norm(child.cget("selectforeground"))
+                            if cur_sf in grey_selfg:
+                                _set("selectforeground",
+                                     pal.get("selected_fg", text_fg))
+
+                        # Disabled foreground → muted
+                        if "disabledforeground" in cfg:
+                            cur_df = _norm(child.cget("disabledforeground"))
+                            if cur_df in grey_disfg:
+                                _set("disabledforeground", muted)
+
+                        # Insert cursor → text colour (black cursors are
+                        # invisible on dark themes)
+                        for opt in ("insertbackground",):
+                            if opt in cfg:
+                                cur_ib = _norm(child.cget(opt))
+                                if cur_ib in ("#000000", "black",
+                                              "systemwindowtext",
+                                              "systembuttontext"):
+                                    _set(opt, text_fg)
+                    except Exception:
+                        pass
+                _walk(child)
+
+        _walk(self.root)
+
+    def _reassert_theme_palette(self, pal):
+        """Final idle-cycle safety pass after apply_theme().
+
+        Re-asserts the FrogPaper palette on the ttk '.' base style and
+        de-greys any classic widget that an asynchronously-fired
+        <<ThemeChanged>> handler (or third-party code) may have flipped
+        back to sv_ttk's neutral colours.
+        """
+        try:
+            style = ttk.Style(self.root)
+            style.configure(".",
+                background=pal["bg"],
+                foreground=pal["text"],
+                fieldbackground=pal["entrybg"],
+                relief="flat",
+                borderwidth=0,
+            )
+            style.configure("TFrame", background=pal["bg"])
+            style.configure("TLabel",
+                background=pal["bg"], foreground=pal["text"])
+        except Exception:
+            pass
+        try:
+            self._retheme_sv_ttk_classic_widgets(pal)
+        except Exception:
+            pass
+
     def _apply_ui_effects(self, pal, accent, border):
         """Apply visual enhancements (rounded buttons, shadows, etc.)."""
         try:
+            # Accent buttons keep white/dark text per WCAG contrast on accent
+            accent_fg = _readable_fg(pal.get("button_fg", "#ffffff"),
+                                     "#111111", "#ffffff", accent)
             # ── Re-render sidebar buttons with theme accent color ──
             if hasattr(self, '_rounded_gen_btn') and self._rounded_gen_btn:
                 self._rounded_gen_btn.fill_color = accent
-                self._rounded_gen_btn.text_color = pal["button_fg"]
+                self._rounded_gen_btn.text_color = accent_fg
                 self._rounded_gen_btn.gradient_end = self._lighten_color(
                     accent, 20)
                 self._rounded_gen_btn._render_images(
@@ -3385,7 +3787,7 @@ class FrogPaperApp:
                 self._rounded_gen_btn._on_leave()
             if hasattr(self, '_rounded_prompt_btn') and self._rounded_prompt_btn:
                 self._rounded_prompt_btn.fill_color = accent
-                self._rounded_prompt_btn.text_color = pal["button_fg"]
+                self._rounded_prompt_btn.text_color = accent_fg
                 self._rounded_prompt_btn.gradient_end = self._lighten_color(
                     accent, 20)
                 self._rounded_prompt_btn._render_images(
@@ -7318,7 +7720,7 @@ class FrogPaperApp:
         # New features
         tk.Label(
             content_frame,
-            text="✨ New in v1.1.1: Automatic update notifications",
+            text="✨ New in v1.3.0: ★ Stars to mark favorite prompt variables • New sidebar-navigation settings layout • Clickable cloud setup guides",
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),
@@ -7344,7 +7746,9 @@ class FrogPaperApp:
             ok_btn = RoundedButton(
                 btn_bar, text="OK", width=100, height=32,
                 fill_color=pal.get("accent", pal["progress"]),
-                text_color=pal.get("button_fg", "#ffffff"),
+                text_color=_readable_fg(pal.get("button_fg", "#ffffff"),
+                                        "#111111", "#ffffff",
+                                        pal.get("accent", pal["progress"])),
                 radius=8, font=("Segoe UI", 10),
                 command=about_window.destroy, use_gradient=True,
             )
@@ -7593,23 +7997,11 @@ class FrogPaperApp:
             )
             return
 
-        # Save credentials to keyring
-        try:
-            import keyring
-            keyring.set_password("FrogPaper", info["id_config_key"], client_id)
-            keyring.set_password("FrogPaper", info["secret_config_key"], client_secret)
-        except ImportError:
-            self._dialog.error(
-                "Keyring Required",
-                "The keyring library is required for secure credential storage. Please install it with: pip install keyring"
-            )
-            return
-        except Exception as e:
-            self._dialog.error(
-                "Storage Error",
-                f"Failed to save credentials securely: {e}"
-            )
-            return
+        # Save credentials to config
+        config = load_config()
+        config[info["id_config_key"]] = client_id
+        config[info["secret_config_key"]] = client_secret
+        save_config(config)
 
         # Update module-level globals so the provider picks them up
         import cloud_providers

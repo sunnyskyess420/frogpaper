@@ -21,8 +21,10 @@ BASE_DIR = get_app_dir()
 LOGS_DIR = BASE_DIR / "logs"
 BACKUP_DIR = LOGS_DIR / "history_backups"
 EXPORT_DIR = LOGS_DIR / "history_exports"
-BACKUP_DIR.mkdir(exist_ok=True)
-EXPORT_DIR.mkdir(exist_ok=True)
+# parents=True: this runs at import time, and on fresh checkouts (e.g. the
+# CI runner) the logs/ parent folder does not exist yet.
+BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+EXPORT_DIR.mkdir(parents=True, exist_ok=True)
 
 # Lazy DB import
 _db = None

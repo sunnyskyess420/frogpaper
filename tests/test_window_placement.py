@@ -40,12 +40,16 @@ class TestWindowPlacement(unittest.TestCase):
         return tuple(int(g) for g in m.groups())  # W, H, X, Y
 
     def test_geometry_parsed_and_fits_requested_size(self):
-        w, h = utils.place_on_work_area(self.root, 1600, 900)
+        # 640x480 fits even the smallest runner desktop (GitHub's Windows
+        # runner is 1024x768 with a taskbar; requesting a size near the
+        # screen edge let the shell clamp the mapped window and break the
+        # return-value comparison).
+        w, h = utils.place_on_work_area(self.root, 640, 480)
         self.root.update()
         W, H, X, Y = self._parse_geometry()
         self.assertEqual((W, H), (w, h))
-        self.assertLessEqual(W, 1600)
-        self.assertLessEqual(H, 900)
+        self.assertLessEqual(W, 640)
+        self.assertLessEqual(H, 480)
         wa_x, wa_y, _, _ = utils.get_work_area(self.root)
         self.assertGreaterEqual(X, wa_x - 1)
         self.assertGreaterEqual(Y, wa_y - 1)

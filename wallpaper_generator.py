@@ -199,6 +199,27 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
 
 # ──── Cloudflare Workers AI backend ───────────────────────────────────────
 
+def _build_cloudflare_url(base_url: str, account_id: str, model: str) -> str:
+    try:
+        # Minimal path validation
+        if "/../" in base_url or re.search(r"/%2e%2e/", base_url, re.IGNORECASE):
+            raise ValueError("Invalid path")
+        
+        parsed = urllib.parse.urlparse(base_url)
+        
+        # Validate path parameters
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", account_id):
+            raise ValueError("Invalid parameter")
+        if not re.fullmatch(r"[@A-Za-z0-9_/-]+", model):
+            raise ValueError("Invalid parameter")
+        
+        # Rebuild path from fixed literals + validated segments
+        parsed = parsed._replace(path=f"/client/v4/accounts/{account_id}/ai/run/{model}")
+        
+        return urllib.parse.urlunparse(parsed)
+    except Exception:
+        raise ValueError("Invalid URL")
+
 def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
                           output_path: Path, status_callback=None) -> Path:
     """Generate image via Cloudflare Workers AI (free tier: 10,000 neurons/day)."""
@@ -210,7 +231,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
 
     # Cloudflare Workers AI REST API requires account ID in the URL path
     model = model_id if model_id else "@cf/black-forest-labs/flux-1-schnell"
-    api_url = f"https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/run/{model}"
+    api_url = _build_cloudflare_url("https://api.cloudflare.com", account_id, model)
 
     # Cloudflare FLUX.1-schnell only outputs 1024x1024
     # The universal resize in generate_image() handles this after generation

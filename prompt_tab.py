@@ -1,27 +1,16 @@
 import tkinter as tk
 import logging
-import random
 from pathlib import Path
 
-from tkinter import ttk, messagebox, simpledialog
+from tkinter import ttk
 
 from negative_manager import (
     load_negative_presets,
-    get_preset_names,
-    get_preset_negatives,
-    get_preset_description,
     build_final_negative_prompt,
 )
 
-from utils import (
-    load_json_list,
-    save_json_list,
-    load_config,
-    save_config,
-    get_huggingface_token,
-    has_huggingface_token,
-    get_app_dir,
-)
+from theme import COLOR_DIM_GRAY, COLOR_MID_GRAY  # shared color constants (migrated inline hex)
+
 
 
 logger = logging.getLogger(__name__)
@@ -139,24 +128,15 @@ class PromptTab:
             if refs is not None:
                 refs[name] = widget
 
-        ttk.Label(controls_card, text="Subject:", width=10, anchor="w").grid(row=1, column=0, sticky="w", padx=(0, 2), pady=(0, 8))
-        subject_var = tk.StringVar(value="frog")
-        subject_entry = ttk.Entry(controls_card, textvariable=subject_var, width=26)
-        subject_entry.grid(row=1, column=1, sticky="ew", pady=(0, 8))
-        app.configure_entry_cursor(subject_entry)
-        subject_entry.bind("<MouseWheel>", lambda e: "break")
-        subject_entry.bind("<Button-4>", lambda e: "break")
-        subject_entry.bind("<Button-5>", lambda e: "break")
-        # Store selected value directly in dictionary
-        def update_subject_value(event=None):
-            value = subject_entry.get()
-            app.prompt_builder_values["subject"] = value
-        subject_entry.bind("<FocusOut>", update_subject_value)
-        subject_entry.bind("<KeyRelease>", update_subject_value)
-        # Initialize with default value
-        app.prompt_builder_values["subject"] = "frog"
-        _store("subject_var", subject_var)
-        _store("subject_entry", subject_entry)
+        # ── Subject: single source of truth is the sidebar starred dropdown ──
+        # (The duplicate panel field was removed; refs now point at the
+        # sidebar PinnedCombobox so every consumer reads/writes one widget.)
+        if getattr(app, "subject_entry", None) is not None:
+            _store("subject_entry", app.subject_entry)
+            try:
+                app.prompt_builder_values["subject"] = app.subject_entry.get()
+            except Exception:
+                pass
 
         # Row 2: Style | Mode  (render treatment — both affect output type)
         row2 = ttk.Frame(controls_card)
@@ -181,129 +161,94 @@ class PromptTab:
         app.prompt_builder_values["style"] = "oil painting"
         _store("style_var", style_var)
         _store("style_entry", style_entry)
-        ttk.Label(row2, text="Mode:", width=10, anchor="w").grid(row=0, column=2, sticky="w", padx=(0, 2))
-        mode_var = tk.StringVar(value=app.DEFAULT_PROMPT_MODE_LABEL)
-        mode_combo = ttk.Combobox(
-            row2,
-            textvariable=mode_var,
-            values=app.PROMPT_MODE_LABELS,
-            width=15,
-        )
-        mode_combo.grid(row=0, column=3, sticky="ew")
-        mode_combo.bind("<<ComboboxSelected>>", lambda e: app.update_mode_badge())
-        mode_combo.bind("<MouseWheel>", lambda e: "break")
-        mode_combo.bind("<Button-4>", lambda e: "break")
-        mode_combo.bind("<Button-5>", lambda e: "break")
-        if assign_refs:
-            app.mode_var = mode_var
-            app.mode_combo = mode_combo
-        if refs is not None:
-            refs["mode_var"] = mode_var
-            refs["mode_combo"] = mode_combo
+        # ── Mode: single source of truth is the sidebar Mode dropdown ──
+        if getattr(app, "mode_var", None) is not None:
+            _store("mode_var", app.mode_var)
+        if getattr(app, "mode_combo", None) is not None:
+            _store("mode_combo", app.mode_combo)
 
-        # Row 3: Lighting
-        row3 = ttk.Frame(controls_card)
-        row3.grid(row=3, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        ttk.Label(row3, text="Lighting:", width=10, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 2))
-        lighting_var = tk.StringVar(value="neon")
-        lighting_entry = ttk.Entry(row3, textvariable=lighting_var, width=14)
-        lighting_entry.grid(row=0, column=1, sticky="ew")
-        app.configure_entry_cursor(lighting_entry)
-        lighting_entry.bind("<MouseWheel>", lambda e: "break")
-        lighting_entry.bind("<Button-4>", lambda e: "break")
-        lighting_entry.bind("<Button-5>", lambda e: "break")
-        # Store selected value directly in dictionary
-        def update_lighting_value(event=None):
-            value = lighting_entry.get()
-            app.prompt_builder_values["lighting"] = value
-        lighting_entry.bind("<FocusOut>", update_lighting_value)
-        lighting_entry.bind("<KeyRelease>", update_lighting_value)
-        # Initialize with default value
-        app.prompt_builder_values["lighting"] = "neon"
-        _store("lighting_var", lighting_var)
-        _store("lighting_entry", lighting_entry)
+        # ── Lighting: single source of truth is the sidebar starred dropdown ──
+        if getattr(app, "lighting_entry", None) is not None:
+            _store("lighting_entry", app.lighting_entry)
+            try:
+                app.prompt_builder_values["lighting"] = app.lighting_entry.get()
+            except Exception:
+                pass
 
-        # Row 4: Color Palette (Color family + Modifier)
-        row4 = ttk.Frame(controls_card)
-        row4.grid(row=4, column=0, columnspan=2, sticky="ew", pady=(0, 8))
-        row4.columnconfigure(1, weight=1)
-        row4.columnconfigure(3, weight=1)
+        # ── Color Palette: single source of truth = sidebar starred dropdowns ──
+        if getattr(app, "color_family_var", None) is not None:
+            _store("color_family_var", app.color_family_var)
+        if getattr(app, "color_family_combo", None) is not None:
+            _store("color_family_combo", app.color_family_combo)
+        if getattr(app, "color_variation_var", None) is not None:
+            _store("color_variation_var", app.color_variation_var)
+        if getattr(app, "color_variation_combo", None) is not None:
+            _store("color_variation_combo", app.color_variation_combo)
+        try:
+            _fam = (app.color_family_var.get() or "").strip()
+            _var = (app.color_variation_var.get() or "").strip()
+            app.prompt_builder_values["color"] = f"{_var} {_fam}".strip()
+        except Exception:
+            pass
 
-        # Color family / variation options — sourced from module-level constants
-        color_families = app.COLOR_FAMILIES
-        color_variations = app.COLOR_VARIATIONS
+        # ── Setting: single source of truth is the sidebar starred dropdown ──
+        if getattr(app, "setting_entry", None) is not None:
+            _store("setting_entry", app.setting_entry)
+            try:
+                app.prompt_builder_values["setting"] = app.setting_entry.get()
+            except Exception:
+                pass
 
-        ttk.Label(row4, text="Color:", width=10, anchor="w").grid(row=0, column=0, sticky="w", padx=(0, 2))
-        # Use random defaults for color to avoid empty on startup
-        default_family = random.choice([f for f in color_families if f]) if color_families else ""
-        color_family_var = tk.StringVar(value=default_family)
-        color_family_combo = ttk.Combobox(row4, textvariable=color_family_var, width=14, values=color_families)
-        color_family_combo.grid(row=0, column=1, sticky="ew", padx=(0, 10))
-        color_family_combo.bind("<MouseWheel>", lambda e: "break")
-        color_family_combo.bind("<Button-4>", lambda e: "break")
-        color_family_combo.bind("<Button-5>", lambda e: "break")
+        # ── Atmosphere: single source of truth is the sidebar starred dropdown ──
+        if getattr(app, "atmosphere_combo", None) is not None:
+            _store("atmosphere_combo", app.atmosphere_combo)
+        if getattr(app, "atmosphere_var", None) is not None:
+            _store("atmosphere_var", app.atmosphere_var)
+        try:
+            app.prompt_builder_values["atmosphere"] = app.atmosphere_var.get()
+        except Exception:
+            pass
 
-        ttk.Label(row4, text="Modifier:", width=10, anchor="w").grid(row=0, column=2, sticky="w", padx=(0, 2))
-        # Use random defaults for color variation
-        default_variation = random.choice(color_variations) if color_variations else ""
-        color_variation_var = tk.StringVar(value=default_variation)
-        color_variation_combo = ttk.Combobox(row4, textvariable=color_variation_var, width=14, values=color_variations)
-        color_variation_combo.grid(row=0, column=3, sticky="ew")
-        color_variation_combo.bind("<MouseWheel>", lambda e: "break")
-        color_variation_combo.bind("<Button-4>", lambda e: "break")
-        color_variation_combo.bind("<Button-5>", lambda e: "break")
+        # ── Keep prompt_builder_values in sync with the sidebar dropdowns ──
+        # One input per category: the starred sidebar dropdowns drive everything.
+        def _sync_sidebar_value(key, widget):
+            def _upd(event=None):
+                try:
+                    app.prompt_builder_values[key] = widget.get()
+                except Exception:
+                    pass
+            for seq in ("<<ComboboxSelected>>", "<FocusOut>", "<KeyRelease>"):
+                try:
+                    widget.bind(seq, _upd, add="+")
+                except Exception:
+                    pass
 
-        _store("color_family_var", color_family_var)
-        _store("color_family_combo", color_family_combo)
-        _store("color_variation_var", color_variation_var)
-        _store("color_variation_combo", color_variation_combo)
+        for _key, _widget in (
+            ("subject", getattr(app, "subject_entry", None)),
+            ("lighting", getattr(app, "lighting_entry", None)),
+            ("setting", getattr(app, "setting_entry", None)),
+            ("atmosphere", getattr(app, "atmosphere_combo", None)),
+            ("mood", getattr(app, "mood_entry", None)),
+        ):
+            if _widget is not None:
+                _sync_sidebar_value(_key, _widget)
 
-        # Row 5: Setting field (location/structure) - default to first non-empty option
-        ttk.Label(controls_card, text="Setting:", width=10, anchor="w").grid(row=5, column=0, sticky="w", padx=(0, 2), pady=(0, 8))
-        # Default to first non-empty setting option (swamp)
-        first_setting = [opt for opt in app.THEME_VARIABLE_OPTIONS["setting"] if opt]
-        default_setting = first_setting[0] if first_setting else ""
-        setting_var = tk.StringVar(value=default_setting)
-        setting_entry = ttk.Entry(controls_card, textvariable=setting_var, width=26)
-        setting_entry.grid(row=5, column=1, sticky="ew", pady=(0, 8))
-        app.configure_entry_cursor(setting_entry)
-        setting_entry.bind("<MouseWheel>", lambda e: "break")
-        setting_entry.bind("<Button-4>", lambda e: "break")
-        setting_entry.bind("<Button-5>", lambda e: "break")
-        # Store selected value directly in dictionary
-        def update_setting_value(event=None):
-            value = setting_entry.get()
-            app.prompt_builder_values["setting"] = value
-        setting_entry.bind("<FocusOut>", update_setting_value)
-        setting_entry.bind("<KeyRelease>", update_setting_value)
-        # Initialize with default value
-        first_setting = [opt for opt in app.THEME_VARIABLE_OPTIONS["setting"] if opt]
-        default_setting = first_setting[0] if first_setting else ""
-        app.prompt_builder_values["setting"] = default_setting
-        _store("setting_var", setting_var)
-        _store("setting_entry", setting_entry)
+        def _sync_color_values(event=None):
+            try:
+                _fam = (app.color_family_var.get() or "").strip()
+                _var = (app.color_variation_var.get() or "").strip()
+                app.prompt_builder_values["color"] = f"{_var} {_fam}".strip()
+            except Exception:
+                pass
 
-        # Row 6: Atmosphere — full-width, same grid as Subject/Setting/Negative
-        ttk.Label(controls_card, text="Atmosphere:", width=10, anchor="w").grid(row=6, column=0, sticky="w", padx=(0, 2), pady=(0, 8))
-        first_atmosphere = [opt for opt in app.THEME_VARIABLE_OPTIONS.get("atmosphere", []) if opt]
-        # Use a random default instead of first alphabetically to avoid always showing "arcane haze"
-        default_atm = random.choice(first_atmosphere) if first_atmosphere else ""
-        atmosphere_var = tk.StringVar(value=default_atm)
-        atmosphere_combo = ttk.Entry(controls_card, textvariable=atmosphere_var, width=26)
-        atmosphere_combo.grid(row=6, column=1, sticky="ew", pady=(0, 8))
-        atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
-        atmosphere_combo.bind("<Button-4>", lambda e: "break")
-        atmosphere_combo.bind("<Button-5>", lambda e: "break")
-        # Store selected value directly in dictionary
-        def update_atmosphere_value(event=None):
-            value = atmosphere_combo.get()
-            app.prompt_builder_values["atmosphere"] = value
-        atmosphere_combo.bind("<FocusOut>", update_atmosphere_value)
-        atmosphere_combo.bind("<KeyRelease>", update_atmosphere_value)
-        # Initialize with default value
-        app.prompt_builder_values["atmosphere"] = default_atm
-        _store("atmosphere_var", atmosphere_var)
-        _store("atmosphere_combo", atmosphere_combo)
+        for _w in (getattr(app, "color_family_combo", None),
+                   getattr(app, "color_variation_combo", None)):
+            if _w is not None:
+                for _seq in ("<<ComboboxSelected>>", "<FocusOut>"):
+                    try:
+                        _w.bind(_seq, _sync_color_values, add="+")
+                    except Exception:
+                        pass
 
         # ── Row 7+: Negative Preset checkbuttons (unified with sidebar) ──
         neg_preset_frame = ttk.Frame(controls_card)
@@ -715,7 +660,7 @@ class PromptTab:
             app.update_mode_badge()
 
         except Exception as e:
-            app._dialog.error("Error", f"Could not load quick prompt: {e}")
+            app._dialog.error("Load Failed", "Could not load the selected prompt. It may have been deleted or corrupted.")
 
 
     def _load_recipe(self, recipe):
@@ -846,12 +791,18 @@ class PromptTab:
         text_box.pack(side="left", fill="both", expand=True)
         text_scroll.pack(side="right", fill="y")
         text_box.insert("1.0", source.template_text or "")
+        # Tab must escape this box (editable Text eats Tab by default)
+        try:
+            from ui_effects import make_text_tab_friendly
+            make_text_tab_friendly(text_box)
+        except ImportError:
+            pass
 
         hint = ttk.Label(
             dialog,
             text="Use {variable_name} placeholders in the template text.",
             font=app.small_font,
-            foreground="#666666",
+            foreground=COLOR_DIM_GRAY,
         )
         hint.pack(anchor="w", padx=14, pady=(0, 8))
 
@@ -927,7 +878,7 @@ class PromptTab:
                 dialog.destroy()
 
             except Exception as e:
-                app._dialog.error("Save Error", f"Could not save template:\n{e}")
+                app._dialog.error("Save Failed", "Could not save the template. Check that the app folder is accessible and not read-only.")
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=(0, 12))
@@ -1003,7 +954,7 @@ class PromptTab:
             app._dialog.info("Saved", f"Quick Prompt saved as:\n\n\"{name}\"")
 
         except Exception as e:
-            app._dialog.error("Error", f"Could not save quick prompt: {e}")
+            app._dialog.error("Save Failed", "Could not save the quick prompt. Try again.")
 
 
     def _save_template_dialog(self, name, description, dialog):
@@ -1109,7 +1060,7 @@ class PromptTab:
                         )
 
         except Exception as e:
-            app._dialog.error("Error", f"Could not save template: {e}")
+            app._dialog.error("Save Failed", "Could not save the template. Check that the app folder is accessible.")
 
 
     def _set_active_entry(self, name, value):
@@ -1427,6 +1378,12 @@ class PromptTab:
             app.prompt_text.bind("<MouseWheel>", lambda e: app._on_prompt_text_scroll(e))
             app.prompt_text.bind("<Button-4>", lambda e: app._on_prompt_text_scroll(e))
             app.prompt_text.bind("<Button-5>", lambda e: app._on_prompt_text_scroll(e))
+            # read-only preview: keep it OUT of the Tab ring (it would trap Tab)
+            try:
+                from ui_effects import make_text_tab_friendly
+                make_text_tab_friendly(app.prompt_text)
+            except ImportError:
+                pass
 
         ttk.Separator(inner, orient="horizontal").grid(row=8, column=0, sticky="ew", pady=(6, 8))
 
@@ -1523,9 +1480,9 @@ class PromptTab:
                     app.status_var.set(f"Deleted prompt: {recipe_name}")
                     dialog.destroy()
                 else:
-                    app._dialog.error("Error", f"Could not delete prompt: {recipe_name}")
+                    app._dialog.error("Delete Failed", "Could not delete the prompt. It may be protected or in use.")
             except Exception as e:
-                app._dialog.error("Error", f"Failed to delete prompt: {e}")
+                app._dialog.error("Delete Failed", "Could not delete the prompt. It may be protected or the file is in use.")
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(fill="x", padx=12, pady=(0, 12))
@@ -1558,7 +1515,7 @@ class PromptTab:
                         app.status_var.set(f"Prompt '{template_name}' deleted.")
                         app.refreshtemplatelist()
                     else:
-                        app._dialog.error("Error", "Could not delete prompt.")
+                        app._dialog.error("Delete Failed", "Could not delete the prompt. Try again.")
                 return
 
         # Fall back to old TemplateManager for backward compatibility
@@ -1574,7 +1531,7 @@ class PromptTab:
                         app.status_var.set(f"Template '{template_name}' deleted.")
                         app.refreshtemplatelist()
                     else:
-                        app._dialog.error("Error", "Could not delete template.")
+                        app._dialog.error("Delete Failed", "Could not delete the template. Try again.")
                 return
 
 
@@ -1718,7 +1675,7 @@ class PromptTab:
             return
         
         from tkinter import filedialog
-        import json, re
+        import json
         
         from datetime import date
         default_name = f"frogpaper_recipes_{date.today().strftime('%Y%m%d')}"
@@ -1754,7 +1711,7 @@ class PromptTab:
             app.status_var.set(f"Exported {len(custom)} custom template(s) to file.")
             app._dialog.info("Export Complete", f"Exported {len(custom)} template(s) to:\n{file_path}")
         except Exception as e:
-            app._dialog.error("Export Error", f"Could not export templates:\n{e}")
+            app._dialog.error("Export Failed", "Could not export templates. Check that the destination folder is accessible.")
 
 
     def generatefromtemplate(self):
@@ -1920,7 +1877,6 @@ class PromptTab:
         
         from tkinter import filedialog
         import json
-        from pathlib import Path
         
         file_path = filedialog.askopenfilename(
             title="Import Templates",
@@ -1982,7 +1938,7 @@ class PromptTab:
             app.status_var.set(msg)
             app._dialog.info("Import Complete", msg)
         except Exception as e:
-            app._dialog.error("Import Error", f"Could not read file:\n{e}")
+            app._dialog.error("Import Failed", "Could not read the selected file. It may be corrupted or in an unsupported format.")
 
 
     def load_quick_recipe(self):
@@ -2015,7 +1971,7 @@ class PromptTab:
             dialog,
             text="Select a Quick Prompt to load into Prompt Builder Quick Build.",
             font=app.small_font,
-            foreground="#666666",
+            foreground=COLOR_DIM_GRAY,
         )
         header.pack(anchor="w", padx=14, pady=(12, 8))
 
@@ -2035,7 +1991,7 @@ class PromptTab:
             recipe_listbox.insert(tk.END, recipe.name)
 
         # Description label
-        desc_label = ttk.Label(dialog, text="", wraplength=460, foreground="#666666")
+        desc_label = ttk.Label(dialog, text="", wraplength=460, foreground=COLOR_DIM_GRAY)
         desc_label.pack(fill="x", padx=14, pady=(0, 10))
 
         def on_select(event):
@@ -2150,22 +2106,38 @@ class PromptTab:
         # Reset Quick Build fields
         refs = app._get_pb_quick_refs()
         if refs:
-            if "subject_entry" in refs:
-                refs["subject_entry"].delete(0, tk.END)
-                refs["subject_entry"].insert(0, "frog")
-            if "style_entry" in refs:
-                refs["style_entry"].delete(0, tk.END)
-                refs["style_entry"].insert(0, "oil painting")
-            if "lighting_entry" in refs:
-                refs["lighting_entry"].delete(0, tk.END)
-                refs["lighting_entry"].insert(0, "neon")
-            if "mood_entry" in refs:
-                refs["mood_entry"].delete(0, tk.END)
-                refs["mood_entry"].insert(0, "epic")
-            if "color_family_var" in refs:
-                refs["color_family_var"].set("")
-            if "color_variation_var" in refs:
-                refs["color_variation_var"].set("")
+            _subject_w = refs.get("subject_entry")
+            if _subject_w is not None:
+                _subject_w.delete(0, tk.END)
+                _subject_w.insert(0, "frog")
+            _style_w = refs.get("style_entry")
+            if _style_w is not None:
+                _style_w.delete(0, tk.END)
+                _style_w.insert(0, "oil painting")
+            _lighting_w = refs.get("lighting_entry")
+            if _lighting_w is not None:
+                _lighting_w.delete(0, tk.END)
+                _lighting_w.insert(0, "neon")
+            _mood_w = refs.get("mood_entry")
+            if _mood_w is not None:
+                _mood_w.delete(0, tk.END)
+                _mood_w.insert(0, "epic")
+            _cf_var = refs.get("color_family_var")
+            if _cf_var is not None:
+                _cf_var.set("")
+            _cv_var = refs.get("color_variation_var")
+            if _cv_var is not None:
+                _cv_var.set("")
+            # prompt_builder_values must follow the (single-source) widgets
+            for _key, _name in (("subject", "subject_entry"), ("style", "style_entry"),
+                                ("lighting", "lighting_entry"), ("mood", "mood_entry")):
+                _w = refs.get(_name)
+                if _w is not None:
+                    try:
+                        app.prompt_builder_values[_key] = _w.get()
+                    except Exception:
+                        pass
+            app.prompt_builder_values["color"] = ""
         app.status_var.set("Quick Build fields reset to defaults")
 
 
@@ -2220,7 +2192,7 @@ class PromptTab:
             dialog,
             text="Save the current Prompt Builder Quick Build configuration as a Quick Prompt.",
             font=app.small_font,
-            foreground="#666666",
+            foreground=COLOR_DIM_GRAY,
         )
         header.pack(anchor="w", padx=14, pady=(12, 8))
 
@@ -2279,7 +2251,7 @@ class PromptTab:
             dialog,
             text="Save current prompt as a reusable prompt.",
             font=app.small_font,
-            foreground="#666666",
+            foreground=COLOR_DIM_GRAY,
         )
         header.pack(anchor="w", padx=14, pady=(12, 8))
 
@@ -2300,7 +2272,7 @@ class PromptTab:
             dialog,
             text="Tip: use {variable_name} in your prompt to create fill-in slots.",
             font=app.small_font,
-            foreground="#888888",
+            foreground=COLOR_MID_GRAY,
         )
         hint.pack(anchor="w", padx=14, pady=(0, 12))
 

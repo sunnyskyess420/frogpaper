@@ -2,7 +2,29 @@ import tkinter as tk
 import logging
 import sys
 import threading
-import random
+
+from theme import COLOR_GRAY_900, COLOR_GREEN_BRIGHT, COLOR_SUCCESS  # shared color constants (migrated inline hex)
+
+# Import thread-safe UI update functions
+try:
+    from thread_manager import run_background, schedule_ui_update
+    THREAD_MANAGER_AVAILABLE = True
+except ImportError:
+    THREAD_MANAGER_AVAILABLE = False
+    # Fallback to direct threading if thread_manager not available
+    def schedule_ui_update(callback, *args, **kwargs):
+        """Fallback for thread-safe UI updates."""
+        if hasattr(callback, '__self__') and hasattr(callback.__self__, 'root'):
+            callback.__self__.root.after(0, lambda: callback(*args, **kwargs))
+        else:
+            # Direct call as fallback (not thread-safe, but prevents crashes)
+            callback(*args, **kwargs)
+    
+    def run_background(target, *args, daemon=True, **kwargs):
+        """Fallback for background thread execution."""
+        thread = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=daemon)
+        thread.start()
+        return thread
 
 try:
     import pystray
@@ -10,6 +32,7 @@ except ImportError:
     pystray = None
 
 from PIL import Image
+from set_wallpaper import set_wallpaper
 
 from utils import get_app_dir, get_bundle_dir
 
@@ -25,8 +48,7 @@ class TrayManager:
     def _build_tray_image(self) -> "Image.Image":
             """Drawn fallback frog icon — rendered at 256 px then downscaled for crispness."""
             app = self.app
-            from PIL import Image, ImageDraw, ImageFilter
-            import math
+            from PIL import Image, ImageDraw
 
             S = 256  # render size; downscaled to 64 at the end
 
@@ -43,7 +65,7 @@ class TrayManager:
                              fill=(r, g, b, 255))
 
             # outer ring
-            draw.ellipse([4, 4, S - 4, S - 4], outline="#4ade80", width=6)
+            draw.ellipse([4, 4, S - 4, S - 4], outline=COLOR_GREEN_BRIGHT, width=6)
             draw.ellipse([10, 10, S - 10, S - 10], outline="#166534", width=2)
 
             # ── Wallpaper monitor (bottom portion) ───────────────────────────
@@ -70,9 +92,9 @@ class TrayManager:
 
             # ── Frog body ────────────────────────────────────────────────────
             # main body (rounded, sitting on monitor area)
-            body_col   = "#22c55e"
+            body_col   = COLOR_SUCCESS
             body_dark  = "#15803d"
-            body_light = "#4ade80"
+            body_light = COLOR_GREEN_BRIGHT
 
             # belly
             draw.ellipse([72, 80, 184, 172], fill=body_col, outline=body_dark, width=3)
@@ -86,12 +108,12 @@ class TrayManager:
 
             # left eyeball
             draw.ellipse([60, 50, 96, 86], fill="white")
-            draw.ellipse([68, 58, 90, 80], fill="#111827")
+            draw.ellipse([68, 58, 90, 80], fill=COLOR_GRAY_900)
             draw.ellipse([82, 60, 90, 68], fill="white")  # catchlight
 
             # right eyeball
             draw.ellipse([160, 50, 196, 86], fill="white")
-            draw.ellipse([168, 58, 190, 80], fill="#111827")
+            draw.ellipse([168, 58, 190, 80], fill=COLOR_GRAY_900)
             draw.ellipse([182, 60, 190, 68], fill="white")
 
             # nostrils
@@ -200,9 +222,8 @@ class TrayManager:
                     menu=menu
                 )
                 
-                # Run in a background thread to avoid blocking Tkinter
-                # Must be non-daemon to keep tray icon alive when main window closes
-                import threading
+                # Run in a background thread to avoid blocking Tkinter.
+                # ThreadManager tracks this thread for clean shutdown on quit.
 
                 # On Windows, pystray creates a hidden message window that
                 # can appear as an extra taskbar entry.  We patch the
@@ -241,8 +262,7 @@ class TrayManager:
 
                     app._tray_icon.run()
 
-                tray_thread = threading.Thread(target=_run_tray_hidden, daemon=True)
-                tray_thread.start()
+                run_background(_run_tray_hidden)
                 logger.info("Tray icon started successfully")
                 return True
             except Exception as e:
@@ -270,9 +290,8 @@ class TrayManager:
                             pass
                         finally:
                             stop_done.set()
-                    t = threading.Thread(target=_do_stop, daemon=True)
-                    t.start()
-                    stop_done.wait(timeout=3)
+                    t = run_background(_do_stop)
+                    t.join(timeout=3)
             except Exception as e:
                 logger.error(f"Error stopping tray: {e}")
 
@@ -280,8 +299,10 @@ class TrayManager:
     def _toggle_minimize_to_tray(self, icon=None, item=None):
             """Toggle minimize to tray setting from tray menu."""
             app = self.app
-            app.minimize_to_tray_var.set(not app.minimize_to_tray_var.get())
-            app._on_minimize_to_tray_changed()
+            def _do():
+                app.minimize_to_tray_var.set(not app.minimize_to_tray_var.get())
+                app._on_minimize_to_tray_changed()
+            schedule_ui_update(_do)
 
 
     def _tray_exit(self, icon=None, item=None):
@@ -290,7 +311,7 @@ class TrayManager:
             app._stop_tray()
 
             try:
-                app.root.after(0, app._quit_app)
+                schedule_ui_update(app._quit_app)
             except (RuntimeError, tk.TclError):
                 # Main loop already exited — force quit
                 try:
@@ -304,26 +325,27 @@ class TrayManager:
     def _tray_generate_prompt(self, icon=None, item=None):
             """Restore window and generate an image."""
             app = self.app
-            app.root.after(0, app._restore_window)
-            app.root.after(100, app.generate_image)
+            schedule_ui_update(app._restore_window)
+            # The delayed call must be scheduled from the main thread
+            schedule_ui_update(lambda: app.root.after(100, app.generate_image))
 
 
     def _tray_next_wallpaper(self, icon=None, item=None):
 
             app = self.app
-            app.root.after(0, app.advance_slideshow)
+            schedule_ui_update(app.advance_slideshow)
 
 
     def _tray_open_folder(self, icon=None, item=None):
             """Open the wallpapers folder in system file explorer (same as gallery header 'Open Folder' button)."""
             app = self.app
-            app.root.after(0, app._open_wallpapers_folder)
+            schedule_ui_update(app._open_wallpapers_folder)
 
 
     def _tray_open_settings(self, icon=None, item=None):
             """Restore window and open Settings dialog."""
             app = self.app
-            app.root.after(0, lambda: self._restore_window_and_open_settings())
+            schedule_ui_update(self._restore_window_and_open_settings)
 
     def _restore_window_and_open_settings(self):
             """Restore the window and then open Settings dialog."""
@@ -333,7 +355,7 @@ class TrayManager:
     def _tray_show_about(self, icon=None, item=None):
             """Restore window and show About dialog."""
             app = self.app
-            app.root.after(0, lambda: self._restore_window_and_show_about())
+            schedule_ui_update(self._restore_window_and_show_about)
 
     def _restore_window_and_show_about(self):
             """Restore the window and then show About dialog."""
@@ -344,13 +366,13 @@ class TrayManager:
     def _tray_pause_slideshow(self, icon=None, item=None):
 
             app = self.app
-            app.root.after(0, app.slideshow_pause_click)
+            schedule_ui_update(app.slideshow_pause_click)
 
 
     def _tray_prev_wallpaper(self, icon=None, item=None):
 
             app = self.app
-            app.root.after(0, app.slideshow_prev_now)
+            schedule_ui_update(app.slideshow_prev_now)
 
 
     def _tray_random_wallpaper(self, icon=None, item=None):
@@ -374,18 +396,18 @@ class TrayManager:
                         app.slideshow.reset_timer()
                 except Exception as e:
                     app.status_var.set(f"Random wallpaper error: {e}")
-            app.root.after(0, _do)
+            schedule_ui_update(_do)
 
 
     def _tray_restore(self, icon=None, item=None):
 
             app = self.app
-            app.root.after(0, app._restore_window)
+            schedule_ui_update(app._restore_window)
 
 
     def _tray_stop_slideshow(self, icon=None, item=None):
             app = self.app
-            app.root.after(0, app.slideshow.stop)
+            schedule_ui_update(app.slideshow.stop)
 
 
     def _tray_toggle_slideshow(self, icon=None, item=None):
@@ -398,5 +420,5 @@ class TrayManager:
                 app.slideshow.resume()
             else:
                 app.slideshow.pause()
-        app.root.after(0, _do)
+        schedule_ui_update(_do)
 

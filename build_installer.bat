@@ -44,14 +44,14 @@ REM Create a comprehensive Inno Setup script
 (
 echo [Setup]
 echo AppName=FrogPaper
-echo AppVersion=1.3.0
+echo AppVersion=1.5.0
 echo AppPublisher=FrogPaper
 echo AppPublisherURL=https://github.com/sunnyskyess420/frogpaper
 echo AppSupportURL=https://github.com/sunnyskyess420/frogpaper/issues
 echo AppUpdatesURL=https://github.com/sunnyskyess420/frogpaper/releases
 echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
-echo OutputBaseFilename=FrogPaper-Setup-1.3.0
+echo OutputBaseFilename=FrogPaper-Setup-1.5.0
 echo Compression=lzma2
 echo SolidCompression=yes
 echo WizardStyle=modern
@@ -86,7 +86,6 @@ echo Source: "config.template.json"; DestDir: "{app}"; DestName: "config.json"; 
 echo Source: "keywords.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "presets.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "presets.json.bak"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
-echo Source: "gallery_tags.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "gallery_tags.json.bak"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "negative_presets.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
 echo Source: "recipes.json"; DestDir: "{app}"; Flags: ignoreversion onlyifdoesntexist
@@ -143,7 +142,7 @@ echo ========================================
 echo Installer created successfully!
 echo ========================================
 echo.
-echo Installer location: installer_output\FrogPaper-Setup-1.3.0.exe
+echo Installer location: installer_output\FrogPaper-Setup-1.5.0.exe
 echo.
 echo Press any key to exit...
 pause >nul

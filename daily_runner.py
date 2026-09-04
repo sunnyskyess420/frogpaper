@@ -19,6 +19,7 @@ import json
 import logging
 import sys
 from datetime import datetime
+from logging.handlers import RotatingFileHandler
 from pathlib import Path
 
 from utils import get_app_dir, get_bundle_dir
@@ -35,7 +36,10 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(message)s",
     handlers=[
-        logging.FileHandler(log_file, encoding="utf-8"),
+        # Rotating: 2 MB per file, 3 backups — the log can never grow
+        # beyond ~8 MB no matter how long the scheduler keeps running.
+        RotatingFileHandler(log_file, maxBytes=2 * 1024 * 1024,
+                            backupCount=3, encoding="utf-8"),
         logging.StreamHandler(sys.stdout),
     ],
 )

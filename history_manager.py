@@ -11,8 +11,7 @@ import logging
 import os
 from pathlib import Path
 from datetime import datetime, timedelta
-from typing import Dict, List, Optional, Any
-import shutil
+from typing import Dict, List, Optional
 
 from utils import get_app_dir
 

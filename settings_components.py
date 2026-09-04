@@ -9,6 +9,15 @@ import tkinter as tk
 from tkinter import ttk
 import webbrowser
 import logging
+from typing import TYPE_CHECKING, Callable
+
+from theme import STATUS_COLORS as _SHARED_STATUS_COLORS  # single source of truth
+from theme import lighten as _theme_lighten
+
+from theme import COLOR_ACCENT, COLOR_ERROR, COLOR_GRAY_200, COLOR_GRAY_400, COLOR_GRAY_700, COLOR_GRAY_800, COLOR_GRAY_900, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING, COLOR_WHITE  # shared color constants (migrated inline hex)
+
+if TYPE_CHECKING:
+    from app import FrogPaperApp
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +38,7 @@ _LINK_RE = re.compile(
 _LINK_SEQ = itertools.count()
 
 
-def _default_open(event, url):
+def _default_open(event: tk.Event, url: str) -> None:
     """Open *url* in the default browser, swallowing errors."""
     try:
         webbrowser.open(url, new=2)
@@ -100,7 +109,7 @@ class SetupGuideText(tk.Frame):
       visible with no internal scrolling.
     """
 
-    def __init__(self, parent, steps, bg="#22252a", fg="#9ca3af", link=None,
+    def __init__(self, parent, steps, bg="#22252a", fg=COLOR_GRAY_400, link=None,
                  font=("Segoe UI", 9)):
         super().__init__(parent, bg=bg)
         self._bg = bg
@@ -149,13 +158,22 @@ class SetupGuideText(tk.Frame):
         self.after_idle(self._sync_height)
         self.bind("<Configure>", lambda e: self.after_idle(self._sync_height))
 
-    def _open_link(self, event, url):
+        # read-only text (with links): keep it OUT of the Tab ring (it would
+        # trap Tab) — mouse selection/copy and link clicks are unaffected
+        try:
+            from ui_effects import make_text_tab_friendly
+            make_text_tab_friendly(self.text)
+        except ImportError:
+            pass
+
+    def _open_link(self, event: tk.Event | None, url: str) -> None:
+        """Open the setup-guide *url* in the default browser."""
         try:
             webbrowser.open(url, new=2)
         except Exception:
             logger.exception("failed to open setup link %r", url)
 
-    def _sync_height(self):
+    def _sync_height(self) -> None:
         """Size the Text to exactly fit its wrapped content (no inner scroll)."""
         if not self.winfo_exists():
             return
@@ -205,16 +223,16 @@ class StatusBadge:
     """Reusable status badge with color-coded states."""
     
     COLORS = {
-        "connected": "#22c55e",
-        "not_connected": "#6b7280",
-        "error": "#ef4444",
-        "success": "#22c55e",
-        "warning": "#f59e0b",
+        "connected": COLOR_SUCCESS,
+        "not_connected": COLOR_MUTED,
+        "error": COLOR_ERROR,
+        "success": COLOR_SUCCESS,
+        "warning": COLOR_WARNING,
         "info": "#3b82f6"
     }
     
     @staticmethod
-    def create(parent, text, status="not_connected", size="small"):
+    def create(parent, text: str, status: str = "not_connected", size: str = "small") -> tk.Frame:
         """
         Create a status badge widget.
         
@@ -224,7 +242,7 @@ class StatusBadge:
             status: Status key (connected, not_connected, error, etc.)
             size: "small" or "normal"
         """
-        bg_color = StatusBadge.COLORS.get(status, "#6b7280")
+        bg_color = StatusBadge.COLORS.get(status, COLOR_MUTED)
         font_size = 8 if size == "small" else 9
         
         frame = tk.Frame(parent, bg=bg_color, padx=8, pady=2)
@@ -263,9 +281,9 @@ class SettingRow:
         """
         self.parent = parent
         self.palette = palette or {}
-        self._muted = self.palette.get("muted", "#9ca3af")
-        self._text = self.palette.get("text", "#e5e7eb")
-        self._card_bg = self.palette.get("card_bg", self.palette.get("bg", "#1f2937"))
+        self._muted = self.palette.get("muted", COLOR_GRAY_400)
+        self._text = self.palette.get("text", COLOR_GRAY_200)
+        self._card_bg = self.palette.get("card_bg", self.palette.get("bg", COLOR_GRAY_800))
         
         # Create row frame
         self.frame = tk.Frame(parent, bg=self._card_bg)
@@ -305,10 +323,11 @@ class SettingRow:
             )
             self.helper.grid(row=1, column=0, columnspan=2, sticky="w", pady=4, padx=16)
     
-    def get_frame(self):
+    def get_frame(self) -> tk.Widget:
+        """Return the row frame (for gridding into a settings page)."""
         return self.frame
 
-    def update_theme(self, palette):
+    def update_theme(self, palette: dict) -> None:
         """Re-paint this row's tk widgets to match a new theme palette.
 
         Called by ``SettingsTab._retheme_settings_popup`` so that rows
@@ -358,13 +377,13 @@ class SettingCard:
         """
         self.parent = parent
         self.palette = palette or {}
-        self._bg = self.palette.get("bg", "#111827")
-        self._card_bg = self.palette.get("card_bg", "#1f2937")
+        self._bg = self.palette.get("bg", COLOR_GRAY_900)
+        self._card_bg = self.palette.get("card_bg", COLOR_GRAY_800)
         self._card_bg_hover = self._lighten(self._card_bg, 8)
-        self._text = self.palette.get("text", "#e5e7eb")
-        self._muted = self.palette.get("muted", "#9ca3af")
-        self._accent = accent_color or self.palette.get("accent", "#8b5cf6")
-        self._border = self.palette.get("border_color", "#374151")
+        self._text = self.palette.get("text", COLOR_GRAY_200)
+        self._muted = self.palette.get("muted", COLOR_GRAY_400)
+        self._accent = accent_color or self.palette.get("accent", COLOR_ACCENT)
+        self._border = self.palette.get("border_color", COLOR_GRAY_700)
         self._border_hover = self._lighten(self._border, 15)
         
         # Outer frame with spacing
@@ -441,14 +460,14 @@ class SettingCard:
         self.content.bind("<Enter>", self._on_card_enter)
         self.content.bind("<Leave>", self._on_card_leave)
     
-    def _on_card_enter(self, event=None):
+    def _on_card_enter(self, event: tk.Event | None = None) -> None:
         """Highlight card border on hover for premium feel."""
         try:
             self.card.config(highlightbackground=self._border_hover)
         except tk.TclError:
             pass
     
-    def _on_card_leave(self, event=None):
+    def _on_card_leave(self, event: tk.Event | None = None) -> None:
         """Restore card border on leave."""
         try:
             self.card.config(highlightbackground=self._border)
@@ -456,24 +475,18 @@ class SettingCard:
             pass
     
     @staticmethod
-    def _lighten(hex_color, amount):
+    def _lighten(hex_color: str, amount: int) -> str:
         """Lighten a hex color by a given amount (0-255)."""
-        try:
-            hex_color = hex_color.lstrip("#")
-            r = min(255, max(0, int(hex_color[0:2], 16) + amount))
-            g = min(255, max(0, int(hex_color[2:4], 16) + amount))
-            b = min(255, max(0, int(hex_color[4:6], 16) + amount))
-            return f"#{r:02x}{g:02x}{b:02x}"
-        except (ValueError, IndexError):
-            return hex_color
+        # Single implementation lives in theme.py
+        return _theme_lighten(hex_color, amount)
     
-    def add_widget(self, widget, **grid_kwargs):
+    def add_widget(self, widget: tk.Widget, **grid_kwargs) -> None:
         """Add a widget to the card content area."""
         default_kwargs = {"sticky": "ew", "pady": 8}
         default_kwargs.update(grid_kwargs)
         widget.grid(row=self.content.grid_size()[1], column=0, **default_kwargs)
 
-    def update_theme(self, palette):
+    def update_theme(self, palette: dict) -> None:
         """Re-paint this card's tk widgets to match a new theme palette.
 
         Called by ``SettingsTab._retheme_settings_popup`` so cards created
@@ -535,7 +548,7 @@ class SettingCard:
         except (tk.TclError, AttributeError):
             pass
 
-    def get_content(self):
+    def get_content(self) -> tk.Widget:
         """Get the content frame for direct manipulation."""
         return self.content
 
@@ -546,7 +559,7 @@ class ExpandableSection:
     Useful for advanced settings or detailed guides.
     """
     
-    def __init__(self, parent, title, expanded=False, palette=None, accent_color=None):
+    def __init__(self, parent, title: str, expanded: bool = False, palette: dict | None = None, accent_color: str | None = None) -> None:
         """
         Create an expandable section.
         
@@ -559,10 +572,10 @@ class ExpandableSection:
         """
         self.parent = parent
         self.palette = palette or {}
-        self._card_bg = self.palette.get("card_bg", self.palette.get("bg", "#1f2937"))
-        self._text = self.palette.get("text", "#e5e7eb")
-        self._muted = self.palette.get("muted", "#9ca3af")
-        self._accent = accent_color or self.palette.get("accent", "#8b5cf6")
+        self._card_bg = self.palette.get("card_bg", self.palette.get("bg", COLOR_GRAY_800))
+        self._text = self.palette.get("text", COLOR_GRAY_200)
+        self._muted = self.palette.get("muted", COLOR_GRAY_400)
+        self._accent = accent_color or self.palette.get("accent", COLOR_ACCENT)
         
         self._expanded = expanded
 
@@ -595,7 +608,8 @@ class ExpandableSection:
         else:
             self.content.pack_forget()
     
-    def _on_toggle(self, event=None):
+    def _on_toggle(self, event: tk.Event | None = None) -> None:
+        """Expand or collapse the section."""
         self._expanded = not self._expanded
         self.toggle_btn.config(text=f"{'▼' if self._expanded else '▶'} {self.toggle_btn.cget('text')[2:]}")
         
@@ -604,19 +618,21 @@ class ExpandableSection:
         else:
             self.content.pack_forget()
     
-    def _on_enter(self, event):
+    def _on_enter(self, event: tk.Event) -> None:
+        """Hover highlight."""
         self.toggle_btn.config(fg="#60a5fa")
     
-    def _on_leave(self, event):
+    def _on_leave(self, event: tk.Event) -> None:
+        """Restore normal color."""
         self.toggle_btn.config(fg=self._accent)
     
-    def add_widget(self, widget, **pack_kwargs):
+    def add_widget(self, widget: tk.Widget, **pack_kwargs) -> None:
         """Add a widget to the expandable content."""
         default_kwargs = {"fill": "x", "pady": 4}
         default_kwargs.update(pack_kwargs)
         widget.pack(**default_kwargs)
 
-    def update_theme(self, palette):
+    def update_theme(self, palette: dict) -> None:
         """Re-paint this section's tk widgets to match a new theme palette.
 
         Called by ``SettingsTab._retheme_settings_popup`` so sections created
@@ -650,7 +666,8 @@ class ExpandableSection:
         except (tk.TclError, AttributeError):
             pass
 
-    def get_content(self):
+    def get_content(self) -> tk.Widget:
+        """Return the expandable content frame."""
         return self.content
 
 
@@ -676,12 +693,12 @@ class HelpResourceCard:
         """
         self.parent = parent
         self.palette = palette or {}
-        self._bg = self.palette.get("bg", "#111827")
-        self._card_bg = self.palette.get("card_bg", "#1f2937")
-        self._text = self.palette.get("text", "#e5e7eb")
-        self._muted = self.palette.get("muted", "#9ca3af")
-        self._accent = self.palette.get("accent", "#8b5cf6")
-        self._border = self.palette.get("border_color", "#374151")
+        self._bg = self.palette.get("bg", COLOR_GRAY_900)
+        self._card_bg = self.palette.get("card_bg", COLOR_GRAY_800)
+        self._text = self.palette.get("text", COLOR_GRAY_200)
+        self._muted = self.palette.get("muted", COLOR_GRAY_400)
+        self._accent = self.palette.get("accent", COLOR_ACCENT)
+        self._border = self.palette.get("border_color", COLOR_GRAY_700)
         
         # Card frame
         self.card = tk.Frame(
@@ -749,15 +766,15 @@ class HelpResourceCard:
             w.bind("<Enter>", self._on_hover_enter)
             w.bind("<Leave>", self._on_hover_leave)
     
-    def _on_hover_enter(self, event=None):
+    def _on_hover_enter(self, event: tk.Event | None = None) -> None:
         """Subtle border brighten on hover."""
         try:
             self.card.config(highlightbackground=self._hover_border)
-            self.title_label.config(fg="#ffffff")
+            self.title_label.config(fg=COLOR_WHITE)
         except tk.TclError:
             pass
     
-    def _on_hover_leave(self, event=None):
+    def _on_hover_leave(self, event: tk.Event | None = None) -> None:
         """Restore original border on leave."""
         try:
             self.card.config(highlightbackground=self._default_border)
@@ -765,7 +782,7 @@ class HelpResourceCard:
         except tk.TclError:
             pass
 
-    def update_theme(self, palette):
+    def update_theme(self, palette: dict) -> None:
         """Re-paint this help resource card's tk widgets to match a new theme.
 
         Called by ``SettingsTab._retheme_settings_popup`` so cards created
@@ -819,7 +836,7 @@ class SidebarNav:
     Provides clear navigation with active state highlighting.
     """
     
-    def __init__(self, parent, categories, on_select, palette=None, width=220):
+    def __init__(self, parent, categories: list, on_select: Callable[..., None], palette: dict | None = None, width: int = 220) -> None:
         """
         Create sidebar navigation.
         
@@ -834,12 +851,12 @@ class SidebarNav:
         self.categories = categories
         self.on_select = on_select
         self.palette = palette or {}
-        self._bg = self.palette.get("bg", "#111827")
+        self._bg = self.palette.get("bg", COLOR_GRAY_900)
         self._sidebar_bg = self.palette.get("sidebar_bg", "#0f131a")
-        self._text = self.palette.get("text", "#e5e7eb")
-        self._muted = self.palette.get("muted", "#9ca3af")
-        self._accent = self.palette.get("accent", "#8b5cf6")
-        self._border = self.palette.get("border_color", "#374151")
+        self._text = self.palette.get("text", COLOR_GRAY_200)
+        self._muted = self.palette.get("muted", COLOR_GRAY_400)
+        self._accent = self.palette.get("accent", COLOR_ACCENT)
+        self._border = self.palette.get("border_color", COLOR_GRAY_700)
         
         self._selected_category = None
         self._buttons = {}
@@ -876,7 +893,7 @@ class SidebarNav:
         if categories:
             self.select_category(categories[0][0])
     
-    def _create_nav_button(self, parent, cat_id, label, icon):
+    def _create_nav_button(self, parent, cat_id: str, label: str, icon: str) -> None:
         """Create a navigation button."""
         btn_frame = tk.Frame(parent, bg=self._sidebar_bg, cursor="hand2")
         
@@ -947,7 +964,7 @@ class SidebarNav:
         
         return btn_frame
     
-    def select_category(self, cat_id):
+    def select_category(self, cat_id: str) -> None:
         """Select a category and update UI with smooth state transition."""
         # Reset previous selection
         if self._selected_category and self._selected_category in self._buttons:
@@ -980,18 +997,13 @@ class SidebarNav:
             self.on_select(cat_id)
     
     @staticmethod
-    def _lighten(hex_color, amount):
+    def _lighten(hex_color: str, amount: int) -> str:
         """Lighten a hex color by a given amount (0-255)."""
-        try:
-            hex_color = hex_color.lstrip("#")
-            r = min(255, max(0, int(hex_color[0:2], 16) + amount))
-            g = min(255, max(0, int(hex_color[2:4], 16) + amount))
-            b = min(255, max(0, int(hex_color[4:6], 16) + amount))
-            return f"#{r:02x}{g:02x}{b:02x}"
-        except (ValueError, IndexError):
-            return hex_color
+        # Single implementation lives in theme.py
+        return _theme_lighten(hex_color, amount)
     
-    def get_sidebar(self):
+    def get_sidebar(self) -> tk.Widget:
+        """Return the sidebar frame (for placing into a layout)."""
         return self.sidebar
 
     def update_theme(self, palette):
@@ -1003,10 +1015,10 @@ class SidebarNav:
         """
         self.palette = palette or {}
         new_bg   = self.palette.get("sidebar_bg", "#0f131a")
-        new_text = self.palette.get("text", "#e5e7eb")
-        new_muted = self.palette.get("muted", "#9ca3af")
-        new_accent = self.palette.get("accent", "#8b5cf6")
-        new_border = self.palette.get("border_color", "#374151")
+        new_text = self.palette.get("text", COLOR_GRAY_200)
+        new_muted = self.palette.get("muted", COLOR_GRAY_400)
+        new_accent = self.palette.get("accent", COLOR_ACCENT)
+        new_border = self.palette.get("border_color", COLOR_GRAY_700)
 
         self._sidebar_bg = new_bg
         self._text = new_text
@@ -1061,13 +1073,10 @@ class CloudProviderCard:
     Shows summary by default, expands for management.
     """
     
-    STATUS_COLORS = {
-        "connected": "#22c55e",
-        "not_connected": "#6b7280",
-        "error": "#ef4444"
-    }
+    # Shared status colors — single source of truth lives in theme.py
+    STATUS_COLORS = _SHARED_STATUS_COLORS
     
-    def __init__(self, parent, provider_key, ux_info, palette, app):
+    def __init__(self, parent, provider_key: str, ux_info: dict, palette: dict, app: "FrogPaperApp") -> None:
         """
         Create a cloud provider card.
         
@@ -1084,19 +1093,19 @@ class CloudProviderCard:
         self.palette = palette
         self.app = app
         
-        self._bg = palette.get("bg", "#111827")
-        self._card_bg = palette.get("card_bg", "#1f2937")
-        self._text = palette.get("text", "#e5e7eb")
-        self._muted = palette.get("muted", "#9ca3af")
-        self._accent = palette.get("accent", "#8b5cf6")
-        self._border = palette.get("border_color", "#374151")
+        self._bg = palette.get("bg", COLOR_GRAY_900)
+        self._card_bg = palette.get("card_bg", COLOR_GRAY_800)
+        self._text = palette.get("text", COLOR_GRAY_200)
+        self._muted = palette.get("muted", COLOR_GRAY_400)
+        self._accent = palette.get("accent", COLOR_ACCENT)
+        self._border = palette.get("border_color", COLOR_GRAY_700)
         
         self._expanded = False
         self._status = "not_connected"
         
         self._build_card()
     
-    def _build_card(self):
+    def _build_card(self) -> None:
         """Build the card UI."""
         # Outer frame
         self.outer = tk.Frame(self.parent, bg=self._bg)
@@ -1128,7 +1137,7 @@ class CloudProviderCard:
         # Expandable content (credentials, actions)
         self._build_expandable_content()
     
-    def _build_summary_row(self):
+    def _build_summary_row(self) -> None:
         """Build the always-visible summary row."""
         # Icon
         icon = tk.Label(
@@ -1174,7 +1183,7 @@ class CloudProviderCard:
         self.toggle_label.bind("<Enter>", lambda e: self.toggle_label.config(fg=self._accent))
         self.toggle_label.bind("<Leave>", lambda e: self.toggle_label.config(fg=self._muted))
     
-    def _build_expandable_content(self):
+    def _build_expandable_content(self) -> None:
         """Build the expandable content area."""
         self.content = tk.Frame(self.card, bg=self._card_bg)
         self.content.grid(row=1, column=0, columnspan=4, sticky="ew", pady=12)
@@ -1222,7 +1231,7 @@ class CloudProviderCard:
             self.connected_frame,
             text=f"✓ Connected to {self.ux_info['display_name']}",
             font=("Segoe UI", 10),
-            fg="#22c55e",
+            fg=COLOR_SUCCESS,
             bg=self._card_bg
         )
         self.connected_lbl.pack(side="left", padx=8)
@@ -1239,7 +1248,7 @@ class CloudProviderCard:
             self.error_frame,
             text="",
             font=("Segoe UI", 9),
-            fg="#ef4444",
+            fg=COLOR_ERROR,
             bg=self._card_bg,
             wraplength=550
         )
@@ -1313,7 +1322,7 @@ class CloudProviderCard:
         else:
             self.connected_frame.pack_forget()
     
-    def _on_toggle(self, event=None):
+    def _on_toggle(self, event: tk.Event | None = None) -> None:
         """Toggle expand/collapse."""
         self._expanded = not self._expanded
         self.toggle_label.config(text="▼" if self._expanded else "▶")
@@ -1323,11 +1332,11 @@ class CloudProviderCard:
         else:
             self.content.grid_remove()
     
-    def update_status(self, status):
+    def update_status(self, status: str) -> None:
         """Update the connection status."""
         self._status = status
         try:
-            self.accent_bar.config(bg=self.STATUS_COLORS.get(status, "#6b7280"))
+            self.accent_bar.config(bg=self.STATUS_COLORS.get(status, COLOR_MUTED))
         except tk.TclError:
             pass
         
@@ -1354,7 +1363,7 @@ class CloudProviderCard:
         except (tk.TclError, AttributeError):
             pass
 
-    def update_theme(self, palette):
+    def update_theme(self, palette: dict) -> None:
         """Re-paint this cloud provider card's tk widgets to match a new theme.
 
         Called by ``SettingsTab._retheme_settings_popup`` so cards created

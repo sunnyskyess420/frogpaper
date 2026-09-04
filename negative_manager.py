@@ -6,7 +6,6 @@ Manage negative prompts: presets, style defaults, smart negatives, custom terms.
 
 import json
 import re
-from pathlib import Path
 
 from utils import get_app_dir, atomic_write_json
 

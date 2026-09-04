@@ -2,7 +2,7 @@
 
 > *A cozy AI wallpaper studio that lives on your desktop.*
 
-**FrogPaper** is a Windows desktop application for generating, curating, and rotating AI-powered wallpapers. Built with Python and Tkinter, it connects to multiple AI image generation providers (Pollinations.ai, Cloudflare Workers AI, HuggingFace) and gives you a complete creative workflow — from structured prompt building with negative prompt presets, to a visual gallery with tagging and style filters, slideshow automation, text overlays, and direct Windows wallpaper integration.
+**FrogPaper** is a Windows desktop application for generating, curating, and rotating AI-powered wallpapers. Built with Python and Tkinter, it connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, HuggingFace, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — from structured prompt building with negative prompt presets, to a visual gallery with tagging and style filters, slideshow automation, text overlays, and direct Windows wallpaper integration.
 
 No browser. No server. Just a desktop app and your imagination.
 
@@ -20,6 +20,9 @@ python app.py
 Open **Settings** (top of sidebar) and pick a provider under **Generation**:
 - **Pollinations.ai** — Free, no API key needed. Just select and go.
 - **Cloudflare Workers AI** — Free tier. Requires Account ID + API Token.
+- **Prodia** — Pro account required. API key from app.prodia.com.
+- **Replicate** — Pay-per-image (~$0.003/img for FLUX.schnell). API token from replicate.com.
+- **Fal.ai** — Pay-per-use, fast inference. API key from fal.ai.
 - **HuggingFace Inference** — Requires a token from huggingface.co.
 
 ```bash
@@ -34,6 +37,8 @@ setx HUGGINGFACE_TOKEN hf_your_token_here
 4. Click **Set as Wallpaper** in the gallery panel
 
 > **Note:** The prompt engine warms up in the background after launch. The status bar will show *"Warming up prompt engine..."* and then *"Ready — prompt engine warm."* — first prompt generation is instant once that message appears.
+
+**Customize defaults?** See **[CONFIG_GUIDE.md](CONFIG_GUIDE.md)** — what every `config.json` key does, the safe ways to hand-edit, and how to change first-run defaults for a build.
 
 ---
 
@@ -295,7 +300,8 @@ AppData/FrogPaper/
 │   ├── presets.json
 │   └── sessions.json      # JSON fallback for sessions
 ├── negative_presets.json   # Negative prompt presets
-├── config.json             # All user settings (auto-created)
+├── config.json             # All user settings (auto-created) — see CONFIG_GUIDE.md
+├── config.template.json    # Clean first-run defaults seeded to config.json
 ├── FrogPaper.db            # SQLite database (sessions, favorites, tags)
 ├── keywords.json           # Thematic keyword bank
 ├── presets.json            # Saved preset bundles
@@ -309,7 +315,63 @@ AppData/FrogPaper/
 
 ## Changelog
 
-### v1.3.0 - Safer Builds, Smarter Updates, Pinned Favorites
+### v1.5.0 - Quality Release (Performance, Accessibility, Resilience)
+**Speed:**
+- **Gallery views open instantly**: Favorites, Styled, and Manual views no longer decode a thumbnail for every item on the UI thread — cards appear with placeholders and thumbnails decode in one background worker (cache hits render immediately)
+- **Instant resolution sorts**: image dimensions are memoized per path, so sorting by size pays the header read once and is instant afterwards
+- **Debounced resizing**: Favorites/Styled/Manual re-grid on an 80 ms debounce instead of on every Configure event
+
+**Reliability:**
+- **Tags N+1 eliminated**: tag lookups are cached per image and automatically invalidated before every tag write (save, add, remove, rename, delete, cleanup), so views no longer open a database session per image
+- **Friendly file-error dialogs**: gallery delete/move failures and unreadable data files now explain what happened instead of crashing (gallery/history I/O wrapped with safe fallbacks)
+- **Prompt engine correctness**: `expand_text` preserves your capitalization on words it doesn't expand, and thesaurus mapping edits now invalidate the expansion cache immediately (no restart needed)
+
+**Accessibility:**
+- **Full keyboard navigation**: custom buttons and dropdown popups are reachable via Tab and activated with Enter/Space, with visible focus rings that adapt to the theme
+- **Tab-trap fixed**: Tab no longer gets permanently stuck inside the negative-prompt Preview or any other text box (trade-off: literal tab characters can no longer be typed into text fields)
+- **High-DPI popups**: dropdown popup width auto-fits the longest item instead of clipping at large font sizes
+
+**Technical:**
+- 296 automated tests (unit + UI integration) — up from 84 at v1.4.1
+- GitHub Actions workflow (`.github/workflows/tests.yml`) runs the full suite on a Windows runner on every push
+- New `CONFIG_GUIDE.md` documenting every config.json key; README points to it
+- `build_installer.bat` / `APP_VERSION` aligned at 1.5.0
+
+---
+
+### v1.4.1 - Gallery Scroll Fix
+**Fixes:**
+- **Gallery scroll clamped after switching views**: Switching from a ratio view (16:9, 9:16, 1:1) or any other gallery tab back to the main Gallery view caused the scrollbar to stop working past ~6 images. The ratio view's empty-state code locked the canvas inner-frame height to the viewport size, and `load_gallery()` only reset the width — not the height — when rebuilding. Fixed by resetting `height=0` (Tk uses the widget's natural height) and clearing stale placeholder references from `_gallery_placeholders` when a ratio view takes over the shared canvas.
+
+---
+
+### v1.4.0 - Multi-Provider Generation, Dynamic Setup UI, Resolution Freedom
+**New Features:**
+- **3 New AI Providers**: Added Replicate, Prodia, and Fal.ai backends alongside existing Pollinations, Cloudflare, and HuggingFace — 6 providers total
+- **Dynamic Provider Setup UI**: Switching providers in Settings now dynamically shows only that provider's API key field and step-by-step setup guide
+- **Universal Resolution Auto-Resize**: Providers that only output 1024x1024 (like Cloudflare FLUX and Replicate FLUX) are automatically resized to your chosen resolution via Pillow LANCZOS
+
+**Improvements:**
+- **Faster Replicate Generation**: Replaced slow `Prefer: wait` long-poll with aggressive 1-second polling — generation time dropped from ~65 seconds to ~7–12 seconds
+- **Dimension Presets Now Persist**: Changing the resolution preset (1920x1080, 1080x1920, 1024x1024) now correctly saves to config.json
+- **Provider Setup Guides**: Each provider shows clickable setup instructions directly in Settings (where to find your Account ID, API token, etc.)
+
+**Technical:**
+- `AI_PROVIDER_UX` dictionary in `settings_tab.py` drives dynamic provider setup UI
+- `_rebuild_provider_setup()` creates/destroys provider-specific fields on switch
+- Universal post-generation resize safety net in `generate_image()` dispatcher checks actual image dimensions and resizes if needed
+- Replicate uses model-based endpoint `/v1/models/{owner}/{name}/predictions` (no version hash required)
+- Removed dead `save_scheduler_settings_to_config` import that produced spurious warnings
+
+**Fixes:**
+- Images now respect the chosen resolution preset instead of always coming out square
+- Replicate generation no longer takes 60+ seconds due to `Prefer: wait` overhead
+- Dimension preset changes no longer silently fail to save to config
+- Fixed spurious "Failed to save scheduler settings" warning on every settings save
+
+---
+
+### v1.3.2 - Safer Builds, Smarter Updates, Pinned Favorites
 **New Features:**
 - **Pinned Favorites in Dropdowns**: Star your favorite subjects, styles, lighting, moods, and color families for quick access from the prompt builder
 - **"Skip This Version" Button**: When an update notification appears, users can skip a specific release and won't be nagged again until an even newer version ships
@@ -327,7 +389,7 @@ AppData/FrogPaper/
 - `utils.seed_bundled_files()` now seeds `config.json` from the bundled template on first launch
 - `build_installer.bat` ships `config.template.json` renamed to `config.json` with `onlyifdoesntexist` flag
 - Added `prebuild_check.py` as a pre-build gate (scans for `hf_…`, `GOCSPX-…`, `AIza…`, `ya29.`, Dropbox `sl.`, and other suspicious patterns)
-- Bumped `APP_VERSION` to `1.3.0` to align with installer and GitHub release tag
+- Bumped `APP_VERSION` to `1.4.1` to align with installer and GitHub release tag
 - Added `SECURITY_NOTES.md` documenting the secure build flow and key-rotation procedure
 - `update_checker.py` persists `skipped_update_version` in `config.json` so the skip choice survives across launches
 

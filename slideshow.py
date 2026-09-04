@@ -2,9 +2,11 @@
 from pathlib import Path
 from datetime import datetime
 import random
-import tkinter as tk
-from tkinter import messagebox
-from set_wallpaper import set_wallpaper, collect_wallpapers  # Assumes WINDOWS=True
+try:
+    from set_wallpaper import set_wallpaper, collect_wallpapers
+except ImportError:
+    set_wallpaper = None
+    collect_wallpapers = lambda: []
 
 from utils import get_app_dir
 
@@ -97,6 +99,9 @@ class SlideshowManager:
         # Windows desktop doesn't support true wallpaper crossfading
         # Direct wallpaper change without app window overlay
         try:
+            if not set_wallpaper:
+                self.status_var.set('Slideshow: set_wallpaper unavailable')
+                return False
             ok = set_wallpaper(chosen)
             self.status_var.set(f'Slideshow: {chosen.name}' if ok else 'Slideshow: Set failed.')
             return ok
@@ -146,7 +151,7 @@ class SlideshowManager:
         if self.after_id is not None:
             try:
                 self.root.after_cancel(self.after_id)
-            except:
+            except Exception:
                 pass
         self.after_id = None
         self.status_var.set('Slideshow disabled.')
@@ -159,7 +164,7 @@ class SlideshowManager:
         if self.after_id is not None:
             try:
                 self.root.after_cancel(self.after_id)
-            except:
+            except Exception:
                 pass
         self.after_id = None
         self.status_var.set('Slideshow paused.')
@@ -188,6 +193,9 @@ class SlideshowManager:
         self.last_run = datetime.now()
 
         try:
+            if not set_wallpaper:
+                self.status_var.set('Slideshow: set_wallpaper unavailable')
+                return False
             ok = set_wallpaper(prev_path)
             if ok:
                 self.status_var.set(f'Slideshow: ◄ {prev_path.name}')
@@ -252,6 +260,9 @@ class SlideshowManager:
         self.last_run = datetime.now()
 
         try:
+            if not set_wallpaper:
+                self.status_var.set('Slideshow: set_wallpaper unavailable')
+                return False
             ok = set_wallpaper(chosen)
             self.status_var.set(f'Slideshow: {chosen.name}' if ok else 'Slideshow: Set failed.')
             return ok
@@ -268,7 +279,7 @@ class SlideshowManager:
         if self.running:
             try:
                 interval_minutes = float(getattr(self, 'slideshow_interval_var', type('obj', (), {'get': lambda self: '60'})()).get())
-            except:
+            except Exception:
                 interval_minutes = 60.0
             
             if self.last_run:

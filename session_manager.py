@@ -322,7 +322,7 @@ class SessionManager:
                 app.status_var.set(f"Session loaded: '{chosen}'")
                 dialog.destroy()
             except Exception as e:
-                app._dialog.error("Restore Error", f"Could not restore session:\n{e}")
+                app._dialog.error("Restore Error", "Could not restore the saved session. The session file may be corrupted. Try a different session.")
 
         def do_delete():
             sel = session_list.curselection()
@@ -336,7 +336,7 @@ class SessionManager:
                 session_list.delete(sel[0])
                 session_names.pop(sel[0])
             except Exception as e:
-                app._dialog.error("Delete Error", f"Could not delete session:\n{e}")
+                app._dialog.error("Delete Error", "Could not delete the session. It may be in use or protected.")
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack(pady=(0, 12))
@@ -428,7 +428,7 @@ class SessionManager:
                 app.status_var.set(f"Session saved: '{name}'")
                 dialog.destroy()
             except Exception as e:
-                app._dialog.error("Save Error", f"Could not save session:\n{e}")
+                app._dialog.error("Save Error", "Could not save the session. Check that the app folder is accessible.")
 
         btn_frame = ttk.Frame(dialog)
         btn_frame.pack()

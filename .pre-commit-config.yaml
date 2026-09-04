@@ -1,0 +1,21 @@
+# FrogPaper pre-commit hooks (roadmap #7 Phase C).
+#
+# One-time setup (any platform with Python):
+#     pip install pre-commit
+#     pre-commit install
+# After that, every `git commit` runs the checks below and blocks the
+# commit on failure.
+#
+# The same rules run in CI (.github/workflows/tests.yml), so a push that
+# skips pre-commit still gets caught.
+
+repos:
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    # Keep this rev in sync with the version CI installs.
+    rev: v0.8.4
+    hooks:
+      - id: ruff
+        # Check-only on commit (no --fix): surprises in the working tree
+        # are worse than a blocked commit. Run `ruff check . --fix`
+        # manually when you want auto-fixes.
+        args: ["check", "."]

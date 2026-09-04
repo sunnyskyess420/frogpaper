@@ -21,6 +21,10 @@ import tkinter as tk
 
 from PIL import Image, ImageDraw
 
+from theme import adjust_color as _theme_adjust_color
+
+from theme import COLOR_MID_GRAY, COLOR_WHITE  # shared color constants (migrated inline hex)
+
 logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────
@@ -99,15 +103,13 @@ def _rr(fill: str, outline: str | None = None, radius: int = CORNER_R,
 
 
 def _lighten(hex_color: str, amount: int = 30) -> str:
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return f"#{min(255,r+amount):02x}{min(255,g+amount):02x}{min(255,b+amount):02x}"
+    """Lighten a color — single implementation lives in theme.py."""
+    return _theme_adjust_color(hex_color, abs(amount))
 
 
 def _darken(hex_color: str, amount: int = 30) -> str:
-    h = hex_color.lstrip("#")
-    r, g, b = int(h[0:2], 16), int(h[2:4], 16), int(h[4:6], 16)
-    return f"#{max(0,r-amount):02x}{max(0,g-amount):02x}{max(0,b-amount):02x}"
+    """Darken a color — single implementation lives in theme.py."""
+    return _theme_adjust_color(hex_color, -abs(amount))
 
 
 def _img_to_tk(img: Image.Image, master: tk.Tk) -> tk.PhotoImage:
@@ -173,7 +175,6 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
 
     Must be called AFTER style.theme_use("clam") and style.configure().
     """
-    from tkinter import ttk
 
     try:
         from PIL import Image, ImageDraw  # noqa: F811
@@ -186,12 +187,12 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     panel2     = pal.get("panel2", "#2a2a2a")
     panel      = pal.get("panel", "#252525")
     accent     = pal.get("accent", pal.get("progress", "#4a8c62"))
-    text_fg    = pal.get("text", "#ffffff")
+    text_fg    = pal.get("text", COLOR_WHITE)
     button_bg  = pal.get("panel2", "#333333")
-    button_fg  = pal.get("button_fg", "#ffffff")
+    button_fg  = pal.get("button_fg", COLOR_WHITE)
     entrybg    = pal.get("entrybg", bg)
     border     = pal.get("border_color", pal.get("panel2", "#3a3a3a"))
-    muted      = pal.get("muted", "#888888")
+    muted      = pal.get("muted", COLOR_MID_GRAY)
     hover      = pal.get("button_hover", _lighten(button_bg, 25))
     tabsel     = pal.get("tabsel", _lighten(accent, 15))
     disabled_bg = _darken(bg, 20)
@@ -210,7 +211,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
         style._frog_images = []
     cache = style._frog_images
 
-    def R(img):
+    def register_image(img):
         """Register a PIL Image as a tk.PhotoImage and cache it."""
         tk_img = _img_to_tk(img, root)
         cache.append(tk_img)
@@ -223,10 +224,10 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  ENTRY — slightly lighter bg + clear border = obviously editable
     # ════════════════════════════════════════════════════════════════
     try:
-        e_rest  = R(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
-        e_hov   = R(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
-        e_foc   = R(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
-        e_dis   = R(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
+        e_rest  = register_image(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
+        e_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
+        e_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
+        e_dis   = register_image(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
 
         style.element_create("Frog.Entry.field", "image",
             e_rest, ("hover", e_hov), ("focus", e_foc), ("disabled", e_dis),
@@ -246,19 +247,19 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  COMBOBOX
     # ════════════════════════════════════════════════════════════════
     try:
-        c_rest  = R(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
-        c_hov   = R(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
-        c_foc   = R(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
-        c_dis   = R(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
-        c_ro    = R(_rr(button_bg, outline=border, outline_w=BORDER_W))
-        c_ro_h  = R(_rr(hover, outline=border, outline_w=BORDER_W))
-        c_ro_f  = R(_rr(hover, outline=accent, outline_w=BORDER_W + 1))
+        c_rest  = register_image(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
+        c_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
+        c_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
+        c_dis   = register_image(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
+        c_ro    = register_image(_rr(button_bg, outline=border, outline_w=BORDER_W))
+        c_ro_h  = register_image(_rr(hover, outline=border, outline_w=BORDER_W))
+        c_ro_f  = register_image(_rr(hover, outline=accent, outline_w=BORDER_W + 1))
 
         style.element_create("Frog.Combobox.field", "image",
             c_rest, ("hover", c_hov), ("focus", c_foc), ("disabled", c_dis),
             ("readonly", c_ro), ("readonly hover", c_ro_h), ("readonly focus", c_ro_f),
             border=BORDER_W + 2, sticky="nsew")
-        arrow_img = R(_make_arrow(muted))
+        arrow_img = register_image(_make_arrow(muted))
         style.element_create("Frog.Combobox.arrow", "image", arrow_img, sticky="e")
         style.layout("TCombobox", [
             ("Frog.Combobox.field", {"sticky": "nsew", "children": [
@@ -296,12 +297,12 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  BUTTON
     # ════════════════════════════════════════════════════════════════
     try:
-        b_rest = R(_rr(button_bg, radius=CORNER_R + 1))
-        b_hov  = R(_rr(hover, radius=CORNER_R + 1))
-        b_prs  = R(_rr(_darken(button_bg, 20), radius=CORNER_R + 1))
-        b_dis  = R(_rr(disabled_bg, radius=CORNER_R + 1))
-        b_foc  = R(_rr(button_bg, outline=accent, radius=CORNER_R + 1, outline_w=1))
-        b_fh   = R(_rr(hover, outline=accent, radius=CORNER_R + 1, outline_w=1))
+        b_rest = register_image(_rr(button_bg, radius=CORNER_R + 1))
+        b_hov  = register_image(_rr(hover, radius=CORNER_R + 1))
+        b_prs  = register_image(_rr(_darken(button_bg, 20), radius=CORNER_R + 1))
+        b_dis  = register_image(_rr(disabled_bg, radius=CORNER_R + 1))
+        b_foc  = register_image(_rr(button_bg, outline=accent, radius=CORNER_R + 1, outline_w=1))
+        b_fh   = register_image(_rr(hover, outline=accent, radius=CORNER_R + 1, outline_w=1))
 
         style.element_create("Frog.Button.button", "image",
             b_rest, ("hover", b_hov), ("pressed", b_prs),
@@ -322,10 +323,10 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  ACCENT.TBUTTON
     # ════════════════════════════════════════════════════════════════
     try:
-        a_rest = R(_rr(accent, radius=CORNER_R + 1))
-        a_hov  = R(_rr(_lighten(accent, 25), radius=CORNER_R + 1))
-        a_prs  = R(_rr(_darken(accent, 20), radius=CORNER_R + 1))
-        a_dis  = R(_rr(_darken(disabled_bg, 10), radius=CORNER_R + 1))
+        a_rest = register_image(_rr(accent, radius=CORNER_R + 1))
+        a_hov  = register_image(_rr(_lighten(accent, 25), radius=CORNER_R + 1))
+        a_prs  = register_image(_rr(_darken(accent, 20), radius=CORNER_R + 1))
+        a_dis  = register_image(_rr(_darken(disabled_bg, 10), radius=CORNER_R + 1))
 
         style.element_create("Frog.AccentButton.button", "image",
             a_rest, ("hover", a_hov), ("pressed", a_prs), ("disabled", a_dis),
@@ -346,13 +347,13 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     # ════════════════════════════════════════════════════════════════
     try:
         pcol = pal.get("progress", accent)
-        act_rest = R(_rr(pcol, radius=CORNER_R + 1))
-        act_hov  = R(_rr(_lighten(pcol, 25), radius=CORNER_R + 1))
+        act_rest = register_image(_rr(pcol, radius=CORNER_R + 1))
+        act_hov  = register_image(_rr(_lighten(pcol, 25), radius=CORNER_R + 1))
 
         style.element_create("Frog.Active.TButton.button", "image",
             act_rest, ("hover", act_hov),
-            ("pressed", R(_rr(_darken(pcol, 20), radius=CORNER_R + 1))),
-            ("disabled", R(_rr(disabled_bg, radius=CORNER_R + 1))),
+            ("pressed", register_image(_rr(_darken(pcol, 20), radius=CORNER_R + 1))),
+            ("disabled", register_image(_rr(disabled_bg, radius=CORNER_R + 1))),
             border=CORNER_R + 1, sticky="nsew")
         style.layout("Active.TButton", [
             ("Frog.Active.TButton.button", {"sticky": "nsew", "children": [
@@ -394,13 +395,13 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
         style.element_create("Frog.Checkbutton.padding", "from", "clam")
         style.element_create("Frog.Checkbutton.label", "from", "clam")
         style.element_create("Frog.Checkbutton.indicator", "image",
-            R(cb["off"]), ("selected", R(cb["on"])),
-            ("disabled", R(cb["dis"])),
-            ("selected disabled", R(cb["dis"])),
-            ("hover", R(_make_checkbox(_lighten(panel2, 15), accent, button_fg)["off"])),
-            ("selected hover", R(cb["on"])),
-            ("focus", R(cb["off"])),
-            ("selected focus", R(cb["on"])),
+            register_image(cb["off"]), ("selected", register_image(cb["on"])),
+            ("disabled", register_image(cb["dis"])),
+            ("selected disabled", register_image(cb["dis"])),
+            ("hover", register_image(_make_checkbox(_lighten(panel2, 15), accent, button_fg)["off"])),
+            ("selected hover", register_image(cb["on"])),
+            ("focus", register_image(cb["off"])),
+            ("selected focus", register_image(cb["on"])),
             border=CORNER_R, sticky="w")
         style.layout("TCheckbutton", [
             ("Frog.Checkbutton.button", {"sticky": "nsew", "children": [
@@ -423,11 +424,11 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
         style.element_create("Frog.Radiobutton.padding", "from", "clam")
         style.element_create("Frog.Radiobutton.label", "from", "clam")
         style.element_create("Frog.Radiobutton.indicator", "image",
-            R(rb["off"]), ("selected", R(rb["on"])),
-            ("disabled", R(rb["dis"])),
-            ("selected disabled", R(rb["dis"])),
-            ("hover", R(_make_radio(_lighten(panel2, 15), accent, button_fg)["off"])),
-            ("selected hover", R(rb["on"])),
+            register_image(rb["off"]), ("selected", register_image(rb["on"])),
+            ("disabled", register_image(rb["dis"])),
+            ("selected disabled", register_image(rb["dis"])),
+            ("hover", register_image(_make_radio(_lighten(panel2, 15), accent, button_fg)["off"])),
+            ("selected hover", register_image(rb["on"])),
             border=CORNER_R, sticky="w")
         style.layout("TRadiobutton", [
             ("Frog.Radiobutton.button", {"sticky": "nsew", "children": [
@@ -449,7 +450,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
         sep_img = Image.new("RGBA", (200, 2), (0, 0, 0, 0))
         sep_draw = ImageDraw.Draw(sep_img)
         sep_draw.line([(0, 0), (199, 0)], fill=border, width=1)
-        sep = R(sep_img)
+        sep = register_image(sep_img)
         style.element_create("Frog.Separator.separator", "image", sep, sticky="nsew")
         style.layout("TSeparator", [
             ("Frog.Separator.separator", {"sticky": "nsew"}),
@@ -463,13 +464,13 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     # ════════════════════════════════════════════════════════════════
     try:
         style.element_create("Frog.Scale.slider", "image",
-            R(_make_thumb(accent)),
-            ("hover", R(_make_thumb(_lighten(accent, 30)))),
-            ("pressed", R(_make_thumb(_darken(accent, 20)))),
-            ("disabled", R(_make_thumb(disabled_bg))),
+            register_image(_make_thumb(accent)),
+            ("hover", register_image(_make_thumb(_lighten(accent, 30)))),
+            ("pressed", register_image(_make_thumb(_darken(accent, 20)))),
+            ("disabled", register_image(_make_thumb(disabled_bg))),
             sticky="")
-        trough_h = R(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1, w=200, h=12))
-        trough_v = R(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1, w=12, h=200))
+        trough_h = register_image(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1, w=200, h=12))
+        trough_v = register_image(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1, w=12, h=200))
         style.element_create("Frog.Horizontal.Scale.trough", "image",
             trough_h, border=4, sticky="ew")
         style.element_create("Frog.Vertical.Scale.trough", "image",
@@ -498,7 +499,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  LABELFRAME
     # ════════════════════════════════════════════════════════════════
     try:
-        lf = R(_rr(bg, outline=border, radius=CORNER_R, outline_w=1))
+        lf = register_image(_rr(bg, outline=border, radius=CORNER_R, outline_w=1))
         style.element_create("Frog.Labelframe.border", "image",
             lf, border=CORNER_R + 2, sticky="nsew")
         style.element_create("Frog.Labelframe.padding", "from", "clam")
@@ -518,13 +519,13 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  NOTEBOOK
     # ════════════════════════════════════════════════════════════════
     try:
-        nb_bdr = R(_rr(bg, outline=border, radius=CORNER_R, outline_w=1))
+        nb_bdr = register_image(_rr(bg, outline=border, radius=CORNER_R, outline_w=1))
         style.element_create("Frog.Notebook.border", "image",
             nb_bdr, border=CORNER_R + 2, sticky="nsew")
         style.element_create("Frog.Notebook.tab", "image",
-            R(_rr(pal.get("tabbg", panel), radius=CORNER_R)),
-            ("selected", R(_rr(pal.get("tabsel", accent), radius=CORNER_R))),
-            ("active", R(_rr(_lighten(pal.get("tabbg", panel), 15), radius=CORNER_R))),
+            register_image(_rr(pal.get("tabbg", panel), radius=CORNER_R)),
+            ("selected", register_image(_rr(pal.get("tabsel", accent), radius=CORNER_R))),
+            ("active", register_image(_rr(_lighten(pal.get("tabbg", panel), 15), radius=CORNER_R))),
             border=CORNER_R + 1, sticky="nsew", height=28)
         style.element_create("Frog.Notebook.client", "from", "clam")
         style.layout("TNotebook", [
@@ -540,8 +541,8 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  PROGRESSBAR
     # ════════════════════════════════════════════════════════════════
     try:
-        pb_tr = R(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1))
-        pb_br = R(_rr(accent, radius=4))
+        pb_tr = register_image(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1))
+        pb_br = register_image(_rr(accent, radius=4))
         style.element_create("Frog.Horizontal.Progressbar.trough", "image",
             pb_tr, border=4, sticky="ew")
         style.element_create("Frog.Horizontal.Progressbar.pbar", "image",
@@ -558,8 +559,8 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  SCROLLBAR
     # ════════════════════════════════════════════════════════════════
     try:
-        sb_tr = R(_rr(panel2, radius=3))
-        sb_th = R(_rr(pal.get("scrollbar_fg", accent), radius=3))
+        sb_tr = register_image(_rr(panel2, radius=3))
+        sb_th = register_image(_rr(pal.get("scrollbar_fg", accent), radius=3))
         style.element_create("Frog.Horizontal.Scrollbar.trough", "image",
             sb_tr, border=3, sticky="ew")
         style.element_create("Frog.Horizontal.Scrollbar.thumb", "image",
@@ -590,7 +591,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  CARD.TFrame
     # ════════════════════════════════════════════════════════════════
     try:
-        card = R(_rr(panel, outline=border, radius=CORNER_R + 2, outline_w=1))
+        card = register_image(_rr(panel, outline=border, radius=CORNER_R + 2, outline_w=1))
         style.element_create("Frog.Card.field", "image",
             card, border=CORNER_R + 4, sticky="nsew")
         style.element_create("Frog.Card.padding", "from", "clam")

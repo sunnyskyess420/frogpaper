@@ -8,9 +8,7 @@ Keeps literal user subjects like cat, frog from being replaced by random pool su
 import json
 import random
 import re
-from pathlib import Path
 import logging
-import time
 
 from utils import get_app_dir, get_bundle_dir
 

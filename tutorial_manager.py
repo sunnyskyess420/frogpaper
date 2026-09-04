@@ -1,7 +1,7 @@
 import tkinter as tk
 from tkinter import ttk
 import logging
-from typing import Callable, Optional, Dict, List
+from typing import Dict, List
 
 from settings_components import linkify_text_widget
 
@@ -9,7 +9,10 @@ logger = logging.getLogger(__name__)
 
 
 class TutorialManager:
-    """Manages the tutorial system including quick start, feature tour, and interactive practice."""
+    """Manages the tutorial system including quick start, feature tour, and interactive practice.
+
+    Provider setup guides live in Settings > Generation — not here.
+    """
 
     def __init__(self, app):
         self.app = app
@@ -44,11 +47,6 @@ class TutorialManager:
                 "description": "Generate your first wallpaper with guided assistance",
                 "steps": self._get_practice_steps()
             },
-            "model_setup": {
-                "title": "Model Setup Guide",
-                "description": "Configure AI providers and set up models",
-                "steps": self._get_model_setup_steps()
-            }
         }
     
     def _get_quick_start_steps(self) -> List[Dict]:
@@ -56,49 +54,49 @@ class TutorialManager:
         return [
             {
                 "title": "Welcome to FrogPaper! 🐸",
-                "content": "FrogPaper is your AI-powered wallpaper studio. Let's get you started with the basics in just 5 minutes.",
+                "content": "FrogPaper is your AI-powered wallpaper studio. It supports 6 AI providers, 25 style filters, cloud sync, and much more. Let's cover the basics in about 5 minutes.",
                 "highlight": None,
                 "action": None
             },
             {
                 "title": "The Prompt Builder",
-                "content": "On the left side, you'll find the Prompt Builder. This is where you create your wallpaper descriptions using dropdown menus for different artistic elements.",
+                "content": "The left panel is your Prompt Builder. It has 7 dropdown categories — Subject, Mode, Lighting, Color Family, Color Variation, Setting, and Atmosphere — plus keyword expansion to enrich your prompts automatically.",
                 "highlight": "prompt_builder",
                 "action": "show_prompt_builder"
             },
             {
                 "title": "Choose Your Subject",
-                "content": "Start by selecting a subject from the dropdown. This could be anything from 'frog' to 'mountain' to 'cityscape'.",
+                "content": "Start by picking a subject from the Subject dropdown. You can type anything — 'frog', 'mountain', 'cityscape', 'dragon' — or choose from the list. Click the star next to any option to pin it to the top of the list for quick access later.",
                 "highlight": "subject_dropdown",
                 "action": "highlight_subject"
             },
             {
-                "title": "Add Artistic Style",
-                "content": "Select artistic modes, lighting, colors, and settings to define your wallpaper's style. Try 'Digital Art' mode with 'Dramatic Lighting'!",
+                "title": "Build Your Scene",
+                "content": "Fill in the remaining dropdowns to shape your wallpaper. Try 'Digital Art' mode, 'Golden Hour' lighting, a 'Warm' color family, and 'Forest' setting. Each choice adds detail to your prompt behind the scenes.",
                 "highlight": "style_dropdowns",
                 "action": "highlight_styles"
             },
             {
                 "title": "Generate Your Wallpaper",
-                "content": "Click the 'Generate' button to create your wallpaper using AI. It usually takes 10-30 seconds depending on your provider.",
+                "content": "Click the Generate button to send your prompt to the selected AI provider. Pollinations.ai is the default and works for free with no setup. Other providers like Cloudflare, HuggingFace, Prodia, Replicate, and Fal.ai are available in Settings.",
                 "highlight": "generate_button",
                 "action": "highlight_generate"
             },
             {
-                "title": "Preview and Apply",
-                "content": "Your generated wallpaper appears in the center preview. Click 'Set as Wallpaper' to apply it to your desktop!",
+                "title": "Preview, Style, and Apply",
+                "content": "Your generated image appears in the center preview. From here you can apply one of 25 style filters (Oil Painting, Cyberpunk Neon, Pixel Art, and more), add text overlay, or click 'Set as Wallpaper' to apply it to your desktop immediately.",
                 "highlight": "preview_area",
                 "action": "highlight_preview"
             },
             {
-                "title": "Save Your Favorites",
-                "content": "Use the gallery on the right to save, organize, and manage your wallpaper collection. You can create multiple galleries!",
+                "title": "Explore the Gallery",
+                "content": "The Gallery tab on the right organizes your collection with 7 views — Gallery (all images), Favorites, Styled (filter-applied), Manual (imported), and three ratio-based views (16:9, Portrait, Square). Use the tag system to filter by subject or style.",
                 "highlight": "gallery",
                 "action": "show_gallery"
             },
             {
                 "title": "You're All Set! 🎉",
-                "content": "You now know the basics! Try exploring the settings, style filters, and slideshow features. Enjoy creating beautiful wallpapers!",
+                "content": "You know the basics! Next steps to explore: try the slideshow mode for auto-rotating wallpapers, set up cloud sync in Settings to back up your collection, or switch AI providers to find the style that suits you best. Have fun!",
                 "highlight": None,
                 "action": None
             }
@@ -109,51 +107,57 @@ class TutorialManager:
         return [
             {
                 "title": "Prompt Builder",
-                "content": "The left panel contains the structured prompt builder with 6 dropdown categories: Subject, Mode, Lighting, Color, Setting, and Atmosphere.",
+                "content": "The left panel contains the structured prompt builder with 7 dropdown categories: Subject, Mode, Lighting, Color Family, Color Variation, Setting, and Atmosphere. Each dropdown supports pinned favorites — click the star to keep your go-to options at the top of the list.",
                 "highlight": "prompt_builder",
                 "action": "show_prompt_builder"
             },
             {
-                "title": "Preview Area",
-                "content": "The center area shows your generated wallpaper with live preview and style filter controls.",
-                "highlight": "preview_area",
-                "action": "highlight_preview"
+                "title": "Keyword Expansion",
+                "content": "When you generate, FrogPaper automatically expands your chosen subject into rich descriptive keywords. For example, 'frog' becomes 'a beautiful frog with intricate details, vibrant colors, professional photography'. You can add custom keywords and synonyms in the prompt builder.",
+                "highlight": "prompt_builder",
+                "action": "show_prompt_builder"
             },
             {
-                "title": "Gallery System",
-                "content": "The right panel contains 7 different gallery views including Favorites, Recent, and custom collections for organizing your wallpapers.",
-                "highlight": "gallery",
-                "action": "show_gallery"
-            },
-            {
-                "title": "Style Filters",
-                "content": "Apply 19 different artistic filters like Oil Painting, Cyberpunk Neon, or Vaporwave to transform your wallpapers.",
-                "highlight": "style_filters",
-                "action": "show_style_filters"
-            },
-            {
-                "title": "Settings Panel",
-                "content": "Configure AI providers, API tokens, slideshow timing, startup options, and app appearance.",
+                "title": "6 AI Providers",
+                "content": "FrogPaper supports 6 generation backends: Pollinations (free, no API key), Cloudflare Workers AI (free), HuggingFace, Prodia, Replicate, and Fal.ai. Switch providers anytime in Settings > Generation — the UI adapts to show only that provider's fields and a step-by-step setup guide.",
                 "highlight": "settings",
                 "action": "show_settings"
             },
             {
-                "title": "System Tray",
-                "content": "Minimize to tray for background operation. Right-click the tray icon for quick access to wallpaper controls.",
-                "highlight": "tray",
-                "action": "show_tray_info"
+                "title": "Preview and Style Filters",
+                "content": "The center panel shows your generated wallpaper with 25 one-click style filters: Oil Painting, Watercolor, Sketch, Line Art, Comic Book, Manga, Cyberpunk Neon, Vaporwave, Pixel Art, Anime Key, Pop Art, Impressionist, and more. You can also add text overlays for personalization.",
+                "highlight": "preview_area",
+                "action": "highlight_preview"
             },
             {
-                "title": "Slideshow Mode",
-                "content": "Set up automatic wallpaper rotation with customizable timing from 1-60 minutes.",
+                "title": "Gallery Views",
+                "content": "The Gallery tab has 7 views to organize your collection: Gallery (all images), Favorites (hearted), Styled (filter-applied copies), Manual (imported from disk), 16:9 (widescreen), Portrait (9:16), and Square (1:1). Use tag filters to find images by subject or style.",
+                "highlight": "gallery",
+                "action": "show_gallery"
+            },
+            {
+                "title": "Cloud Sync",
+                "content": "Connect Google Drive, OneDrive, or Dropbox to sync your wallpaper collection across devices. Set it up in Settings > Cloud Storage. Changes are detected automatically and synced in the background.",
+                "highlight": "settings",
+                "action": "show_settings"
+            },
+            {
+                "title": "Slideshow and Tray",
+                "content": "Enable slideshow mode to auto-rotate wallpapers at your chosen interval (1-60 minutes). Minimize FrogPaper to the system tray for background operation — right-click the tray icon for quick wallpaper controls.",
                 "highlight": "slideshow",
                 "action": "show_slideshow"
             },
             {
-                "title": "Recipe Library",
-                "content": "Save and reuse your favorite prompt combinations as recipes for quick access.",
+                "title": "Recipes and Templates",
+                "content": "Save your favorite prompt combinations as recipes for one-click reuse. The recipe library lets you name, organize, and reload complete setups including all dropdown values and provider settings.",
                 "highlight": "recipes",
                 "action": "show_recipes"
+            },
+            {
+                "title": "Themes and Appearance",
+                "content": "FrogPaper includes multiple built-in themes (dark and light) that restyle the entire UI. Switch themes in Settings > Appearance. Your chosen theme persists across restarts.",
+                "highlight": "settings",
+                "action": "show_settings"
             }
         ]
     
@@ -162,107 +166,54 @@ class TutorialManager:
         return [
             {
                 "title": "Let's Create Together! 🎨",
-                "content": "I'll guide you through creating your first wallpaper. Follow each step and I'll help you along the way.",
+                "content": "I'll walk you through creating your first wallpaper step by step. Just follow along at your own pace — there's no rush.",
                 "highlight": None,
                 "action": None
             },
             {
-                "title": "Step 1: Choose a Subject",
-                "content": "Select a subject from the Subject dropdown. Try something like 'peaceful forest' or 'sunset beach'.",
+                "title": "Step 1: Pick a Subject",
+                "content": "Go to the Prompt Builder tab and find the Subject field. Type anything you like — 'frog', 'mountain lake', 'neon city', 'dragon in flight' — or pick from the dropdown list. This is the main focus of your wallpaper.",
                 "highlight": "subject_dropdown",
                 "action": "wait_for_subject_selection"
             },
             {
-                "title": "Step 2: Pick an Art Mode",
-                "content": "Choose an artistic mode. 'Digital Art' or 'Oil Painting' work great for beginners!",
+                "title": "Step 2: Choose a Mode",
+                "content": "The Mode dropdown controls the artistic style of the generation. 'Digital Art' is a great all-rounder. 'Photography' gives realistic results. 'Oil Painting' and 'Watercolor' produce hand-crafted feels. Pick whatever appeals to you!",
                 "highlight": "mode_dropdown",
                 "action": "wait_for_mode_selection"
             },
             {
-                "title": "Step 3: Add Lighting",
-                "content": "Select lighting to set the mood. 'Golden Hour' or 'Dramatic Lighting' create beautiful effects.",
+                "title": "Step 3: Set the Lighting",
+                "content": "Lighting makes a huge difference. Try 'Golden Hour' for warm sunset vibes, 'Dramatic Lighting' for high contrast, or 'Neon' for a cyberpunk feel. This is where your wallpaper starts to take on a mood.",
                 "highlight": "lighting_dropdown",
                 "action": "wait_for_lighting_selection"
             },
             {
-                "title": "Step 4: Choose Colors",
-                "content": "Pick a color palette. Try 'Vibrant' for eye-catching results or 'Monochrome' for artistic effects.",
+                "title": "Step 4: Color and Setting",
+                "content": "Pick a Color Family (like 'Warm' or 'Cool') and a Setting (like 'Forest', 'Ocean', or 'Space'). These fill in the background and color palette of your scene. Don't overthink it — you can always regenerate!",
                 "highlight": "color_dropdown",
                 "action": "wait_for_color_selection"
             },
             {
                 "title": "Step 5: Generate!",
-                "content": "Now click the Generate button and watch your creation come to life!",
+                "content": "Click the Generate button. FrogPaper sends your prompt to the AI provider (Pollinations.ai by default — free, no setup required). Generation typically takes 10-30 seconds. Watch the status bar for progress.",
                 "highlight": "generate_button",
                 "action": "wait_for_generation"
             },
             {
-                "title": "Congratulations! 🎉",
-                "content": "You've created your first wallpaper! You can now apply it, save it, or try generating more with different settings.",
+                "title": "Step 6: Style It (Optional)",
+                "content": "Once your image appears, try applying a style filter from the 'Apply Style' dropdown — Oil Painting, Cyberpunk Neon, or Pixel Art are popular choices. You can also add text overlay or click the heart icon to favorite it.",
                 "highlight": "preview_area",
+                "action": None
+            },
+            {
+                "title": "Congratulations! 🎉",
+                "content": "You've created your first wallpaper! Click 'Set as Wallpaper' to apply it, or head to the Gallery to see it saved. Try different subjects, modes, and providers to discover what you like. Check out the Feature Tour for more tips!",
+                "highlight": "gallery",
                 "action": None
             }
         ]
     
-    def _get_model_setup_steps(self) -> List[Dict]:
-        """Steps for the model setup tutorial."""
-        return [
-            {
-                "title": "AI Provider Setup Guide 🤖",
-                "content": "FrogPaper supports multiple AI providers. Let's configure them for the best experience.",
-                "highlight": None,
-                "action": None
-            },
-            {
-                "title": "Option 1: Pollinations.ai (Free - No Key)",
-                "content": "The easiest option! Pollinations.ai is completely free and requires no setup. Just select it from the provider dropdown and you're ready to generate.",
-                "highlight": "provider_dropdown",
-                "action": "show_settings"
-            },
-            {
-                "title": "Option 2: Cloudflare Workers AI",
-                "content": "For Cloudflare, you'll need two things: 1) An API token from dash.cloudflare.com → Workers AI → Use REST API → Create Token. 2) Your Account ID from the URL or right sidebar.",
-                "highlight": "cloudflare_settings",
-                "action": "show_cloudflare_setup"
-            },
-            {
-                "title": "Setting Up Cloudflare Token",
-                "content": "In Settings → Generation, select 'Cloudflare Workers AI' from the provider dropdown. Then enter your token in the Cloudflare Token field and your Account ID in the Account ID field.",
-                "highlight": "token_fields",
-                "action": "highlight_tokens"
-            },
-            {
-                "title": "Option 3: HuggingFace",
-                "content": "HuggingFace offers access to many models. You'll need an API token from huggingface.co → Settings → Access Tokens. Different models work better for different styles.",
-                "highlight": "huggingface_settings",
-                "action": "show_huggingface_setup"
-            },
-            {
-                "title": "Setting Up HuggingFace Token",
-                "content": "In Settings → Generation, select 'HuggingFace' from the provider dropdown. Enter your token in the API Token field. You can also add it via your OS credential manager for security.",
-                "highlight": "token_entry",
-                "action": "highlight_hf_token"
-            },
-            {
-                "title": "Choosing the Right Model",
-                "content": "Different AI models excel at different styles. FLUX models are great for realistic images, SDXL models work well for artistic styles. Experiment to find your favorites!",
-                "highlight": "model_selection",
-                "action": "show_model_info"
-            },
-            {
-                "title": "Testing Your Setup",
-                "content": "After configuring your provider and token, try generating a simple wallpaper. If it works, you're all set! If you see errors, double-check your token and try the free Pollinations.ai option.",
-                "highlight": "test_generation",
-                "action": "suggest_test"
-            },
-            {
-                "title": "You're Configured! 🎉",
-                "content": "Your AI provider is now set up! You can change providers anytime in Settings. Each has different strengths - feel free to experiment with all of them.",
-                "highlight": None,
-                "action": None
-            }
-        ]
-
     def start_tutorial(self, tutorial_id: str):
         """Start a specific tutorial."""
         if tutorial_id not in self.tutorials:
@@ -282,9 +233,9 @@ class TutorialManager:
         
         self.tutorial_window = tk.Toplevel(self.app.root)
         self.tutorial_window.title(self.current_tutorial["title"])
-        self.tutorial_window.geometry("700x600")
+        self.tutorial_window.geometry("760x660")
         self.tutorial_window.resizable(True, True)
-        self.tutorial_window.minsize(600, 500)
+        self.tutorial_window.minsize(640, 550)
 
         from utils import center_window
         center_window(self.app.root, self.tutorial_window)
@@ -301,7 +252,7 @@ class TutorialManager:
         main_container = ttk.Frame(self.tutorial_window)
         main_container.pack(fill="both", expand=True, padx=20, pady=20)
         
-        # Title label
+        # ---- Fixed header (title + description) ----
         title_label = ttk.Label(
             main_container,
             text=self.current_tutorial["title"],
@@ -310,7 +261,6 @@ class TutorialManager:
         )
         title_label.pack(pady=(0, 5))
         
-        # Description label
         desc_label = ttk.Label(
             main_container,
             text=self.current_tutorial["description"],
@@ -318,8 +268,48 @@ class TutorialManager:
             foreground=pal["muted"]
         )
         desc_label.pack(pady=(0, 10))
+
+        # ---- Fixed footer (progress + nav buttons) — packed FIRST so it
+        #      claims space from the bottom; the canvas will fill the rest.
+        bottom_frame = ttk.Frame(main_container)
+        bottom_frame.pack(side="bottom", fill="x", pady=(10, 0))
+
+        # Progress indicator (in fixed footer)
+        self.progress_label = ttk.Label(
+            bottom_frame,
+            text="",
+            font=("Segoe UI", 11, "bold"),
+            foreground=pal["accent"]
+        )
+        self.progress_label.pack(pady=(0, 5))
+
+        # Navigation buttons (in fixed footer)
+        button_frame = ttk.Frame(bottom_frame)
+        button_frame.pack(fill="x")
         
-        # Scrollable content area
+        self.prev_button = ttk.Button(
+            button_frame,
+            text="← Previous",
+            command=self._previous_step,
+            state="disabled"
+        )
+        self.prev_button.pack(side="left", padx=5)
+        
+        self.next_button = ttk.Button(
+            button_frame,
+            text="Next →",
+            command=self._next_step
+        )
+        self.next_button.pack(side="right", padx=5)
+        
+        self.close_button = ttk.Button(
+            button_frame,
+            text="Skip Tutorial",
+            command=self._close_tutorial
+        )
+        self.close_button.pack(side="right", padx=5)
+
+        # ---- Scrollable content area (fills remaining space) ----
         canvas = tk.Canvas(main_container, highlightthickness=0, bg=pal["bg"])
         scrollbar = ttk.Scrollbar(main_container, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
@@ -349,14 +339,13 @@ class TutorialManager:
         canvas.pack(side="left", fill="both", expand=True)
         scrollbar.pack(side="right", fill="y")
         
-        # Step content with better padding - use Text widget for selectable/copyable content
-        # Use a smaller height and auto-resize based on content
+        # Step content — use Text widget for selectable/copyable text.
+        # No fixed width: fill="x" lets it adapt to the window width;
+        # height is set dynamically in _show_current_step() via bbox.
         self.step_content = tk.Text(
             scrollable_frame,
             font=("Segoe UI", 12),
             wrap="word",
-            width=60,
-            height=1,
             bg=pal["bg"],
             fg=pal["text"],
             highlightthickness=0,
@@ -368,43 +357,14 @@ class TutorialManager:
             selectforeground=pal["selected_fg"],
             inactiveselectbackground=pal["bg"],
         )
-        self.step_content.pack(pady=15, padx=10)
+        self.step_content.pack(pady=10, padx=10, fill="x")
         self.step_content.config(state="disabled")  # Make read-only but selectable
-        
-        # Progress indicator
-        self.progress_label = ttk.Label(
-            scrollable_frame,
-            text="",
-            font=("Segoe UI", 11, "bold"),
-            foreground=pal["accent"]
-        )
-        self.progress_label.pack(pady=(15, 15))
-        
-        # Navigation buttons
-        button_frame = ttk.Frame(scrollable_frame)
-        button_frame.pack(pady=(10, 0), fill="x")
-        
-        self.prev_button = ttk.Button(
-            button_frame,
-            text="← Previous",
-            command=self._previous_step,
-            state="disabled"
-        )
-        self.prev_button.pack(side="left", padx=5)
-        
-        self.next_button = ttk.Button(
-            button_frame,
-            text="Next →",
-            command=self._next_step
-        )
-        self.next_button.pack(side="right", padx=5)
-        
-        self.close_button = ttk.Button(
-            button_frame,
-            text="Skip Tutorial",
-            command=self._close_tutorial
-        )
-        self.close_button.pack(side="right", padx=5)
+        # read-only text: keep it OUT of the Tab ring (it would trap Tab)
+        try:
+            from ui_effects import make_text_tab_friendly
+            make_text_tab_friendly(self.step_content)
+        except ImportError:
+            pass
     
     def _show_current_step(self):
         """Display the current tutorial step."""
@@ -418,9 +378,25 @@ class TutorialManager:
         self.step_content.config(state="normal")
         self.step_content.delete(1.0, tk.END)
         self.step_content.insert(tk.END, step["content"])
-        # Auto-resize: count lines and set height to fit content
-        line_count = int(self.step_content.index('end-1c').split('.')[0])
-        self.step_content.config(height=max(line_count + 1, 3))
+
+        # --- Auto-resize height to fit ALL visible (wrapped) text ---
+        # Force the geometry manager to calculate layout so bbox is valid.
+        self.step_content.update_idletasks()
+
+        # Measure the first line's height and the last character's position
+        # to compute the total number of *display* lines (accounting for
+        # word-wrap), not just paragraph/newline boundaries.
+        first_bbox = self.step_content.bbox("1.0")
+        last_bbox  = self.step_content.bbox("end-1c")
+
+        if first_bbox and last_bbox:
+            line_h = first_bbox[3]                       # pixel height of one line
+            total_px = last_bbox[1] + last_bbox[3]       # bottom edge of last char
+            display_lines = max(3, round(total_px / line_h))
+        else:
+            display_lines = 3                             # safe fallback
+        self.step_content.config(height=display_lines)
+
         # Make website references clickable (same treatment as the cloud
         # "How to get your credentials" guides in Settings).  Bare domains
         # like dash.cloudflare.com open with an https:// prefix.
@@ -622,7 +598,6 @@ class TutorialManager:
             ("quick_start", "🚀 Quick Start Guide", "Learn the basics in 5 minutes"),
             ("feature_tour", "🗺️ Feature Tour", "Explore all major features"),
             ("interactive_practice", "🎨 Interactive Practice", "Guided wallpaper generation"),
-            ("model_setup", "🤖 Model Setup Guide", "Configure AI providers and models")
         ]
 
         # Centering wrapper — constrains card width and centers content

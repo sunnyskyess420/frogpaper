@@ -5,7 +5,7 @@ Advanced prompt refinement and editing capabilities.
 """
 
 import re
-from typing import Dict, List, Tuple
+from typing import Dict, List
 
 
 class PromptRefiner:

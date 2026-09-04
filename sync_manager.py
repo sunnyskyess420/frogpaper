@@ -6,13 +6,11 @@ Cloud sync engine for FrogPaper with delta sync, conflict resolution, and favori
 
 import hashlib
 import logging
-import os
-import shutil
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 
-from utils import get_app_dir, load_config, save_config
+from utils import get_app_dir, load_config
 
 logger = logging.getLogger(__name__)
 
@@ -214,17 +212,15 @@ class SyncManager:
             return local_file
         
         if is_manual:
-            # Prompt user for choice
-            from tkinter import messagebox
-            choice = messagebox.askyesno(
-                "Sync Conflict",
-                f"Conflict detected for '{local_file.name}':\n\n"
-                f"Local: Modified {datetime.fromtimestamp(local_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}\n"
-                f"Remote: Modified {datetime.fromtimestamp(remote_file.stat().st_mtime).strftime('%Y-%m-%d %H:%M')}\n\n"
-                f"Keep local version?",
-                default=messagebox.YES
+            # messagebox cannot be called from a background thread.
+            # If this is ever needed, use root.after(0, ...) with a
+            # threading.Event to wait for the result.
+            logger.warning(
+                "Manual conflict resolution requested from background thread "
+                "— falling back to local-wins policy for %s",
+                local_file.name,
             )
-            return local_file if choice else remote_file
+            return local_file
         else:
             # Automatic sync: "local wins" policy
             logger.info(f"Auto-resolving conflict with 'local wins' policy: {local_file.name}")

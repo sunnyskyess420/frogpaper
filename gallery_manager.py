@@ -9,12 +9,15 @@ All public function signatures are unchanged — callers don't need modification
 """
 
 import json
+import logging
 import shutil
 import threading
 from pathlib import Path
 from datetime import datetime
 
 from utils import atomic_write_json, get_app_dir
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = get_app_dir()
 WALLPAPERS_DIR = BASE_DIR / "wallpapers"
@@ -54,13 +57,20 @@ TAGS_FILE = BASE_DIR / "gallery_tags.json"
 
 
 def _load_tags_json() -> dict:
-    """Load tags data from the JSON fallback file."""
+    """Load tags data from the JSON fallback file.
+
+    Never raises: a missing, corrupt, or wrong-shaped file yields an
+    empty tag store so callers always get a usable dict back.
+    """
     if TAGS_FILE.exists():
         try:
             with open(TAGS_FILE, "r", encoding="utf-8") as f:
-                return json.load(f)
-        except (json.JSONDecodeError, OSError):
-            pass
+                data = json.load(f)
+            if isinstance(data, dict) and isinstance(data.get("tags"), dict):
+                return data
+            logger.warning("gallery_tags.json has unexpected shape - ignoring it")
+        except (json.JSONDecodeError, OSError) as e:
+            logger.warning("Could not read gallery_tags.json (%s) - starting with empty tags", e)
     return {"tags": {}}
 
 
@@ -77,42 +87,47 @@ def load_tags() -> dict:
     """
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import ImageTag, PromptParam
+            session = db.get_db_session()
+            try:
+                from database import ImageTag, PromptParam
 
-            # Query all image paths that have tags
-            image_rows = session.query(
-                ImageTag.image_path,
-                ImageTag.tagged_at,
-            ).distinct().all()
+                # Query all image paths that have tags
+                image_rows = session.query(
+                    ImageTag.image_path,
+                    ImageTag.tagged_at,
+                ).distinct().all()
 
-            result = {"tags": {}}
-            for img_path, tagged_at in image_rows:
-                tags = [
-                    row.tag for row in session.query(ImageTag.tag)
-                    .filter(ImageTag.image_path == img_path)
-                    .all()
-                ]
-                result["tags"][img_path] = {"tags": tags, "tagged_at": tagged_at or ""}
+                result = {"tags": {}}
+                for img_path, tagged_at in image_rows:
+                    tags = [
+                        row.tag for row in session.query(ImageTag.tag)
+                        .filter(ImageTag.image_path == img_path)
+                        .all()
+                    ]
+                    result["tags"][img_path] = {"tags": tags, "tagged_at": tagged_at or ""}
 
-                # Include prompt params if present
-                pp = session.query(PromptParam).filter(PromptParam.image_path == img_path).first()
-                if pp and pp.params_json:
-                    try:
-                        result["tags"][img_path]["prompt_params"] = json.loads(pp.params_json)
-                    except Exception:
-                        pass
+                    # Include prompt params if present
+                    pp = session.query(PromptParam).filter(PromptParam.image_path == img_path).first()
+                    if pp and pp.params_json:
+                        try:
+                            result["tags"][img_path]["prompt_params"] = json.loads(pp.params_json)
+                        except Exception:
+                            pass
 
-            return result
-        finally:
-            session.close()
-    else:
-        return _load_tags_json()
+                return result
+            finally:
+                session.close()
+        except Exception as e:
+            # Graceful degradation: a locked/corrupt DB must never take the
+            # gallery tab down - fall back to the JSON compat file.
+            logger.warning("DB read failed in load_tags; falling back to JSON: %s", e)
+    return _load_tags_json()
 
 
 def save_tags(data: dict) -> None:
     """Save tags from legacy format dict into DB. Used internally by legacy compat code."""
+    _invalidate_tags_cache()
     db = _get_db()
     if db is not None:
         session = db.get_db_session()
@@ -147,6 +162,7 @@ def save_tags(data: dict) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -160,6 +176,7 @@ def save_tags(data: dict) -> None:
 
 def add_tags_to_image(image_path: str | Path, tags: list[str]) -> None:
     """Add tags to an image."""
+    _invalidate_tags_cache()
     image_path = str(Path(image_path).resolve())
     now = datetime.now().isoformat()
 
@@ -186,6 +203,7 @@ def add_tags_to_image(image_path: str | Path, tags: list[str]) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -202,6 +220,7 @@ def add_tags_to_image(image_path: str | Path, tags: list[str]) -> None:
 
 def add_tags_to_paths(paths: list[str | Path], tags: list[str]) -> None:
     """Add tags to multiple paths in a single transaction."""
+    _invalidate_tags_cache()
     if not paths or not tags:
         return
 
@@ -225,6 +244,7 @@ def add_tags_to_paths(paths: list[str | Path], tags: list[str]) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -241,28 +261,86 @@ def add_tags_to_paths(paths: list[str | Path], tags: list[str]) -> None:
             _save_tags_json(data)
 
 
+# ── Tags read memo (perf: N+1 session-per-image on every view load) ──────
+# A single gallery view load calls get_tags_for_image once per image for
+# tag filtering and one or more times per card (direct + fallback chain),
+# and each call opened a fresh DB session. The memo below survives until
+# the next tag WRITE — every writing function in this module calls
+# _invalidate_tags_cache() first, so the cache can never outlive the
+# data it reflects. (One-time startup migration in database.py runs
+# before the UI exists and needs no invalidation hook.)
+_TAGS_CACHE: dict = {}
+_TAGS_CACHE_LIMIT = 2000
+
+
+def _invalidate_tags_cache() -> None:
+    """Drop all memoized tag reads. Called by every tag-writing function
+    BEFORE its write work, so even a failed write leaves no stale memo."""
+    _TAGS_CACHE.clear()
+
+
 def get_tags_for_image(image_path: str | Path) -> list[str]:
-    """Get tags for a specific image."""
-    image_path = str(Path(image_path).resolve())
+    """Get tags for a specific image (memoized until the next tag write).
+
+    The memo key is the canonical (resolved) path so different spellings of
+    the same file share one entry, but the underlying read receives the
+    ORIGINAL string: on Windows, ``Path('/img/a.png').resolve()`` grows a
+    drive letter (``C:\\img\\a.png``), so looking the JSON store up by the
+    canonical form alone would miss entries saved under the literal path
+    the caller used.
+    """
+    original = str(image_path)
+    key = str(Path(original).resolve())
+    cached = _TAGS_CACHE.get(key)
+    if cached is not None:
+        return list(cached)
+    tags = _read_tags_for_image(original)
+    if len(_TAGS_CACHE) >= _TAGS_CACHE_LIMIT:
+        _TAGS_CACHE.clear()
+    _TAGS_CACHE[key] = tags
+    return list(tags)
+
+
+def _read_tags_for_image(image_path: str) -> list[str]:
+    """Un-memoized tags read: DB first, JSON fallback (Task 5 hardening).
+
+    Looks the image up first by the exact string the caller passed, then by
+    its resolved form — write-side code stores resolved paths, but legacy
+    JSON files / foreign callers may hold the unresolved spelling (and on
+    Windows resolving a root-relative path changes it entirely).
+    """
+    canonical = str(Path(image_path).resolve())
+    candidates = [image_path] if canonical == image_path else [image_path, canonical]
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import ImageTag
-            rows = session.query(ImageTag.tag).filter(
-                ImageTag.image_path == image_path
-            ).all()
-            return [row.tag for row in rows]
-        finally:
-            session.close()
-    else:
-        data = _load_tags_json()
-        entry = data["tags"].get(image_path)
-        return list(entry["tags"]) if entry else []
+            session = db.get_db_session()
+            try:
+                from database import ImageTag
+                rows = []
+                for candidate in candidates:
+                    rows = session.query(ImageTag.tag).filter(
+                        ImageTag.image_path == candidate
+                    ).all()
+                    if rows:
+                        break
+                return [row.tag for row in rows]
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning("DB read failed in get_tags_for_image; falling back to JSON: %s", e)
+    data = _load_tags_json()
+    tags_map = data["tags"]
+    for candidate in candidates:
+        entry = tags_map.get(candidate)
+        if entry is not None:
+            return list(entry.get("tags", []))
+    return []
 
 
 def remove_tag_from_image(image_path: str | Path, tag: str) -> None:
     """Remove a specific tag from an image."""
+    _invalidate_tags_cache()
     image_path = str(Path(image_path).resolve())
     db = _get_db()
     if db is not None:
@@ -276,6 +354,7 @@ def remove_tag_from_image(image_path: str | Path, tag: str) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -294,6 +373,7 @@ def cleanup_orphaned_tags() -> int:
     Also removes tags that have zero remaining image associations.
     Returns the number of tag rows cleaned up.
     """
+    _invalidate_tags_cache()
     db = _get_db()
     if db is not None:
         session = db.get_db_session()
@@ -311,20 +391,11 @@ def cleanup_orphaned_tags() -> int:
                     ).delete()
                     removed += count
 
-            # Also remove any tags that now have zero images (double-pass safety)
-            from sqlalchemy import func
-            remaining_tags = session.query(ImageTag.tag).distinct().all()
-            for (tag,) in remaining_tags:
-                cnt = session.query(func.count(ImageTag.id)).filter(
-                    ImageTag.tag == tag
-                ).scalar()
-                if cnt == 0:
-                    session.query(ImageTag).filter(ImageTag.tag == tag).delete()
-
             session.commit()
             return removed
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -346,95 +417,101 @@ def get_all_tags() -> list[str]:
     """Get all unique tags across the gallery."""
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import ImageTag
-            rows = session.query(ImageTag.tag).distinct().all()
-            return sorted([row.tag for row in rows])
-        finally:
-            session.close()
-    else:
-        data = _load_tags_json()
-        all_tags = set()
-        for entry in data["tags"].values():
-            all_tags.update(entry.get("tags", []))
-        return sorted(all_tags)
+            session = db.get_db_session()
+            try:
+                from database import ImageTag
+                rows = session.query(ImageTag.tag).distinct().all()
+                return sorted([row.tag for row in rows])
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning("DB read failed in get_all_tags; falling back to JSON: %s", e)
+    data = _load_tags_json()
+    all_tags = set()
+    for entry in data["tags"].values():
+        all_tags.update(entry.get("tags", []))
+    return sorted(all_tags)
 
 
 def get_images_by_tag(tag: str) -> list[Path]:
     """Get all images with a specific tag."""
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import ImageTag
-            rows = session.query(ImageTag.image_path).filter(
-                ImageTag.tag == tag
-            ).distinct().all()
-            images = []
-            for (path_str,) in rows:
-                p = Path(path_str)
-                if p.exists():
-                    images.append(p)
-            return images
-        finally:
-            session.close()
-    else:
-        data = _load_tags_json()
-        images = []
-        for path_str, entry in data["tags"].items():
-            if tag in entry.get("tags", []):
-                p = Path(path_str)
-                if p.exists():
-                    images.append(p)
-        return images
+            session = db.get_db_session()
+            try:
+                from database import ImageTag
+                rows = session.query(ImageTag.image_path).filter(
+                    ImageTag.tag == tag
+                ).distinct().all()
+                images = []
+                for (path_str,) in rows:
+                    p = Path(path_str)
+                    if p.exists():
+                        images.append(p)
+                return images
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning("DB read failed in get_images_by_tag; falling back to JSON: %s", e)
+    data = _load_tags_json()
+    images = []
+    for path_str, entry in data["tags"].items():
+        if tag in entry.get("tags", []):
+            p = Path(path_str)
+            if p.exists():
+                images.append(p)
+    return images
 
 
 def get_images_by_tags(tags: list[str], match_any=True) -> list[Path]:
     """Get images matching tags. If match_any=True, any tag matches; else all must match."""
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import ImageTag
+            session = db.get_db_session()
+            try:
+                from database import ImageTag
 
-            if match_any:
-                rows = session.query(ImageTag.image_path).filter(
-                    ImageTag.tag.in_(tags)
-                ).distinct().all()
-            else:
-                # All tags must match: use GROUP BY + HAVING COUNT
-                from sqlalchemy import func
-                rows = session.query(ImageTag.image_path).filter(
-                    ImageTag.tag.in_(tags)
-                ).group_by(ImageTag.image_path).having(
-                    func.count(func.distinct(ImageTag.tag)) == len(tags)
-                ).all()
+                if match_any:
+                    rows = session.query(ImageTag.image_path).filter(
+                        ImageTag.tag.in_(tags)
+                    ).distinct().all()
+                else:
+                    # All tags must match: use GROUP BY + HAVING COUNT
+                    from sqlalchemy import func
+                    rows = session.query(ImageTag.image_path).filter(
+                        ImageTag.tag.in_(tags)
+                    ).group_by(ImageTag.image_path).having(
+                        func.count(func.distinct(ImageTag.tag)) == len(tags)
+                    ).all()
 
-            images = []
-            for (path_str,) in rows:
+                images = []
+                for (path_str,) in rows:
+                    p = Path(path_str)
+                    if p.exists():
+                        images.append(p)
+                return images
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning("DB read failed in get_images_by_tags; falling back to JSON: %s", e)
+    data = _load_tags_json()
+    images = []
+    for path_str, entry in data["tags"].items():
+        img_tags = set(entry.get("tags", []))
+        if match_any:
+            if img_tags & set(tags):
                 p = Path(path_str)
                 if p.exists():
                     images.append(p)
-            return images
-        finally:
-            session.close()
-    else:
-        data = _load_tags_json()
-        images = []
-        for path_str, entry in data["tags"].items():
-            img_tags = set(entry.get("tags", []))
-            if match_any:
-                if img_tags & set(tags):
-                    p = Path(path_str)
-                    if p.exists():
-                        images.append(p)
-            else:
-                if set(tags).issubset(img_tags):
-                    p = Path(path_str)
-                    if p.exists():
-                        images.append(p)
-        return images
+        else:
+            if set(tags).issubset(img_tags):
+                p = Path(path_str)
+                if p.exists():
+                    images.append(p)
+    return images
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -448,23 +525,31 @@ def organize_image_into_folder(image_path: str | Path, folder_name: str) -> Path
         return None
 
     folder_path = GENERATED_DIR / folder_name
-    folder_path.mkdir(parents=True, exist_ok=True)
     new_path = folder_path / image_path.name
-
-    if image_path.parent != folder_path:
-        shutil.move(str(image_path), str(new_path))
+    try:
+        folder_path.mkdir(parents=True, exist_ok=True)
+        if image_path.parent != folder_path:
+            shutil.move(str(image_path), str(new_path))
+    except OSError:
+        logger.exception("Failed to organize image %s into folder %r", image_path, folder_name)
+        raise
 
     return new_path
 
 
 def rename_image(image_path: str | Path, new_name: str) -> Path:
     """Rename an image file and update DB metadata."""
+    _invalidate_tags_cache()
     image_path = Path(image_path)
     if not image_path.exists():
         return None
 
     new_path = image_path.parent / new_name
-    image_path.rename(new_path)
+    try:
+        image_path.rename(new_path)
+    except OSError:
+        logger.exception("Failed to rename %s to %r (target exists or file locked?)", image_path, new_name)
+        raise
 
     old_path_str = str(image_path.resolve())
     new_path_str = str(new_path.resolve())
@@ -485,6 +570,7 @@ def rename_image(image_path: str | Path, new_name: str) -> Path:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -504,12 +590,22 @@ def get_folder_structure() -> dict:
     if not GENERATED_DIR.exists():
         return structure
 
-    for item in GENERATED_DIR.iterdir():
-        if item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
-            structure["root"].append(item)
-        elif item.is_dir():
-            images = [f for f in item.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}]
-            structure["folders"][item.name] = images
+    try:
+        items = list(GENERATED_DIR.iterdir())
+    except OSError as e:
+        logger.warning("Could not scan gallery folders: %s", e)
+        return structure
+
+    for item in items:
+        try:
+            if item.is_file() and item.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}:
+                structure["root"].append(item)
+            elif item.is_dir():
+                images = [f for f in item.iterdir() if f.is_file() and f.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp", ".bmp"}]
+                structure["folders"][item.name] = images
+        except OSError as e:
+            # One unreadable subfolder shouldn't blank the whole gallery view
+            logger.warning("Skipping unreadable gallery folder %s: %s", item, e)
 
     return structure
 
@@ -520,9 +616,14 @@ def delete_image_and_tags(image_path: str | Path) -> None:
     Also removes any tags that no longer have any associated images
     (orphaned tags) so the tag dropdown always reflects the current state.
     """
+    _invalidate_tags_cache()
     image_path = Path(image_path)
     if image_path.exists():
-        image_path.unlink()
+        try:
+            image_path.unlink()
+        except OSError:
+            logger.exception("Failed to delete image file %s (locked by another program?)", image_path)
+            raise
 
     image_path_str = str(image_path.resolve())
     db = _get_db()
@@ -552,6 +653,7 @@ def delete_image_and_tags(image_path: str | Path) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -597,6 +699,7 @@ def save_prompt_parameters(image_path: str | Path, prompt_params: dict) -> None:
             session.commit()
         except Exception:
             session.rollback()
+            logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")
             raise
         finally:
             session.close()
@@ -610,28 +713,44 @@ def save_prompt_parameters(image_path: str | Path, prompt_params: dict) -> None:
 
 
 def get_prompt_parameters(image_path: str | Path) -> dict:
-    """Get saved prompt parameters for an image."""
-    image_path = str(Path(image_path).resolve())
+    """Get saved prompt parameters for an image.
+
+    Reads try the caller's exact string first, then the resolved form —
+    see _read_tags_for_image for why (Windows drive-letter resolution).
+    """
+    original = str(image_path)
+    canonical = str(Path(original).resolve())
+    candidates = [original] if canonical == original else [original, canonical]
     db = _get_db()
     if db is not None:
-        session = db.get_db_session()
         try:
-            from database import PromptParam
-            row = session.query(PromptParam).filter(
-                PromptParam.image_path == image_path
-            ).first()
-            if row and row.params_json:
-                try:
-                    return json.loads(row.params_json)
-                except Exception:
-                    return {}
-            return {}
-        finally:
-            session.close()
-    else:
-        data = _load_tags_json()
-        entry = data.get("tags", {}).get(image_path, {})
-        return entry.get("prompt_params", {})
+            session = db.get_db_session()
+            try:
+                from database import PromptParam
+                row = None
+                for candidate in candidates:
+                    row = session.query(PromptParam).filter(
+                        PromptParam.image_path == candidate
+                    ).first()
+                    if row is not None:
+                        break
+                if row and row.params_json:
+                    try:
+                        return json.loads(row.params_json)
+                    except Exception:
+                        return {}
+                return {}
+            finally:
+                session.close()
+        except Exception as e:
+            logger.warning("DB read failed in get_prompt_parameters; falling back to JSON: %s", e)
+    data = _load_tags_json()
+    tags_map = data.get("tags", {})
+    for candidate in candidates:
+        entry = tags_map.get(candidate)
+        if entry is not None:
+            return entry.get("prompt_params", {}) or {}
+    return {}
 
 
 def get_portrait_images() -> list[Path]:
@@ -674,5 +793,3 @@ def get_portrait_images() -> list[Path]:
     except Exception:
         # Any other error, return empty list
         return []
-        entry = data["tags"].get(image_path)
-        return dict(entry.get("prompt_params", {})) if entry else {}

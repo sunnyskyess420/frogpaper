@@ -6,8 +6,31 @@ import random
 from pathlib import Path
 from datetime import datetime
 
-from tkinter import ttk, messagebox, simpledialog
-from PIL import Image, ImageTk, ImageFilter, ImageEnhance, ImageDraw, ImageFont
+from theme import COLOR_BLACK, COLOR_MID_GRAY, COLOR_WHITE  # shared color constants (migrated inline hex)
+
+# Import thread-safe UI update functions
+try:
+    from thread_manager import run_background, schedule_ui_update
+    THREAD_MANAGER_AVAILABLE = True
+except ImportError:
+    THREAD_MANAGER_AVAILABLE = False
+    # Fallback to direct threading if thread_manager not available
+    def schedule_ui_update(callback, *args, **kwargs):
+        """Fallback for thread-safe UI updates."""
+        if hasattr(callback, '__self__') and hasattr(callback.__self__, 'root'):
+            callback.__self__.root.after(0, lambda: callback(*args, **kwargs))
+        else:
+            # Direct call as fallback (not thread-safe, but prevents crashes)
+            callback(*args, **kwargs)
+    
+    def run_background(target, *args, daemon=True, **kwargs):
+        """Fallback for background thread execution."""
+        thread = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=daemon)
+        thread.start()
+        return thread
+
+from tkinter import ttk, simpledialog
+from PIL import ImageTk, ImageEnhance, ImageColor
 
 try:
     from set_wallpaper import set_wallpaper, collect_wallpapers
@@ -21,15 +44,10 @@ from gallery_manager import (
     add_tags_to_image,
     add_tags_to_paths,
     get_tags_for_image,
-    remove_tag_from_image,
     get_all_tags,
-    get_images_by_tag,
     organize_image_into_folder,
-    rename_image,
-    get_folder_structure,
     delete_image_and_tags,
     cleanup_orphaned_tags,
-    save_prompt_parameters,
     get_prompt_parameters,
     get_portrait_images,
 )
@@ -153,8 +171,7 @@ class GalleryTab:
             app.status_var.set(f'Refreshing {current_view} images...')
             app.root.update_idletasks()
             # Load in background thread to prevent UI freeze
-            import threading
-            threading.Thread(target=app.load_gallery_by_ratio, args=(current_view, tag_filter), daemon=True).start()
+            run_background(app.load_gallery_by_ratio, current_view, tag_filter)
         else:
             # Default to gallery if unknown view
             app.load_gallery()
@@ -181,10 +198,13 @@ class GalleryTab:
             logger.error(f"Error applying toolbar icons: {e}")
             pass  # Graceful fallback — buttons still work with text-only
 
-    def _fade_in_thumb(self, label_widget, photo_image, steps=4, interval=35):
+    def _fade_in_thumb(self, label_widget, photo_image, steps=4, interval=35,
+                       base_pil=None):
         """Smoothly fade-in a thumbnail using brightness stepping.
 
         Starts at 30% brightness and ramps to 100% over *steps* frames.
+        Pass ``base_pil`` (the PIL image the PhotoImage was made from) to
+        skip the PhotoImage->PIL round-trip this would otherwise do.
         """
         # Cancel any previous fade on this label
         if label_widget in self._fade_jobs:
@@ -195,8 +215,7 @@ class GalleryTab:
                     pass
         self._fade_jobs[label_widget] = []
 
-        from PIL import ImageEnhance
-        base_img = ImageTk.getimage(photo_image)
+        base_img = base_pil if base_pil is not None else ImageTk.getimage(photo_image)
 
         def _step(step_num):
             if step_num >= steps:
@@ -220,60 +239,40 @@ class GalleryTab:
         app = self.app
         try:
 
-            # Update status for image loading
-
-            app.root.after(0, lambda: app.status_var.set(f"Loading image for {style} style..."))
-
-            
+            # Update status for image loading (thread-safe)
+            schedule_ui_update(app.status_var.set, f"Loading image for {style} style...")
 
             from style_transfer import apply_style_to_image
 
-            
-
-            # Update status for processing
-
-            app.root.after(0, lambda: app.status_var.set(f"Processing {style} style..."))
-
-            
+            # Update status for processing (thread-safe)
+            schedule_ui_update(app.status_var.set, f"Processing {style} style...")
 
             styled_path = apply_style_to_image(app.selected_gallery_path, style)
 
-            
-
             if styled_path:
 
-                # Update status for success
+                # Update status for success (thread-safe)
+                schedule_ui_update(app.status_var.set, f"✅ {style} style applied successfully!")
 
-                app.root.after(0, lambda: app.status_var.set(f"✅ {style} style applied successfully!"))
-
-                # Update UI from main thread
-
-                app.root.after(0, app._style_applied_success, styled_path, style)
+                # Update UI from main thread (thread-safe)
+                schedule_ui_update(app._style_applied_success, styled_path, style)
 
             else:
 
-                # Update status for failure
+                # Update status for failure (thread-safe)
+                schedule_ui_update(app.status_var.set, f"❌ {style} style failed - no image created")
 
-                app.root.after(0, lambda: app.status_var.set(f"❌ {style} style failed - no image created"))
-
-                app.root.after(0, app._style_applied_failed, style)
-
-                
+                schedule_ui_update(app._style_applied_failed, style)
 
         except Exception as e:
 
             # Update status for error - avoid threading issues
-
             try:
-
-                app.root.after(0, lambda: app.status_var.set(f"❌ Style transfer error: {str(e)}"))
-
-                app.root.after(0, app._style_applied_error, str(e))
-
-            except:
+                schedule_ui_update(app.status_var.set, f"❌ Style transfer error: {str(e)}")
+                schedule_ui_update(app._style_applied_error, str(e))
+            except Exception:
 
                 # Fallback if root is no longer valid
-
                 logger.error(f"Style transfer error (app.UI update failed): {str(e)}")
 
 
@@ -379,9 +378,15 @@ class GalleryTab:
                                         state="readonly", width=14)
         app.sort_combo.pack(side='left', padx=(0, 10))
         app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
-        app.sort_combo.bind("<MouseWheel>", lambda e: "break")
-        app.sort_combo.bind("<Button-4>", lambda e: "break")
-        app.sort_combo.bind("<Button-5>", lambda e: "break")
+        
+        # Enhanced scroll prevention for dropdown
+        def prevent_gallery_scroll(event):
+            """Prevent scroll events from propagating to gallery when dropdown is active."""
+            return "break"
+        
+        app.sort_combo.bind("<MouseWheel>", prevent_gallery_scroll)
+        app.sort_combo.bind("<Button-4>", prevent_gallery_scroll)
+        app.sort_combo.bind("<Button-5>", prevent_gallery_scroll)
 
         ttk.Label(org_row, text="Tag:", font=app.small_font).pack(side='left', padx=(10, 8))
         app.gallery_tag_var = tk.StringVar(value='All tags')
@@ -390,9 +395,15 @@ class GalleryTab:
                                               state="readonly", width=12)
         app.gallery_tag_combo.pack(side='left', padx=(0, 8))
         app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
-        app.gallery_tag_combo.bind("<MouseWheel>", lambda e: "break")
-        app.gallery_tag_combo.bind("<Button-4>", lambda e: "break")
-        app.gallery_tag_combo.bind("<Button-5>", lambda e: "break")
+        
+        # Enhanced scroll prevention for dropdown
+        def prevent_gallery_scroll_tag(event):
+            """Prevent scroll events from propagating to gallery when dropdown is active."""
+            return "break"
+        
+        app.gallery_tag_combo.bind("<MouseWheel>", prevent_gallery_scroll_tag)
+        app.gallery_tag_combo.bind("<Button-4>", prevent_gallery_scroll_tag)
+        app.gallery_tag_combo.bind("<Button-5>", prevent_gallery_scroll_tag)
 
         _btn_tag = ttk.Button(org_row, text="Tag Image", command=app._gallery_tag_selected)
         _btn_tag.pack(side='left', padx=(0, 8))
@@ -496,11 +507,37 @@ class GalleryTab:
         _bind_wheel(app.gallery_manual_canvas)
 
         def _on_mousewheel(event):
+            # Prevent gallery scrolling if mouse is over dropdown widgets
+            try:
+                widget = event.widget
+                widget_class = widget.winfo_class()
+                # Check if the widget or any parent is a combobox or listbox
+                current = widget
+                while current:
+                    class_name = current.winfo_class()
+                    if "TCombobox" in class_name or "Listbox" in class_name:
+                        return "break"
+                    current = current.master
+            except Exception:
+                pass
             c = app._hover_canvas
             if c is not None:
                 c.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
         def _on_mousewheel_linux(event):
+            # Prevent gallery scrolling if mouse is over dropdown widgets
+            try:
+                widget = event.widget
+                widget_class = widget.winfo_class()
+                # Check if the widget or any parent is a combobox or listbox
+                current = widget
+                while current:
+                    class_name = current.winfo_class()
+                    if "TCombobox" in class_name or "Listbox" in class_name:
+                        return "break"
+                    current = current.master
+            except Exception:
+                pass
             c = app._hover_canvas
             if c is not None:
                 c.yview_scroll(int(-1 * event.delta), "units")
@@ -521,10 +558,19 @@ class GalleryTab:
             logger.info(f"Building ratio gallery UI for {ratio_mode} with {len(filtered_images)} images")
             app.gallery_images = filtered_images
 
-            # Clear existing gallery cards
+            # Clear existing gallery cards and stale placeholders
             for widget in app.gallery_inner.winfo_children():
                 widget.destroy()
             app.gallery_cards.clear()
+            app._gallery_placeholders.clear()
+
+            # Reset height so scrollregion isn't clamped by a stale value
+            # from a previous empty-state or ratio view (Tk: height<=0 uses
+            # the widget's natural height instead of a fixed pixel value).
+            try:
+                app.gallery_canvas.itemconfig("inner_frame", height=0)
+            except Exception:
+                pass
 
             # Empty-state message
             if not app.gallery_images:
@@ -581,7 +627,7 @@ class GalleryTab:
             # Bump generation counter so any previous ratio-load thread aborts
             self._ratio_load_gen += 1
             gen = self._ratio_load_gen
-            threading.Thread(target=self._load_thumbnails_lazy, args=(ratio_mode, gen), daemon=True).start()
+            run_background(self._load_thumbnails_lazy, ratio_mode, gen)
             logger.info(f"Ratio gallery UI built: {len(app.gallery_images)} images, thumbnails loading started (gen={gen})")
 
         except Exception as e:
@@ -719,14 +765,12 @@ class GalleryTab:
                              anchor="w", justify="left", padx=6, pady=2)
         name_label.grid(row=1, column=0, sticky='ew')
 
-        # File size + resolution info
+        # File size + resolution info (dimensions via shared cache)
         try:
             size_bytes = img_path.stat().st_size
             size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
-            from PIL import Image as _PILImg
-            with _PILImg.open(img_path) as _im:
-                w_px, h_px = _im.size
-            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
+            w_px, h_px = self._img_dims(img_path)
+            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}" if w_px and h_px else size_str
         except Exception:
             info_text = ""
         info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
@@ -788,53 +832,65 @@ class GalleryTab:
                     card, placeholder, name_label, row, col, index = card_data
                     heart_btn = None
 
-                # Check if thumbnail is already cached
-                if path_str in app.thumb_cache:
+                # Capture current theme palette for closures (read from thread-safe config)
+                pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+
+                # Check if thumbnail is already cached (on main thread later)
+                cached = path_str in app.thumb_cache
+
+                if cached:
                     thumb = app.thumb_cache[path_str]
+                    def update_card(_card=card, _placeholder=placeholder, _thumb=thumb,
+                                   _img_path=img_path, _index=index, _pal=pal,
+                                   _gen=generation):
+                        if _gen != self._ratio_load_gen:
+                            return
+                        try:
+                            _placeholder.destroy()
+                            label = tk.Label(_card, image=_thumb, bg=_pal["panel"])
+                            label.grid(row=0, column=0, pady=(4, 4), padx=4)
+                            label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
+                            label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))
+                        except Exception as e:
+                            logger.error(f"Error updating card UI: {e}")
+                    schedule_ui_update(update_card)
                 else:
+                    # Prepare PIL thumbnail in this thread; defer ImageTk to main thread
                     try:
                         img = Image.open(img_path)
                         img.thumbnail((240, 135), Image.Resampling.LANCZOS)
-                        thumb = ImageTk.PhotoImage(img)
-                        if len(app.thumb_cache) > 200:
-                            app.thumb_cache.clear()
-                        app.thumb_cache[path_str] = thumb
                     except Exception as e:
                         logger.error(f"Thumbnail loading error for {img_path}: {e}")
                         continue
 
-                # Get current palette
-                pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
-
-                # Capture loop variables as defaults to avoid closure-in-loop bug.
-                # Without this, all scheduled callbacks would reference the LAST
-                # iteration's values (wrong thumbnail, wrong card, already-destroyed widget).
-                def update_card(_card=card, _placeholder=placeholder, _thumb=thumb,
-                               _img_path=img_path, _index=index, _pal=pal,
-                               _gen=generation):
-                    # Double-check generation on the main thread too
-                    if _gen != self._ratio_load_gen:
-                        return
-                    try:
-                        _placeholder.destroy()
-                        label = tk.Label(_card, image=_thumb, bg=_pal["panel"])
-                        label.grid(row=0, column=0, pady=(4, 4), padx=4)
-                        label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
-                        label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))
-                    except Exception as e:
-                        logger.error(f"Error updating card UI: {e}")
-
-                app.root.after(0, update_card)
+                    def update_card(_card=card, _placeholder=placeholder, _pil_img=img,
+                                   _img_path=img_path, _index=index, _pal=pal,
+                                   _gen=generation, _path_str=path_str):
+                        if _gen != self._ratio_load_gen:
+                            return
+                        try:
+                            thumb = ImageTk.PhotoImage(_pil_img)
+                            if len(app.thumb_cache) > 200:
+                                app.thumb_cache.clear()
+                            app.thumb_cache[_path_str] = thumb
+                            _placeholder.destroy()
+                            label = tk.Label(_card, image=thumb, bg=_pal["panel"])
+                            label.grid(row=0, column=0, pady=(4, 4), padx=4)
+                            label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
+                            label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))
+                        except Exception as e:
+                            logger.error(f"Error updating card UI: {e}")
+                    schedule_ui_update(update_card)
 
             # Update status when done
             if generation == self._ratio_load_gen:
                 def update_status():
                     app.status_var.set(f'{ratio_mode}: {len(app.gallery_images)} images')
-                app.root.after(0, update_status)
+                schedule_ui_update(update_status)
 
         except Exception as e:
             error_msg = f'Error loading thumbnails: {e}'
-            app.root.after(0, lambda: app.status_var.set(error_msg))
+            schedule_ui_update(app.status_var.set, error_msg)
 
     def _copy_prompt_to_clipboard(self):
         """Copy the current prompt text to the system clipboard."""
@@ -941,34 +997,16 @@ class GalleryTab:
         card.grid(row=row, column=col, padx=6, pady=6, sticky='nsew')
         card.columnconfigure(0, weight=1)
 
-        # Thumbnail
+        # Thumbnail — decoded off the UI thread when not cached (perf)
         try:
-            from PIL import Image, ImageTk
-            path_str = str(img_path)
+            label = self._attach_card_thumb(
+                card, pal, img_path,
+                pack_kwargs={"pady": (4, 4), "padx": 4},
+                on_click=lambda e, p=img_path: app._select_manual_image(p),
+                on_double=lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p),
+                on_context=lambda e, p=img_path: app.show_gallery_context_menu(e, p),
+            )
 
-            if path_str in app.thumb_cache:
-                thumb = app.thumb_cache[path_str]
-            else:
-                img = Image.open(img_path)
-                img.thumbnail((240, 135), Image.Resampling.LANCZOS)
-                thumb = ImageTk.PhotoImage(img)
-                if len(app.thumb_cache) > 200:
-                    app.thumb_cache.clear()
-                app.thumb_cache[path_str] = thumb
-
-            label = tk.Label(card, image=thumb, bg=pal["panel"])
-            label.image = thumb
-            label.pack(pady=(4, 4), padx=4)
-
-            try:
-                self._fade_in_thumb(label, thumb, steps=4, interval=35)
-            except Exception:
-                pass
-
-            # Click to select, double-click to set wallpaper
-            label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
-            label.bind('<Double-Button-1>', lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p))
-            label.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
             card.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
             card.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
 
@@ -984,14 +1022,12 @@ class GalleryTab:
         name_label.pack(fill="x")
         name_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
 
-        # File size + resolution info
+        # File size + resolution info (dimensions via shared cache)
         try:
             size_bytes = img_path.stat().st_size
             size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
-            from PIL import Image as _PILImg
-            with _PILImg.open(img_path) as _im:
-                w_px, h_px = _im.size
-            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
+            w_px, h_px = self._img_dims(img_path)
+            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}" if w_px and h_px else size_str
         except Exception:
             info_text = ""
         info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
@@ -1026,34 +1062,16 @@ class GalleryTab:
         card.grid(row=row, column=col, padx=6, pady=6, sticky='nsew')
         card.columnconfigure(0, weight=1)
 
-        # Thumbnail
+        # Thumbnail — decoded off the UI thread when not cached (perf)
         try:
-            from PIL import Image, ImageTk
-            path_str = str(img_path)
+            label = self._attach_card_thumb(
+                card, pal, img_path,
+                pack_kwargs={"pady": (4, 4), "padx": 4},
+                on_click=lambda e, p=img_path: app._select_styled_image(p),
+                on_double=lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p),
+                on_context=lambda e, p=img_path: app.show_gallery_context_menu(e, p),
+            )
 
-            if path_str in app.thumb_cache:
-                thumb = app.thumb_cache[path_str]
-            else:
-                img = Image.open(img_path)
-                img.thumbnail((240, 135), Image.Resampling.LANCZOS)
-                thumb = ImageTk.PhotoImage(img)
-                if len(app.thumb_cache) > 200:
-                    app.thumb_cache.clear()
-                app.thumb_cache[path_str] = thumb
-
-            label = tk.Label(card, image=thumb, bg=pal["panel"])
-            label.image = thumb
-            label.pack(pady=(4, 4), padx=4)
-
-            try:
-                self._fade_in_thumb(label, thumb, steps=4, interval=35)
-            except Exception:
-                pass
-
-            # Click to select, double-click to set wallpaper
-            label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
-            label.bind('<Double-Button-1>', lambda e, p=img_path: app.set_gallery_image_as_wallpaper(p))
-            label.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
             card.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
             card.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
 
@@ -1069,14 +1087,12 @@ class GalleryTab:
         name_label.pack(fill="x")
         name_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
 
-        # File size + resolution info
+        # File size + resolution info (dimensions via shared cache)
         try:
             size_bytes = img_path.stat().st_size
             size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
-            from PIL import Image as _PILImg
-            with _PILImg.open(img_path) as _im:
-                w_px, h_px = _im.size
-            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
+            w_px, h_px = self._img_dims(img_path)
+            info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}" if w_px and h_px else size_str
         except Exception:
             info_text = ""
         info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
@@ -1124,7 +1140,7 @@ class GalleryTab:
             app.selected_gallery_path = None
             app.load_styled()  # Refresh styled view
         except Exception as e:
-            app._dialog.error("Delete Failed", f"Failed to delete:\n{e}")
+            app._dialog.error("Delete Failed", "Could not delete the file. It may be in use by another program — close any apps using it and try again.")
 
 
     def _do_sort_gallery_reload(self):
@@ -1156,8 +1172,7 @@ class GalleryTab:
             app.status_var.set(f'Loading {view_mode} images...')
             app.root.update_idletasks()
             # Load in background thread to prevent UI freeze
-            import threading
-            threading.Thread(target=app.load_gallery_by_ratio, args=(view_mode, tag_filter), daemon=True).start()
+            run_background(app.load_gallery_by_ratio, view_mode, tag_filter)
         else:  # Gallery
             app.load_gallery()
 
@@ -1388,7 +1403,7 @@ class GalleryTab:
             try:
                 initial = target_var.get()
                 if initial.lower() == "none":
-                    initial = "#000000"
+                    initial = COLOR_BLACK
                 result = colorchooser.askcolor(initialcolor=initial, title="Choose Color",
                                                 parent=dialog)
                 if result and result[1]:
@@ -1431,7 +1446,7 @@ class GalleryTab:
         outline_combo = ttk.Combobox(outline_color_row, textvariable=outline_color_var,
                                       values=["black", "white", "darkgray", "gray", "lightgray",
                                               "red", "blue", "green", "yellow", "none",
-                                              "#333333", "#000000", "#FFFFFF", "#FF0000",
+                                              "#333333", COLOR_BLACK, COLOR_WHITE, "#FF0000",
                                               "#00FF00", "#0000FF", "#FFFF00", "#FF00FF"],
                                       state="readonly", width=24)
         outline_combo.pack(side="left", fill="x", expand=True)
@@ -1603,7 +1618,7 @@ class GalleryTab:
                 return
 
             try:
-                from PIL import Image as _Img, ImageDraw as _Draw, ImageFont as _Font, ImageTk as _Tk
+                from PIL import Image as _Img, ImageDraw as _Draw, ImageTk as _Tk
                 import math as _math
 
                 cw = preview_canvas.winfo_width() or 400
@@ -1720,7 +1735,7 @@ class GalleryTab:
                             _pdraw(td, (tx+so, ty+so), (0,0,0,alpha))
                         if ow > 0 and ol_color != "none":
                             try:
-                                ol_rgb = tuple(_Img.new("RGB")._getrgb(ol_color)) if not isinstance(ol_color, tuple) else ol_color[:3]
+                                ol_rgb = ImageColor.getrgb(ol_color) if not isinstance(ol_color, tuple) else ol_color[:3]
                             except Exception:
                                 ol_rgb = (0, 0, 0)
                             for ax in range(-ow, ow + 1):
@@ -1728,7 +1743,7 @@ class GalleryTab:
                                     if ax != 0 or ay != 0:
                                         td.text((tx+ax, ty+ay), txt, font=font, fill=(*ol_rgb, alpha))
                         try:
-                            tc_rgb = tuple(_Img.new("RGB")._getrgb(color_var.get()))
+                            tc_rgb = ImageColor.getrgb(color_var.get())
                         except Exception:
                             tc_rgb = (255, 255, 255)
                         _pdraw(td, (tx, ty), (*tc_rgb, alpha))
@@ -1823,11 +1838,11 @@ class GalleryTab:
                     app._on_gallery_view_changed()
                     dialog.destroy()
                 else:
-                    app._dialog.error("Error", "Failed to add text overlay.")
+                    app._dialog.error("Text Overlay Failed", "Could not apply text to the image. The image file may be corrupted.")
             except Exception as e:
                 import traceback
                 error_msg = f"Failed to add text: {str(e)}\n\nTraceback:\n{traceback.format_exc()}"
-                app._dialog.error("Error", error_msg)
+                app._dialog.error("Text Overlay Failed", "Could not apply text overlay. Try a different image.")
 
         ttk.Button(button_frame, text="Apply", command=apply_text).pack(side="left", padx=(0, 10))
         ttk.Button(button_frame, text="Cancel", command=dialog.destroy).pack(side="left")
@@ -1951,12 +1966,12 @@ class GalleryTab:
                 portrait_images = get_portrait_images()
                 
                 if not portrait_images:
-                    app.root.after(0, lambda: app._dialog.info(
+                    schedule_ui_update(app._dialog.info,
                         "No Portrait Images", 
                         "No portrait (9:16) images found in your gallery.\n\n"
                         "Generate some portrait wallpapers first, then try again."
-                    ))
-                    app.root.after(0, lambda: app.status_var.set("No portrait images found"))
+                    )
+                    schedule_ui_update(app.status_var.set, "No portrait images found")
                     try:
                         export_subfolder.rmdir()
                     except Exception:
@@ -1964,27 +1979,27 @@ class GalleryTab:
                     return
                 
                 # Update status with count
-                app.root.after(0, lambda: app.status_var.set(f"Found {len(portrait_images)} portrait images"))
-                app.root.after(0, lambda: app.status_var.set(f"Copying {len(portrait_images)} images to {export_subfolder.name}..."))
+                schedule_ui_update(app.status_var.set, f"Found {len(portrait_images)} portrait images")
+                schedule_ui_update(app.status_var.set, f"Copying {len(portrait_images)} images to {export_subfolder.name}...")
                 
                 # Copy images to the auto-created subfolder
                 success_count, failure_count = copy_images_to_folder(portrait_images, export_subfolder)
                 
                 # Show completion status
                 if failure_count > 0:
-                    app.root.after(0, lambda: app.status_var.set(
+                    schedule_ui_update(app.status_var.set,
                         f"Exported {success_count} images ({failure_count} failed)"
-                    ))
+                    )
                 else:
-                    app.root.after(0, lambda: app.status_var.set(
+                    schedule_ui_update(app.status_var.set,
                         f"Successfully exported {success_count} portrait images"
-                    ))
+                    )
                 
                 # Open the export subfolder in Explorer
                 open_folder_in_explorer(export_subfolder)
                 
                 # Show success dialog with instructions
-                app.root.after(0, lambda: app._dialog.info(
+                schedule_ui_update(app._dialog.info,
                     "Portrait Images Exported",
                     f"Successfully exported {success_count} portrait images to:\n\n"
                     f"{export_subfolder}\n\n"
@@ -2007,18 +2022,15 @@ class GalleryTab:
                     f"• Use Windows Nearby Sharing from the exported folder\n"
                     f"• Upload to cloud storage (Google Drive, OneDrive, etc.)\n"
                     f"• Email the images to yourself"
-                ))
+                )
                 
             except Exception as e:
                 logger.error(f"Error exporting portrait images: {e}")
-                app.root.after(0, lambda: app._dialog.error(
-                    "Export Failed",
-                    f"Failed to export portrait images:\n\n{str(e)}"
-                ))
-                app.root.after(0, lambda: app.status_var.set("Export failed"))
+                schedule_ui_update(app._dialog.error, "Export Failed", "Could not export portrait images. Check that the destination folder is accessible.")
+                schedule_ui_update(app.status_var.set, "Export failed")
         
         # Start background thread
-        threading.Thread(target=_export_thread, daemon=True).start()
+        run_background(_export_thread)
 
 
     def _gallery_view_mode(self):
@@ -2194,8 +2206,7 @@ class GalleryTab:
             app.status_var.set(f'Loading {mode} images...')
             app.root.update_idletasks()
             # Load in background thread to prevent UI freeze
-            import threading
-            threading.Thread(target=app.load_gallery_by_ratio, args=(mode, tag_filter), daemon=True).start()
+            run_background(app.load_gallery_by_ratio, mode, tag_filter)
         elif mode in ["Ratio 16:9", "Ratio 1:1"]:
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
@@ -2207,9 +2218,8 @@ class GalleryTab:
             app.status_var.set(f'Loading {mode} images...')
             app.root.update_idletasks()
             # Load in background thread to prevent UI freeze
-            import threading
             logger.info(f"Starting ratio load for {mode} with tag filter: {tag_filter}")
-            threading.Thread(target=app.load_gallery_by_ratio, args=(mode, tag_filter), daemon=True).start()
+            run_background(app.load_gallery_by_ratio, mode, tag_filter)
         else:  # Gallery
             app.gallery_canvas.pack(side='left', fill='both', expand=True)
             app._gallery_scroll.pack(side='right', fill='y')
@@ -2251,7 +2261,7 @@ class GalleryTab:
         elif view_mode in ["Ratio 16:9", "Ratio 9:16", "Ratio 1:1"]:
             app.status_var.set(f'Loading {view_mode} images...')
             app.root.update_idletasks()
-            threading.Thread(target=app.load_gallery_by_ratio, args=(view_mode, tag_filter), daemon=True).start()
+            run_background(app.load_gallery_by_ratio, view_mode, tag_filter)
 
         # Return focus to the active canvas so mousewheel scrolling works
         # immediately after tag selection without needing an extra click.
@@ -2331,6 +2341,189 @@ class GalleryTab:
             app.status_var.set(f"Could not open folder: {e}")
 
 
+    # ── Shared image-dimension cache (perf) ──────────────────────────────
+
+    def _img_dims(self, path):
+        """Cached (width, height) for an image path — (0, 0) if unreadable.
+
+        Resolution sorts and card info lines used to open every image on
+        EVERY view load. With this memo the first load pays for the header
+        read once and every later load/sort is instant. Bounded like
+        thumb_cache; safe across threads (dict ops are atomic, worst case
+        is a duplicate header read).
+        """
+        app = self.app
+        cache = getattr(app, "_img_dims_cache", None)
+        if cache is None:
+            cache = app._img_dims_cache = {}
+        key = str(path)
+        dims = cache.get(key)
+        if dims is not None:
+            return dims
+        try:
+            from PIL import Image as PILImg
+            with PILImg.open(path) as img:
+                dims = (img.width, img.height)
+        except Exception:
+            dims = (0, 0)
+        if len(cache) > 500:
+            cache.clear()
+        cache[key] = dims
+        return dims
+
+    def _info_line_for(self, path):
+        """'1920×1080  •  2.1 MB' string used by manual/styled/fav cards."""
+        try:
+            size_bytes = Path(path).stat().st_size
+            size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
+            w_px, h_px = self._img_dims(path)
+            return f"{w_px}\u00d7{h_px}  \u2022  {size_str}" if w_px and h_px else size_str
+        except Exception:
+            return ""
+
+    # ── Deferred grid thumbnails (perf: no UI-thread PIL decode) ─────────
+
+    def _bump_grid_load_seq(self):
+        """Invalidate in-flight deferred thumbnail loads (new view load).
+
+        Drops everything still queued and bumps the generation token the
+        background worker stamps onto its results, so a stale worker's
+        output is discarded on arrival instead of touching dead labels.
+        """
+        self._grid_load_seq = getattr(self, "_grid_load_seq", 0) + 1
+        queue = getattr(self, "_grid_thumb_queue", None)
+        if queue:
+            self._grid_thumb_queue = []
+        job = getattr(self, "_grid_thumb_job", None)
+        if job is not None:
+            try:
+                self.app.root.after_cancel(job)
+            except Exception:
+                pass
+            self._grid_thumb_job = None
+
+    def _attach_card_thumb(self, parent, pal, path, pack_kwargs=None,
+                           on_click=None, on_double=None, on_context=None):
+        """Create a card thumbnail label that never decodes on the UI thread.
+
+        Cache hit  -> label shows the thumbnail immediately, no fade (the
+                      main Gallery shows cache hits the same way).
+        Cache miss -> label starts as a themed text placeholder; the decode
+                      is coalesced into ONE background worker and the same
+                      label is reconfigured in place on arrival, so bindings
+                      stay live and nothing is rebuilt.
+        """
+        app = self.app
+        if pack_kwargs is None:
+            pack_kwargs = {}
+        cached = app.thumb_cache.get(str(path))
+        if cached is not None:
+            lbl = tk.Label(parent, image=cached, bg=pal["panel"], cursor="hand2")
+            lbl.image = cached  # prevent GC
+            lbl.pack(**pack_kwargs)
+        else:
+            lbl = tk.Label(parent, text="…", bg=pal["panel"],
+                           fg=pal.get("muted", COLOR_MID_GRAY),
+                           font=app.small_font, width=28, height=4,
+                           cursor="hand2")
+            lbl.pack(**pack_kwargs)
+            self._queue_grid_thumb(lbl, path)
+        for seq_name, handler in (("<Button-1>", on_click),
+                                  ("<Double-Button-1>", on_double),
+                                  ("<Button-3>", on_context)):
+            if handler is not None:
+                lbl.bind(seq_name, handler)
+        return lbl
+
+    def _queue_grid_thumb(self, label, path):
+        """Queue a placeholder label for the shared background decode."""
+        queue = getattr(self, "_grid_thumb_queue", None)
+        if queue is None:
+            queue = self._grid_thumb_queue = []
+        key = str(path)
+        label._grid_thumb_path = key
+        queue.append((label, Path(path), key))
+        # Coalesce everything queued during this UI tick into ONE worker
+        if getattr(self, "_grid_thumb_job", None) is None:
+            try:
+                self._grid_thumb_job = self.app.root.after(
+                    30, self._start_grid_thumb_worker)
+            except Exception:
+                self._grid_thumb_job = None
+                self._start_grid_thumb_worker()
+
+    def _start_grid_thumb_worker(self):
+        """Flush the pending queue to a single background decode thread."""
+        self._grid_thumb_job = None
+        queue = getattr(self, "_grid_thumb_queue", None)
+        if not queue:
+            return
+        jobs, self._grid_thumb_queue = queue, []
+        run_background(self._grid_thumb_worker, jobs,
+                       getattr(self, "_grid_load_seq", 0))
+
+    def _grid_thumb_worker(self, jobs, seq):
+        """Background thread: decode 240x135 LANCZOS thumbnails in chunks.
+
+        Produces plain PIL images — PhotoImage objects are Tk-bound and
+        must be created on the main thread (same split as the main
+        gallery's _load_thumbnails_lazy).
+        """
+        from PIL import Image as _PILImage
+        cache = getattr(self, "_grid_pil_cache", None)
+        if cache is None:
+            cache = self._grid_pil_cache = {}
+        results = []
+        for label, path, key in jobs:
+            try:
+                pil = cache.get(key)
+                if pil is None:
+                    img = _PILImage.open(path)
+                    img.thumbnail((240, 135), _PILImage.Resampling.LANCZOS)
+                    pil = img
+                    if len(cache) > 300:
+                        cache.clear()
+                    cache[key] = pil
+                results.append((label, pil))
+            except Exception:
+                results.append((label, None))
+            if len(results) >= 6:  # chunked: thumbs appear progressively
+                schedule_ui_update(self._apply_grid_thumbs, results, seq)
+                results = []
+        if results:
+            schedule_ui_update(self._apply_grid_thumbs, results, seq)
+
+    def _apply_grid_thumbs(self, results, seq):
+        """Main thread: swap placeholder labels to their decoded thumbnails."""
+        app = self.app
+        if seq != getattr(self, "_grid_load_seq", 0):
+            return  # superseded by a newer view load
+        for label, pil in results:
+            try:
+                if not label.winfo_exists():
+                    continue
+                if pil is None:
+                    label.configure(text="(image error)", width=0, height=0)
+                    continue
+                photo = ImageTk.PhotoImage(pil)
+                label.configure(image=photo, text="", width=0, height=0)
+                label.image = photo  # prevent GC
+                refs = getattr(app, "favorite_thumb_refs", None)
+                if isinstance(refs, list):
+                    refs.append(photo)
+                try:
+                    self._fade_in_thumb(label, photo, steps=4, interval=35,
+                                        base_pil=pil)
+                except Exception:
+                    pass
+                if len(app.thumb_cache) > 200:
+                    app.thumb_cache.clear()
+                key = getattr(label, "_grid_thumb_path", None)
+                if key:
+                    app.thumb_cache[key] = photo
+            except Exception:
+                continue  # widget destroyed between check and configure
+
     def _populate_visual_grid(self, ui, items, kind):
 
         app = self.app
@@ -2343,6 +2536,9 @@ class GalleryTab:
         app.favorite_cards.clear()
 
         app.favorite_thumb_refs.clear()
+
+        # Any deferred thumbnail loads for the old grid are now stale
+        self._bump_grid_load_seq()
 
         app.favorite_selected_item = None
 
@@ -2417,25 +2613,12 @@ class GalleryTab:
 
             if path and path.exists():
 
-                try:
-                    from PIL import Image, ImageTk
-                    img = Image.open(path)
-                    img.thumbnail((240, 135), Image.Resampling.LANCZOS)
-                    photo = ImageTk.PhotoImage(img)
-                    refs.append(photo)
-                    thumb = tk.Label(card, image=photo, cursor="hand2", bg=pal["panel"])
-                    thumb.image = photo
-                    thumb.pack()
-                    try:
-                        self._fade_in_thumb(thumb, photo, steps=4, interval=35)
-                    except Exception:
-                        pass
-                    thumb.bind("<Button-1>", lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx))
-                    thumb.bind("<Double-Button-1>", lambda e, p=path, d=item, u=ui: app._double_click_visual_item(u, p, d))
-                    thumb.bind("<Button-3>", lambda e, p=path: app.show_gallery_context_menu(e, p))
-                    pass  # no organize drag binds
-                except Exception:
-                    tk.Label(card, text="(image error)", cursor="hand2", bg=pal["panel"], fg=pal["text"]).pack()
+                self._attach_card_thumb(
+                    card, pal, path,
+                    on_click=lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx),
+                    on_double=lambda e, p=path, d=item, u=ui: app._double_click_visual_item(u, p, d),
+                    on_context=lambda e, p=path: app.show_gallery_context_menu(e, p),
+                )
 
             else:
 
@@ -2475,15 +2658,13 @@ class GalleryTab:
             if path:
                 name_label.bind("<Button-1>", lambda e, p=path, d=item, u=ui, cidx=card_idx: app._on_fav_card_click(e, p, d, u, cidx))
 
-            # File size + resolution info
+            # File size + resolution info (dimensions via shared cache)
             if path and path.exists():
                 try:
                     size_bytes = path.stat().st_size
                     size_str = f"{size_bytes / 1_048_576:.1f} MB" if size_bytes >= 1_048_576 else f"{size_bytes / 1024:.0f} KB"
-                    from PIL import Image as _PILImg
-                    with _PILImg.open(path) as _im2:
-                        w_px, h_px = _im2.size
-                    info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}"
+                    w_px, h_px = self._img_dims(path)
+                    info_text = f"{w_px}\u00d7{h_px}  \u2022  {size_str}" if w_px and h_px else size_str
                 except Exception:
                     info_text = ""
                 info_lbl = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
@@ -3062,7 +3243,7 @@ class GalleryTab:
 
         except Exception as e:
 
-            app._dialog.error("Filter Error", f"Failed to apply {style_name}: {e}")
+            app._dialog.error("Filter Error", f"Could not apply '{style_name}' filter. The image may be corrupted or in an unsupported format.")
 
 
     def apply_gallery_filter(self):
@@ -3099,14 +3280,7 @@ class GalleryTab:
         
 
         # Apply style in a separate thread to avoid freezing UI
-
-        import threading
-
-        thread = threading.Thread(target=app._apply_style_thread, args=(style,))
-
-        thread.daemon = True
-
-        thread.start()
+        run_background(app._apply_style_thread, style)
 
 
     def apply_style_transfer_filter(self, style_key):
@@ -3175,14 +3349,7 @@ class GalleryTab:
         
 
         # Apply style in a separate thread to avoid freezing UI
-
-        import threading
-
-        thread = threading.Thread(target=app._apply_style_thread, args=(style_key,))
-
-        thread.daemon = True
-
-        thread.start()
+        run_background(app._apply_style_thread, style_key)
 
 
     def clear_image(self):
@@ -3339,7 +3506,16 @@ class GalleryTab:
             return
 
         if app._dialog.ask('Confirm', f'Delete {app.selected_gallery_path.name}?'):
-            delete_image_and_tags(str(app.selected_gallery_path))
+            try:
+                delete_image_and_tags(str(app.selected_gallery_path))
+            except Exception as e:
+                logger.error(f"Failed to delete image {app.selected_gallery_path}: {e}")
+                app._dialog.error(
+                    'Delete Failed',
+                    'The image could not be deleted. It may be open in another '
+                    'program (image viewer, editor, or wallpaper preview).\n\n'
+                    'Close any program using the file and try again.')
+                return
             app.selected_gallery_path = None
             app.clear_image()
             # Use centralized refresh to update dropdown and view
@@ -3458,7 +3634,7 @@ class GalleryTab:
                 app.status_var.set(f"Could not set wallpaper: {Path(path).name}")
         except Exception as e:
             app.status_var.set(f"Wallpaper error: {e}")
-            app._dialog.error("Wallpaper Error", f"Failed to set wallpaper:\n{e}")
+            app._dialog.error("Wallpaper Error", "Could not set this image as wallpaper. Try right-clicking the image in the Gallery instead.")
 
 
     def favorite_current_prompt(self):
@@ -3665,41 +3841,28 @@ class GalleryTab:
                 sorted_favs.sort(key=_fav_size, reverse=False)
             elif current_sort == "Resolution Largest":
                 try:
-                    from PIL import Image as PILImg
                     def _fav_resolution(x):
                         p = _fav_path(x)
-                        try:
-                            img = PILImg.open(p)
-                            res = img.width * img.height
-                            img.close()
-                            return res
-                        except Exception:
-                            return 0
-                    sorted_favs.sort(key=_fav_resolution, reverse=True)
+                        if not p:
+                            return (0, 0)
+                        return self._img_dims(p)
+                    sorted_favs.sort(key=lambda x: (_fav_resolution(x)[0] * _fav_resolution(x)[1]), reverse=True)
                 except Exception:
                     pass
             elif current_sort == "Resolution Smallest":
                 try:
-                    from PIL import Image as PILImg
                     def _fav_resolution(x):
                         p = _fav_path(x)
                         if not p:
-                            return 0
-                        try:
-                            with PILImg.open(p) as img:
-                                w, h = img.size
-                                return w * h
-                        except Exception:
-                            return 0
-                    sorted_favs.sort(key=_fav_resolution, reverse=False)
+                            return (0, 0)
+                        return self._img_dims(p)
+                    sorted_favs.sort(key=lambda x: (_fav_resolution(x)[0] * _fav_resolution(x)[1]), reverse=False)
                 except Exception:
                     sorted_favs.sort(key=lambda x: Path(_fav_path(x)).name.lower())
             display_items = sorted_favs
 
         # Apply tag filter
         if tag_filter:
-            def _fav_path(x):
-                return x.get("image_path") or x.get("copied_image_path") or ""
             if tag_filter == 'Untagged':
                 # Show images with no tags
                 display_items = [item for item in display_items
@@ -3720,7 +3883,7 @@ class GalleryTab:
         try:
 
             # Only load from manual and generated folders, NOT favorites or styled
-            from set_wallpaper import MANUAL_DIR, GENERATED_DIR
+            from set_wallpaper import GENERATED_DIR
             raw_images = collect_wallpapers([app.MANUAL_DIR, GENERATED_DIR]) or []
 
             
@@ -3794,23 +3957,12 @@ class GalleryTab:
 
                 try:
 
-                    from PIL import Image as PILImg
 
                     def _img_res(path):
 
-                        try:
+                        w, h = self._img_dims(path)
 
-                            img = PILImg.open(path)
-
-                            res = img.width * img.height
-
-                            img.close()
-
-                            return res
-
-                        except Exception:
-
-                            return 0
+                        return w * h
 
                     raw_images.sort(key=_img_res, reverse=True)
 
@@ -3825,23 +3977,12 @@ class GalleryTab:
 
                 try:
 
-                    from PIL import Image as PILImg
 
                     def _img_res(path):
 
-                        try:
+                        w, h = self._img_dims(path)
 
-                            img = PILImg.open(path)
-
-                            res = img.width * img.height
-
-                            img.close()
-
-                            return res
-
-                        except Exception:
-
-                            return 0
+                        return w * h
 
                     raw_images.sort(key=_img_res, reverse=False)
 
@@ -3916,7 +4057,9 @@ class GalleryTab:
         w = app.gallery_canvas.winfo_width()
         cols = min(3, max(1, w // 250)) if w > 1 else 3
         app._gallery_cols = cols
-        app.gallery_canvas.itemconfig("inner_frame", width=max(w, 1))
+        # Reset BOTH width and height — ratio views lock height=ch which
+        # clamps scrollregion if not cleared (Tk: height<=0 uses natural size).
+        app.gallery_canvas.itemconfig("inner_frame", width=max(w, 1), height=0)
         for c in range(cols):
             app.gallery_inner.columnconfigure(c, weight=1)
 
@@ -3964,7 +4107,7 @@ class GalleryTab:
         app = self.app
         try:
             from PIL import Image
-            from set_wallpaper import MANUAL_DIR, GENERATED_DIR
+            from set_wallpaper import GENERATED_DIR
 
             # Define target ratios with tolerance
             target_ratios = {
@@ -4003,7 +4146,7 @@ class GalleryTab:
                         matches = abs(img_ratio - target_ratio) <= tolerance
                         app._ratio_cache[cache_entry] = matches
                         return matches
-                except:
+                except Exception:
                     app._ratio_cache[cache_entry] = False
                     return False
 
@@ -4067,11 +4210,11 @@ class GalleryTab:
                     logger.error(f'Error building ratio UI: {e}')
             
             logger.info("Scheduling UI update on main thread")
-            app.root.after(0, update_ui)
+            schedule_ui_update(update_ui)
 
         except Exception as e:
             error_msg = f'Error loading ratio view: {e}'
-            app.root.after(0, lambda: app.status_var.set(error_msg))
+            schedule_ui_update(app.status_var.set, error_msg)
             logger.error(f'Error loading ratio view: {e}')
 
 
@@ -4101,25 +4244,17 @@ class GalleryTab:
                 manual_files.sort(key=lambda f: f.stat().st_size, reverse=False)
             elif current_sort == "Resolution Largest":
                 try:
-                    from PIL import Image as PILImg
                     def _manual_res(path):
-                        try:
-                            with PILImg.open(path) as img:
-                                return img.size[0] * img.size[1]
-                        except Exception:
-                            return 0
+                        w, h = self._img_dims(path)
+                        return w * h
                     manual_files.sort(key=_manual_res, reverse=True)
                 except Exception:
                     manual_files.sort(key=lambda f: f.name.lower())
             elif current_sort == "Resolution Smallest":
                 try:
-                    from PIL import Image as PILImg
                     def _manual_res(path):
-                        try:
-                            with PILImg.open(path) as img:
-                                return img.size[0] * img.size[1]
-                        except Exception:
-                            return 0
+                        w, h = self._img_dims(path)
+                        return w * h
                     manual_files.sort(key=_manual_res, reverse=False)
                 except Exception:
                     manual_files.sort(key=lambda f: f.name.lower())
@@ -4139,6 +4274,8 @@ class GalleryTab:
             for widget in app.gallery_manual_inner.winfo_children():
                 widget.destroy()
             app.gallery_manual_cards.clear()
+            # Any deferred thumbnail loads for the old grid are now stale
+            self._bump_grid_load_seq()
 
             # Build manual cards
             pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
@@ -4298,25 +4435,17 @@ class GalleryTab:
                 styled_files.sort(key=lambda f: f.stat().st_size, reverse=False)
             elif current_sort == "Resolution Largest":
                 try:
-                    from PIL import Image as PILImg
                     def _styled_res(path):
-                        try:
-                            with PILImg.open(path) as img:
-                                return img.size[0] * img.size[1]
-                        except Exception:
-                            return 0
+                        w, h = self._img_dims(path)
+                        return w * h
                     styled_files.sort(key=_styled_res, reverse=True)
                 except Exception:
                     styled_files.sort(key=lambda f: f.name.lower())
             elif current_sort == "Resolution Smallest":
                 try:
-                    from PIL import Image as PILImg
                     def _styled_res(path):
-                        try:
-                            with PILImg.open(path) as img:
-                                return img.size[0] * img.size[1]
-                        except Exception:
-                            return 0
+                        w, h = self._img_dims(path)
+                        return w * h
                     styled_files.sort(key=_styled_res, reverse=False)
                 except Exception:
                     styled_files.sort(key=lambda f: f.name.lower())
@@ -4336,6 +4465,8 @@ class GalleryTab:
             for widget in app.gallery_styled_inner.winfo_children():
                 widget.destroy()
             app.gallery_styled_cards.clear()
+            # Any deferred thumbnail loads for the old grid are now stale
+            self._bump_grid_load_seq()
 
             # Build styled cards
             pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
@@ -4401,18 +4532,27 @@ class GalleryTab:
 
     def on_fav_resize(self, event):
 
-        """Handle favorites canvas resize — match gallery 3-column behaviour."""
+        """Handle favorites canvas resize — match gallery 3-column behaviour.
+
+        Debounced (80 ms) exactly like on_gallery_resize: the raw event
+        fires for every pixel of a drag-resize, and each pass re-grids
+        every card plus reconfigures the scrollregion.
+        """
 
         app = self.app
         canvas_width = event.width
 
-        cols = min(3, max(1, canvas_width // 260))
+        if getattr(app, "_fav_resize_job", None) is not None:
+            app.gallery_fav_canvas.after_cancel(app._fav_resize_job)
 
-        app._rebuild_fav_grid(cols)
+        def _do_resize():
+            app._fav_resize_job = None
+            cols = min(3, max(1, canvas_width // 260))
+            app._rebuild_fav_grid(cols)
+            app.gallery_fav_canvas.configure(scrollregion=app.gallery_fav_canvas.bbox('all') or (0, 0, 1, 1))
+            app.gallery_fav_canvas.itemconfig("fav_inner_frame", width=canvas_width)
 
-        app.gallery_fav_canvas.configure(scrollregion=app.gallery_fav_canvas.bbox('all'))
-
-        app.gallery_fav_canvas.itemconfig("fav_inner_frame", width=canvas_width)
+        app._fav_resize_job = app.gallery_fav_canvas.after(80, _do_resize)
 
 
     def on_gallery_resize(self, event):
@@ -4438,18 +4578,25 @@ class GalleryTab:
 
     def on_manual_resize(self, event):
 
-        """Handle manual canvas resize — match gallery 3-column behaviour."""
+        """Handle manual canvas resize — match gallery 3-column behaviour.
+
+        Debounced (80 ms) exactly like on_gallery_resize.
+        """
 
         app = self.app
         canvas_width = event.width
 
-        cols = min(3, max(1, canvas_width // 260))
+        if getattr(app, "_manual_resize_job", None) is not None:
+            app.gallery_manual_canvas.after_cancel(app._manual_resize_job)
 
-        app._rebuild_manual_grid(cols)
+        def _do_resize():
+            app._manual_resize_job = None
+            cols = min(3, max(1, canvas_width // 260))
+            app._rebuild_manual_grid(cols)
+            app.gallery_manual_canvas.configure(scrollregion=app.gallery_manual_canvas.bbox('all') or (0, 0, 1, 1))
+            app.gallery_manual_canvas.itemconfig("manual_inner_frame", width=canvas_width)
 
-        app.gallery_manual_canvas.configure(scrollregion=app.gallery_manual_canvas.bbox('all'))
-
-        app.gallery_manual_canvas.itemconfig("manual_inner_frame", width=canvas_width)
+        app._manual_resize_job = app.gallery_manual_canvas.after(80, _do_resize)
 
 
     def on_organize_toggle(self):
@@ -4459,18 +4606,25 @@ class GalleryTab:
 
     def on_styled_resize(self, event):
 
-        """Handle styled canvas resize — match gallery 3-column behaviour."""
+        """Handle styled canvas resize — match gallery 3-column behaviour.
+
+        Debounced (80 ms) exactly like on_gallery_resize.
+        """
 
         app = self.app
         canvas_width = event.width
 
-        cols = min(3, max(1, canvas_width // 260))
+        if getattr(app, "_styled_resize_job", None) is not None:
+            app.gallery_styled_canvas.after_cancel(app._styled_resize_job)
 
-        app._rebuild_styled_grid(cols)
+        def _do_resize():
+            app._styled_resize_job = None
+            cols = min(3, max(1, canvas_width // 260))
+            app._rebuild_styled_grid(cols)
+            app.gallery_styled_canvas.configure(scrollregion=app.gallery_styled_canvas.bbox('all') or (0, 0, 1, 1))
+            app.gallery_styled_canvas.itemconfig("styled_inner_frame", width=canvas_width)
 
-        app.gallery_styled_canvas.configure(scrollregion=app.gallery_styled_canvas.bbox('all'))
-
-        app.gallery_styled_canvas.itemconfig("styled_inner_frame", width=canvas_width)
+        app._styled_resize_job = app.gallery_styled_canvas.after(80, _do_resize)
 
 
     def open_style_dialog(self):
@@ -4488,7 +4642,7 @@ class GalleryTab:
 
         if not app._ensure_style_transfer():
 
-            app._dialog.error("Style Transfer Not Available", "Style transfer requires OpenCV. Please install it with: pip install opencv-python")
+            app._dialog.error("Style Transfer Not Available", "Style transfer requires OpenCV, which is not included in this build. This feature may be added in a future update.")
 
             return
 
@@ -4646,7 +4800,17 @@ class GalleryTab:
 
         if folder:
 
-            new_path = organize_image_into_folder(str(app.selected_gallery_path), folder)
+            try:
+                new_path = organize_image_into_folder(str(app.selected_gallery_path), folder)
+            except Exception as e:
+                logger.error(f"Failed to organize image {app.selected_gallery_path}: {e}")
+                app._dialog.error(
+                    'Move Failed',
+                    'The image could not be moved into the subfolder. The file '
+                    'may be locked by another program, or the folder name may '
+                    'be invalid.\n\n'
+                    'Close any program using the file and try again.')
+                return
 
             if new_path:
 
@@ -4944,7 +5108,7 @@ class GalleryTab:
                             import shutil
                             shutil.copy2(img_path, dest_path)
                         except Exception as e:
-                            app._dialog.error('Error', f'Failed to copy image to favorites folder:\n{e}')
+                            app._dialog.error('Favorites Error', 'Could not copy image to favorites. Check that the folder exists and is accessible.')
                             return False
                 
                 # Create metadata entry
@@ -5051,7 +5215,7 @@ class GalleryTab:
                     import shutil
                     shutil.copy2(app.selected_gallery_path, dest_path)
                 except Exception as e:
-                    app._dialog.error('Error', f'Failed to copy image to favorites folder:\n{e}')
+                    app._dialog.error('Favorites Error', 'Could not copy image to favorites. Check that the folder exists and is accessible.')
                     return
 
         # Create metadata entry with both paths
@@ -5067,7 +5231,7 @@ class GalleryTab:
         save_json_list(app.FAVORITES_LOG, existing)
 
         app.load_favorites()
-        app.status_var.set(f'⭐ Saved to favorites: {app.selected_gallery_path.name}')
+        app.status_var.set(f'★ Saved to favorites: {app.selected_gallery_path.name}')
 
 
     def set_gallery_image_as_wallpaper(self, path):
@@ -5098,7 +5262,7 @@ class GalleryTab:
 
             app.status_var.set(f'❌ Error: {e}')
 
-            app._dialog.error("Wallpaper Error", f"Failed to set wallpaper: {e}")
+            app._dialog.error("Wallpaper Error", "Could not set this image as wallpaper. Try selecting it from the Gallery and using the wallpaper button.")
 
 
     def set_gallery_selection(self):
@@ -5152,7 +5316,7 @@ class GalleryTab:
                 app.status_var.set(f"❌ Set failed: {Path(image_path).name}")
         except Exception as e:
             app.status_var.set(f"❌ Error: {e}")
-            app._dialog.error("Error", f"Failed to set wallpaper:\n{e}")
+            app._dialog.error("Wallpaper Error", "Could not set wallpaper. Try right-clicking the image instead.")
 
 
     def show_gallery_context_menu(self, event, path):
@@ -5202,7 +5366,7 @@ class GalleryTab:
             app.status_var.set(f'Removed all tags from image.')
         except Exception as e:
             app.status_var.set(f'Error removing tags: {e}')
-            app._dialog.error("Error", f"Failed to remove tags:\n\n{e}")
+            app._dialog.error("Tag Error", "Could not remove the tag. Try again or restart the app.")
 
     def sort_gallery(self, event=None):
         """Handle sort dropdown selection - deferred to avoid app.UI freeze."""
@@ -5335,7 +5499,7 @@ class GalleryTab:
         # Filter out non-existent paths
         existing_paths = [p for p in target_paths if Path(p).exists()]
         if not existing_paths:
-            app._dialog.error('Error', 'Selected image(s) no longer exist.')
+            app._dialog.error('Image Not Found', 'The selected image(s) have been moved or deleted. Refresh the gallery to see current images.')
             app.selected_gallery_path = None
             app.selected_gallery_paths.clear()
             app._refresh_tag_ui(status_msg='Selection cleared - file(s) not found')
@@ -5451,4 +5615,4 @@ class GalleryTab:
 
         except Exception as e:
 
-            app._dialog.error("Upscale Failed", f"Could not upscale image.\n{e}")
+            app._dialog.error("Upscale Failed", "Could not upscale the image. It may be too large or in an unsupported format.")

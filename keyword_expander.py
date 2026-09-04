@@ -7,11 +7,9 @@ to improve user input understanding and theme generation.
 
 import json
 import logging
-import os
-from pathlib import Path
 from typing import List, Dict, Optional, Tuple
 import re
-import functools
+from datetime import datetime
 
 from utils import get_app_dir, get_bundle_dir
 
@@ -64,8 +62,8 @@ class KeywordExpander:
         global NLTK_AVAILABLE
         if NLTK_AVAILABLE is None:
             try:
-                import nltk
-                from nltk.corpus import wordnet as _wn
+                import nltk  # noqa: F401  (availability probe)
+                from nltk.corpus import wordnet as _wn  # noqa: F401  (availability probe)
                 NLTK_AVAILABLE = True
             except ImportError:
                 NLTK_AVAILABLE = False
@@ -76,8 +74,8 @@ class KeywordExpander:
         global SENTENCE_TRANSFORMERS_AVAILABLE
         if SENTENCE_TRANSFORMERS_AVAILABLE is None:
             try:
-                from sentence_transformers import SentenceTransformer as _ST
-                import numpy as _np
+                from sentence_transformers import SentenceTransformer as _ST  # noqa: F401  (availability probe)
+                import numpy as _np  # noqa: F401  (availability probe)
                 SENTENCE_TRANSFORMERS_AVAILABLE = True
             except ImportError:
                 SENTENCE_TRANSFORMERS_AVAILABLE = False
@@ -319,7 +317,10 @@ class KeywordExpander:
         # Reconstruct the text with expanded words
         result = text
         for original, expanded in zip(words, expanded_words):
-            if original != expanded:
+            # Skip case-only differences: an unexpanded word keeps the
+            # user's original casing ("NEON Signs" stays "NEON Signs").
+            # Only genuine expansions (cat -> frog) are rewritten.
+            if original.lower() != expanded.lower():
                 # Replace whole word only
                 pattern = r'\b' + re.escape(original) + r'\b'
                 result = re.sub(pattern, expanded, result, flags=re.IGNORECASE)
@@ -327,15 +328,22 @@ class KeywordExpander:
         return result
     
     def add_user_mapping(self, from_word: str, to_word: str):
-        """Add a custom user thesaurus mapping."""
+        """Add a custom user thesaurus mapping.
+
+        Clears the per-word expansion cache after saving: a word expanded
+        before the mapping existed (e.g. cached as "no change") would
+        otherwise shadow the new mapping until the app restarted.
+        """
         self.user_thesaurus[from_word.lower()] = to_word.lower()
         self._save_user_thesaurus()
-    
+        self._expansion_cache.clear()
+
     def remove_user_mapping(self, from_word: str):
-        """Remove a custom user thesaurus mapping."""
+        """Remove a custom user thesaurus mapping (and stale cached expansions)."""
         if from_word.lower() in self.user_thesaurus:
             del self.user_thesaurus[from_word.lower()]
             self._save_user_thesaurus()
+            self._expansion_cache.clear()
     
     def _save_user_thesaurus(self):
         """Save user thesaurus to SQLite (delete-all + re-insert), with JSON fallback."""
@@ -368,7 +376,7 @@ class KeywordExpander:
             "expanded": expanded,
             "method": method,
             "confidence": confidence,
-            "timestamp": str(Path(__file__).stat().st_mtime)
+            "timestamp": datetime.now().isoformat()
         }
         self.expansion_history.append(log_entry)
         

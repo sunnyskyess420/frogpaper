@@ -5,13 +5,18 @@ Provides local artistic style filters for post-processing generated images.
 No API calls required - all processing happens locally using OpenCV and PIL.
 """
 
-import cv2
-import numpy as np
-from PIL import Image, ImageFilter, ImageEnhance, ImageOps
+try:
+    import cv2
+    import numpy as np
+    from PIL import Image, ImageFilter, ImageEnhance, ImageOps  # noqa: F401  (availability probe)
+    STYLE_TRANSFER_AVAILABLE = True
+except ImportError:
+    STYLE_TRANSFER_AVAILABLE = False
+    # Minimal stubs so the module can still be imported
+    Image = None
+
 from pathlib import Path
-from typing import Optional, Tuple
-import os
-import math
+from typing import Optional
 import logging
 
 from utils import get_app_dir

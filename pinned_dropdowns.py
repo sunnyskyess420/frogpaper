@@ -1,13 +1,13 @@
 """
-Pinned Dropdown Options - Custom Widget (v1.3.0)
+Pinned Dropdown Options - Custom Widget (since v1.4.1)
 =================================================
 Creates custom dropdowns where each item has a ★ pin button INSIDE the list.
 
 When you open a dropdown, you see:
-  ★ frog      ⭐     ← Click ⭐ to pin/unpin!
-  ★ cat       ⭐
-    dragon          
-    forest          
+  ★ frog      ★     ← Click the star to add/remove favorites!
+  ★ cat       ★
+    dragon     ☆
+    forest     ☆
 
 Pinned items float to top. Stars are clickable!
 
@@ -22,13 +22,48 @@ Usage:
 """
 
 import tkinter as tk
+import tkinter.font as tkfont
 from tkinter import ttk
 import logging
+from typing import Callable
+
+from ui_effects import enable_keyboard_activation
+
+from theme import (
+    adjust_color as _theme_adjust_color,
+    ensure_contrast as _theme_ensure_contrast,
+    FALLBACK_POPUP_COLORS,
+    COLOR_STAR_ON,
+    PIN_MARKER_ON,
+    PIN_MARKER_OFF,
+    Tooltip,
+)
+
+from theme import COLOR_WHITE  # shared color constants (migrated inline hex)
 
 logger = logging.getLogger(__name__)
 
+
+def compute_popup_width(measure, items, min_width: int = 260,
+                        max_width: int = 420, chrome: int = 78) -> int:
+    """Pixel width for the dropdown popup canvas.
+
+    Fits the longest item so text never clips (high-DPI / large fonts),
+    clamped between min_width and max_width. ``measure`` is a callable
+    mapping a string to its pixel width (e.g. ``tkfont.Font.measure``);
+    kept as a parameter so this logic is testable without a display.
+    ``chrome`` covers the star column, paddings and the scrollbar.
+    """
+    longest = 0
+    for item in items or ():
+        try:
+            longest = max(longest, measure(str(item).lower()))
+        except Exception:
+            continue
+    return max(min_width, min(max_width, longest + chrome))
+
 # Categories that support pinning
-PINNED_CATEGORIES = [
+PINNED_CATEGORIES: list[str] = [
     "subject", "setting", "lighting", "mood", 
     "atmosphere", "color_family", "color_variation"
 ]
@@ -37,14 +72,14 @@ PINNED_CATEGORIES = [
 class PinnedDropdownManager:
     """Manages pinned state for all categories."""
     
-    def __init__(self, config_loader, config_saver):
-        self._load = config_loader
-        self._save = config_saver
-        self._pins = {}  # {category: [pinned_items]}
-        self._callbacks = []  # Widgets to notify on change
+    def __init__(self, config_loader: Callable[[], dict], config_saver: Callable[[dict], None]) -> None:
+        self._load: Callable[[], dict] = config_loader
+        self._save: Callable[[dict], None] = config_saver
+        self._pins: dict[str, list[str]] = {}  # {category: [pinned_items]}
+        self._callbacks: list[Callable[[], None]] = []  # Widgets to notify on change
         self._load_pins()
     
-    def _load_pins(self):
+    def _load_pins(self) -> None:
         """Load from config.json."""
         try:
             cfg = self._load()
@@ -56,7 +91,7 @@ class PinnedDropdownManager:
             logger.warning(f"Failed to load pins: {e}")
             self._pins = {cat: [] for cat in PINNED_CATEGORIES}
     
-    def _save_pins(self):
+    def _save_pins(self) -> None:
         """Save to config.json."""
         try:
             cfg = self._load()
@@ -66,16 +101,16 @@ class PinnedDropdownManager:
             for cb in self._callbacks:
                 try:
                     cb()
-                except:
+                except Exception:
                     pass
         except Exception as e:
             logger.error(f"Failed to save pins: {e}")
     
-    def is_pinned(self, category, value):
+    def is_pinned(self, category: str, value: str | None) -> bool:
         """Check if value is pinned."""
         return bool(value) and value in self._pins.get(category, [])
     
-    def toggle_pin(self, category, value):
+    def toggle_pin(self, category: str, value: str | None) -> bool:
         """Toggle pin state. Returns True if now pinned."""
         if not value or not value.strip():
             return False
@@ -94,11 +129,11 @@ class PinnedDropdownManager:
             self._save_pins()
             return True
     
-    def get_pinned(self, category):
+    def get_pinned(self, category: str) -> list[str]:
         """Get pinned items for category."""
         return list(self._pins.get(category, []))
     
-    def strip_pin_marker(self, value):
+    def strip_pin_marker(self, value: object) -> object:
         """Strip pin marker (★, ☆, ⭐, 📌, etc.) and leading/trailing whitespace from value string."""
         if not value or not isinstance(value, str):
             return value if value is not None else ""
@@ -108,7 +143,7 @@ class PinnedDropdownManager:
                 val = val[len(prefix):].strip()
         return val
     
-    def register_callback(self, callback):
+    def register_callback(self, callback: Callable[[], None]) -> None:
         """Register widget to be notified when pins change."""
         self._callbacks.append(callback)
 
@@ -116,17 +151,17 @@ class PinnedDropdownManager:
 # Global manager
 _mgr = None
 
-def init_pinned_manager(config_loader, config_saver):
+def init_pinned_manager(config_loader: Callable[[], dict], config_saver: Callable[[dict], None]) -> PinnedDropdownManager:
     """Initialize global manager."""
     global _mgr
     _mgr = PinnedDropdownManager(config_loader, config_saver)
     return _mgr
 
-def get_manager():
+def get_manager() -> PinnedDropdownManager | None:
     """Get global manager."""
     return _mgr
 
-def strip_pin_marker(value):
+def strip_pin_marker(value: object) -> object:
     """Strip pin marker from value string."""
     if _mgr:
         return _mgr.strip_pin_marker(value)
@@ -147,7 +182,7 @@ class PinnedCombobox(ttk.Combobox):
     Pinned items appear at top and show with ★ marker.
     """
     
-    def __init__(self, parent, category="", values=None, **kwargs):
+    def __init__(self, parent, category: str = "", values: list[str] | None = None, **kwargs) -> None:
         """
         Create a PinnedCombobox.
         
@@ -157,9 +192,11 @@ class PinnedCombobox(ttk.Combobox):
             values: List of string values
             **kwargs: Additional args for Combobox (including state='readonly' etc.)
         """
-        self._category = category
-        self._base_values = list(values) if values else []
-        self._popup_window = None
+        self._category: str = category
+        self._base_values: list[str] = list(values) if values else []
+        self._popup_window: tk.Toplevel | None = None
+        self._popup_active = False  # Flag to track popup state
+        self._selection_in_progress = False  # Flag to prevent click-outside during selection
         
         # CRITICAL: Preserve original state (readonly/normal/disabled)
         # Don't force normal - respect what the caller wants!
@@ -171,6 +208,10 @@ class PinnedCombobox(ttk.Combobox):
         # Bind our custom dropdown trigger
         # Use ButtonPress-1 to intercept BEFORE ttk processes it
         self.bind("<ButtonPress-1>", self._on_click)
+        # Tk 9 note: some platforms post the native list on the RELEASE
+        # half of the click — suppress that too so only the starred popup
+        # ever appears.
+        self.bind("<ButtonRelease-1>", lambda e: "break")
         
         # For editable comboboxes, also bind to key events
         if self._is_editable:
@@ -183,7 +224,7 @@ class PinnedCombobox(ttk.Combobox):
         
         logger.info(f"PinnedCombobox created: category={category}, state={self.cget('state')}, values={len(self._base_values)} items")
     
-    def _build_display_values(self):
+    def _build_display_values(self) -> list[str]:
         """Build values list with pinned at top (with markers)."""
         if not _mgr:
             return self._base_values
@@ -194,7 +235,7 @@ class PinnedCombobox(ttk.Combobox):
         # Add pinned first with ★ prefix
         for val in self._base_values:
             if val in pinned and val:
-                display.append(f"★ {val}")
+                display.append(f"{PIN_MARKER_ON} {val}")
         
         # Separator if there are pinned items
         if display:
@@ -207,35 +248,28 @@ class PinnedCombobox(ttk.Combobox):
         
         return display
     
-    def _on_click(self, event=None):
-        """Handle click - show custom dropdown with stars."""
-        # Don't interfere with normal operation if no manager
+    def _on_click(self, event: tk.Event | None = None) -> str | None:
+        """Handle click - ALWAYS show the custom starred dropdown.
+
+        One dropdown per category: the starred popup replaces the native
+        ttk list everywhere, whether the click lands on the arrow or on
+        the text area. (The native list has no favorites and used to open
+        separately when clicking the words of editable comboboxes.)
+        Typing still works — focus returns to the field when the popup
+        closes (see _close_popup).
+        """
         if not _mgr:
             return
-        
-        # For EDITABLE comboboxes (Subject/Lighting/Setting):
-        # - Click on right side (dropdown button area) → show star popup
-        # - Click on text area → allow typing/editing
-        if self._is_editable and event:
-            # Get the width of the combobox
-            combo_width = self.winfo_width()
-            # Dropdown button is typically on the right ~25-30 pixels
-            button_area = 30
-            
-            if event.x < (combo_width - button_area):
-                # Click was in text area - allow editing, don't show popup
-                logger.debug(f"Editable {self._category}: click in text area, allowing edit")
-                return None  # Let ttk handle it normally
-        
+
         logger.info(f"Click detected on {self._category} dropdown - showing star popup")
-        
+
         # Show our custom popup immediately
         self._show_popup()
-        
-        # Prevent default ttk dropdown from showing
+
+        # Prevent the native ttk dropdown from showing
         return "break"
     
-    def _on_arrow_key(self, event=None):
+    def _on_arrow_key(self, event: tk.Event | None = None) -> str:
         """Handle Down arrow key - show popup for editable comboboxes."""
         if not _mgr:
             return
@@ -244,7 +278,7 @@ class PinnedCombobox(ttk.Combobox):
         self._show_popup()
         return "break"
     
-    def _get_theme_colors(self):
+    def _get_theme_colors(self) -> dict:
         """
         Detect and return theme-matching colors.
         Tries to use ttk style colors, falls back to dark defaults.
@@ -257,28 +291,28 @@ class PinnedCombobox(ttk.Combobox):
                 bg = style.lookup('TFrame', 'background')
                 if not bg or bg == '':
                     bg = None
-            except:
+            except Exception:
                 bg = None
                 
             try:
                 fg = style.lookup('TLabel', 'foreground')
                 if not fg or fg == '':
                     fg = None
-            except:
+            except Exception:
                 fg = None
             
             try:
                 sel_bg = style.lookup('TCombobox', 'selectbackground')
                 if not sel_bg or sel_bg == '':
                     sel_bg = None
-            except:
+            except Exception:
                 sel_bg = None
                 
             try:
                 sel_fg = style.lookup('TCombobox', 'selectforeground')
                 if not sel_fg or sel_fg == '':
                     sel_fg = None
-            except:
+            except Exception:
                 sel_fg = None
             
             # If we got valid colors, use them
@@ -287,7 +321,7 @@ class PinnedCombobox(ttk.Combobox):
                 if not sel_bg:
                     sel_bg = self._adjust_color(bg, 30)
                 if not sel_fg:
-                    sel_fg = '#ffffff'
+                    sel_fg = COLOR_WHITE
                 
                 # Ensure selected_fg has enough contrast against selected_bg
                 sel_fg = self._ensure_contrast(sel_bg, sel_fg, fg)
@@ -301,83 +335,30 @@ class PinnedCombobox(ttk.Combobox):
                     'header_fg': self._adjust_color(fg, -30),  # Dimmer for header
                     'separator': self._adjust_color(bg, 28),
                     'star_off': self._adjust_color(fg, -40),
-                    'star_on': '#FFD700',
+                    'star_on': COLOR_STAR_ON,
                 }
         except Exception as e:
             logger.debug(f"Could not detect theme colors: {e}")
         
         # Fallback: Dark theme defaults (sv_ttk dark compatible)
-        return {
-            'bg': '#1e1e1e',
-            'fg': '#ffffff',
-            'hover': '#2d2d2d',
-            'selected_bg': '#3a3a5c',
-            'selected_fg': '#ffffff',
-            'header_fg': '#888888',
-            'separator': '#333333',
-            'star_off': '#666666',
-            'star_on': '#FFD700',
-        }
+        return dict(FALLBACK_POPUP_COLORS)
     
-    def _adjust_color(self, hex_color, amount):
+    def _adjust_color(self, hex_color: str, amount: int) -> str:
         """Lighten or darken a hex color by given amount."""
-        try:
-            hex_color = hex_color.lstrip('#')
-            r = max(0, min(255, int(hex_color[0:2], 16) + amount))
-            g = max(0, min(255, int(hex_color[2:4], 16) + amount))
-            b = max(0, min(255, int(hex_color[4:6], 16) + amount))
-            return f'#{r:02x}{g:02x}{b:02x}'
-        except:
-            return hex_color
+        # Single implementation lives in theme.py
+        return _theme_adjust_color(hex_color, amount)
     
     @staticmethod
-    def _ensure_contrast(bg_hex, fg_hex, fallback_fg):
+    def _ensure_contrast(bg_hex: str, fg_hex: str, fallback_fg: str) -> str:
         """Ensure foreground has at least 3:1 contrast ratio against background.
-        
+
         If contrast is too low, use fallback_fg or force white/dark.
+        Single implementation lives in theme.py (keeps the historical fix
+        of always re-prefixing the leading '#').
         """
-        try:
-            bg_hex = bg_hex.lstrip('#')
-            fg_hex = fg_hex.lstrip('#')
-            
-            def relative_luminance(hex_str):
-                r, g, b = int(hex_str[0:2], 16)/255, int(hex_str[2:4], 16)/255, int(hex_str[4:6], 16)/255
-                r = r/12.92 if r <= 0.04045 else ((r+0.055)/1.055)**2.4
-                g = g/12.92 if g <= 0.04045 else ((g+0.055)/1.055)**2.4
-                b = b/12.92 if b <= 0.04045 else ((b+0.055)/1.055)**2.4
-                return 0.2126*r + 0.7152*g + 0.0722*b
-            
-            l_bg = relative_luminance(bg_hex)
-            l_fg = relative_luminance(fg_hex)
-            
-            # WCAG contrast ratio
-            lighter = max(l_bg, l_fg)
-            darker = min(l_bg, l_fg)
-            ratio = (lighter + 0.05) / (darker + 0.05)
-            
-            if ratio >= 3.0:
-                # NOTE: fg_hex was lstrip('#')ed above for the luminance
-                # math — it MUST be re-prefixed, otherwise callers pass
-                # the bare hex (e.g. "f0fff0") to widget options and Tk
-                # raises "unknown color name" when the popup opens.
-                return f"#{fg_hex}"
-            
-            # Use fallback if it has better contrast
-            if fallback_fg and fallback_fg != fg_hex:
-                l_fb = relative_luminance(fallback_fg.lstrip('#'))
-                fb_lighter = max(l_bg, l_fb)
-                fb_darker = min(l_bg, l_fb)
-                fb_ratio = (fb_lighter + 0.05) / (fb_darker + 0.05)
-                if fb_ratio >= 3.0:
-                    return fallback_fg if fallback_fg.startswith("#") \
-                        else f"#{fallback_fg}"
-            
-            # Force white or black based on background luminance
-            return '#ffffff' if l_bg < 0.4 else '#1a1a1a'
-        except:
-            return fallback_fg or '#ffffff'
-    
-    def _on_mousewheel(self, event, canvas):
+        return _theme_ensure_contrast(bg_hex, fg_hex, fallback_fg)
+
+    def _on_mousewheel(self, event: tk.Event, canvas: tk.Canvas) -> None:
         """Handle mouse wheel scrolling - works on Windows and Linux."""
         # Windows uses event.delta, Linux uses event.num
         try:
@@ -397,10 +378,13 @@ class PinnedCombobox(ttk.Combobox):
         except Exception as e:
             logger.debug(f"Mousewheel error: {e}")
     
-    def _show_popup(self):
+    def _show_popup(self) -> None:
         """Show the custom pinnable dropdown popup with clickable stars."""
         # Close any existing popup first
         self._close_popup()
+        
+        # Set popup active flag
+        self._popup_active = True
         
         logger.info(f"Showing starred popup for category: {self._category}")
         
@@ -410,7 +394,7 @@ class PinnedCombobox(ttk.Combobox):
         fg_color = colors['fg']
         hover_bg = colors['hover']
         selected_bg = colors.get('selected_bg', hover_bg)
-        selected_fg = colors.get('selected_fg', '#ffffff')
+        selected_fg = colors.get('selected_fg', COLOR_WHITE)
         header_fg = colors['header_fg']
         sep_color = colors['separator']
         star_off = colors['star_off']
@@ -427,11 +411,6 @@ class PinnedCombobox(ttk.Combobox):
         self._popup_window.wm_attributes('-topmost', True)
         self._popup_window.lift()
         self._popup_window.focus_force()
-        
-        # Position below the combobox
-        x = self.winfo_rootx()
-        y = self.winfo_rooty() + self.winfo_height()
-        self._popup_window.wm_geometry(f"+{x}+{y}")
         
         self._popup_window.configure(bg=bg_color)
         
@@ -452,6 +431,39 @@ class PinnedCombobox(ttk.Combobox):
         # Sort both lists alphabetically
         pinned_items.sort()
         unpinned_items.sort()
+        
+        # Position below the combobox with screen boundary checking
+        x = self.winfo_rootx()
+        y = self.winfo_rooty() + self.winfo_height()
+        
+        # Get screen dimensions
+        screen_width = self._popup_window.winfo_screenwidth()
+        screen_height = self._popup_window.winfo_screenheight()
+        
+        # Calculate popup height (estimate based on content)
+        popup_height = 100  # Base height
+        if pinned_items:
+            popup_height += len(pinned_items) * 28 + 40  # Favorites section
+        if unpinned_items:
+            popup_height += min(280, len(unpinned_items) * 28 + 20)  # Available section
+        
+        # Adjust y position if popup would extend beyond screen bottom
+        if y + popup_height > screen_height:
+            # Position above the combobox instead
+            y = self.winfo_rooty() - popup_height - 5
+            # Ensure it doesn't go off top of screen
+            if y < 0:
+                y = 5
+        
+        # Adjust x position if popup would extend beyond screen right edge
+        popup_width = 300  # Estimated width
+        if x + popup_width > screen_width:
+            x = screen_width - popup_width - 10
+            # Ensure it doesn't go off left edge
+            if x < 0:
+                x = 10
+        
+        self._popup_window.wm_geometry(f"+{x}+{y}")
         
         # Create main frame
         frame = tk.Frame(self._popup_window, bg=bg_color)
@@ -511,7 +523,12 @@ class PinnedCombobox(ttk.Combobox):
             canvas_container = tk.Frame(frame, bg=bg_color)
             canvas_container.pack(fill="both", expand=True)
             
-            canvas = tk.Canvas(canvas_container, bg=bg_color, highlightthickness=0, width=260)
+            # Widen to fit the longest item (the old fixed 260px clipped
+            # longer entries at high-DPI / large font settings).
+            popup_width = compute_popup_width(
+                tkfont.Font(family="Segoe UI", size=10).measure,
+                unpinned_items)
+            canvas = tk.Canvas(canvas_container, bg=bg_color, highlightthickness=0, width=popup_width)
             scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
             scrollable_frame = tk.Frame(canvas, bg=bg_color)
             
@@ -581,25 +598,45 @@ class PinnedCombobox(ttk.Combobox):
         
         # Close popup when clicking outside
         def on_popup_click(event):
-            if not self._popup_window:
+            # Only process if popup is still active and we're not selecting an item
+            if not self._popup_active or not self._popup_window or self._selection_in_progress:
                 return
-            x = self._popup_window.winfo_rootx()
-            y = self._popup_window.winfo_rooty()
-            w = self._popup_window.winfo_width()
-            h = self._popup_window.winfo_height()
             
-            ex = event.x_root
-            ey = event.y_root
-            
-            if not (x <= ex <= x+w and y <= ey <= y+h):
+            # Check if click is within the popup window
+            try:
+                x = self._popup_window.winfo_rootx()
+                y = self._popup_window.winfo_rooty()
+                w = self._popup_window.winfo_width()
+                h = self._popup_window.winfo_height()
+                
+                ex = event.x_root
+                ey = event.y_root
+                
+                # If click is outside popup bounds, close it
+                if not (x <= ex <= x+w and y <= ey <= y+h):
+                    self._close_popup()
+            except Exception:
+                # If popup window no longer exists, close it
                 self._close_popup()
         
-        self.bind_all("<Button-1>", on_popup_click)
+        # Store reference to the handler
+        self._popup_click_handler = on_popup_click
+        
+        # Bind to the root window for click-outside detection
+        root = self.winfo_toplevel()
+        root.bind("<Button-1>", on_popup_click, add="+")
+        
         self._popup_window.bind("<Escape>", lambda e: self._close_popup())
+        # Keyboard: start focus inside the popup so Tab can reach the
+        # star buttons and item rows immediately after it opens.
+        try:
+            self._popup_window.focus_set()
+        except Exception:
+            pass
     
-    def _create_popup_row(self, scrollable_parent, value, is_pinned, 
-                          bg_color, fg_color, hover_bg, star_on, star_off,
-                          selected_bg=None, selected_fg=None, is_current=False):
+    def _create_popup_row(self, scrollable_parent: tk.Frame | ttk.Frame, value: str, is_pinned: bool, 
+                          bg_color: str, fg_color: str, hover_bg: str, star_on: str, star_off: str,
+                          selected_bg: str | None = None, selected_fg: str | None = None, is_current: bool = False) -> None:
         """
         Create a single row in the popup with star + item label.
         If is_current, the row is highlighted with selected_bg/selected_fg.
@@ -612,7 +649,7 @@ class PinnedCombobox(ttk.Combobox):
         row.pack(fill="x")
         
         # Star button (clickable!)
-        star_text = "★" if is_pinned else "☆"
+        star_text = PIN_MARKER_ON if is_pinned else PIN_MARKER_OFF
         star_fg = star_on if is_pinned else star_off
         # If row is highlighted, make star visible against selected_bg
         if is_current:
@@ -639,6 +676,7 @@ class PinnedCombobox(ttk.Combobox):
         
         # Star click handler - pin/unpin
         def on_star_click(event=None, val=value, btn=star_btn, lbl=item_label):
+            self._selection_in_progress = True  # Flag that we're interacting with the popup
             if _mgr:
                 now_pinned = _mgr.toggle_pin(self._category, val)
                 
@@ -653,13 +691,19 @@ class PinnedCombobox(ttk.Combobox):
                     # Rebuild to move back to available section
                     self.after(200, self._rebuild_popup)
             
-            return "break"
+            # Reset flag after a short delay
+            self.after(100, lambda: setattr(self, '_selection_in_progress', False))
+            return "break"  # Prevent event propagation
         
         # Item select handler
         def on_item_click(event=None, val=value):
+            self._selection_in_progress = True  # Flag that we're selecting an item
             self.set(val)
             self._close_popup()
             self.event_generate("<<ComboboxSelected>>")
+            # Reset flag after a short delay to ensure click event completes
+            self.after(100, lambda: setattr(self, '_selection_in_progress', False))
+            return "break"  # Prevent event propagation to avoid conflicts
         
         # For currently selected item, hover stays on the selected color
         if is_current and selected_bg:
@@ -670,36 +714,52 @@ class PinnedCombobox(ttk.Combobox):
         # Bind events
         star_btn.bind("<Button-1>", on_star_click)
         star_btn.bind("<Enter>", lambda e, b=star_btn, p=is_pinned: 
-                      b.config(fg="#FFFFFF" if p else "#AAAAAA"))
+                      b.config(fg=COLOR_WHITE if p else "#AAAAAA"))
         star_btn.bind("<Leave>", lambda e, b=star_btn, p=is_pinned, sf=star_fg: 
                       b.config(fg=sf))
         
         item_label.bind("<Button-1>", on_item_click)
         item_label.bind("<Enter>", lambda e, r=row: r.config(bg=hover_for_row))
         item_label.bind("<Leave>", lambda e, r=row, rb=row_bg: r.config(bg=rb))
+
+        # Discoverability: explain what the star does
+        Tooltip(star_btn, "Remove from favorites" if is_pinned else "Add to favorites")
+
+        # Keyboard operable: Tab reaches the star and the item; Enter or
+        # Space toggles the pin / selects the item (same handlers as the
+        # mouse clicks). Each gets a visible focus ring.
+        enable_keyboard_activation(star_btn, lambda: on_star_click(), row_bg)
+        enable_keyboard_activation(item_label, lambda: on_item_click(), row_bg)
     
-    def _rebuild_popup(self):
+    def _rebuild_popup(self) -> None:
         """Rebuild popup content (after pinning)."""
         if self._popup_window and self._popup_window.winfo_exists():
             self._close_popup()
             self._show_popup()
     
-    def _close_popup(self):
+    def _close_popup(self) -> None:
         """Close the popup."""
+        # Set popup inactive flag first to prevent multiple close attempts
+        self._popup_active = False
+        
         if self._popup_window:
             try:
                 self._popup_window.destroy()
-            except:
+            except Exception:
                 pass
             self._popup_window = None
         
-        # Unbind global click handler
+        # The popup_active flag will prevent the click handler from doing anything
+        # No need to unbind - the flag handles it
+
+        # Give focus back to the field so typing continues seamlessly
         try:
-            self.unbind_all("<Button-1>")
-        except:
+            if self._is_editable:
+                self.focus_set()
+        except Exception:
             pass
     
-    def _refresh_from_pins(self):
+    def _refresh_from_pins(self) -> None:
         """Called when pins change externally."""
         # Update displayed values
         new_vals = self._build_display_values()
@@ -707,33 +767,33 @@ class PinnedCombobox(ttk.Combobox):
         
         # Restore current selection if possible
         current = self.get()
-        if current and current.startswith("★ "):
+        if current and current.startswith(f"{PIN_MARKER_ON} "):
             # Already marked, keep it
             pass
         elif current and current.startswith("  "):
             # Has indent, check if should be starred now
             clean = current.strip()
             if _mgr and _mgr.is_pinned(self._category, clean):
-                self.set(f"★ {clean}")
+                self.set(f"{PIN_MARKER_ON} {clean}")
     
-    def get_clean_value(self):
+    def get_clean_value(self) -> str:
         """Get value without markers."""
         val = self.get()
         return strip_pin_marker(val)
     
-    def set_clean_value(self, value):
+    def set_clean_value(self, value: str) -> None:
         """Set value with proper marker."""
         if not _mgr:
             self.set(value)
             return
         clean = strip_pin_marker(value)
         if _mgr.is_pinned(self._category, clean):
-            self.set(f"★ {clean}")
+            self.set(f"{PIN_MARKER_ON} {clean}")
         else:
             self.set(f"  {clean}")
 
 
-def create_pinned_combobox(parent, category, values, **kwargs):
+def create_pinned_combobox(parent, category: str, values: list[str], **kwargs) -> PinnedCombobox:
     """
     Factory function to create a PinnedCombobox.
     
@@ -749,20 +809,20 @@ def create_pinned_combobox(parent, category, values, **kwargs):
     return PinnedCombobox(parent, category=category, values=values, **kwargs)
 
 
-def build_pinned_settings_ui(parent, app):
+def build_pinned_settings_ui(parent, app) -> ttk.LabelFrame | None:
     """
     Build settings UI section showing pinned items per category.
     """
     if not _mgr:
         return None
     
-    frame = ttk.LabelFrame(parent, text=" 📌 Favorite Dropdown Items ", padding=(12, 10))
+    frame = ttk.LabelFrame(parent, text=f" {PIN_MARKER_ON} Favorite Dropdown Items ", padding=(12, 10))
     frame.pack(fill="x", pady=8)
     
     # Description
     desc = ttk.Label(
         frame,
-        text="Open any dropdown and click ⭐ next to items to mark them as favorites.\nPinned items appear at the top of each dropdown list.",
+        text=f"Open any dropdown and click {PIN_MARKER_OFF} next to items to mark them as favorites.\nPinned items appear at the top of each dropdown list.",
         font=app.small_font,
         wraplength=600
     )
@@ -793,6 +853,7 @@ def build_pinned_settings_ui(parent, app):
                 command=lambda c=cat: _clear_cat(c)
             )
             clear_btn.pack(side="right", padx=(4, 0))
+            Tooltip(clear_btn, "Clear favorites for this category")
         else:
             ttk.Label(row, text="(no favorites)", foreground="gray").pack(side="left", padx=(8, 0))
     
@@ -800,18 +861,20 @@ def build_pinned_settings_ui(parent, app):
     btn_row = ttk.Frame(frame)
     btn_row.pack(fill="x", pady=10)
     
-    ttk.Button(btn_row, text="Clear All Favorites", command=_clear_all).pack(side="left")
+    clear_all_btn = ttk.Button(btn_row, text="Clear All Favorites", command=_clear_all)
+    clear_all_btn.pack(side="left")
+    Tooltip(clear_all_btn, "Remove favorites from every dropdown")
     
     return frame
 
 
-def _clear_cat(cat):
+def _clear_cat(cat: str) -> None:
     """Clear pins for one category."""
     if _mgr:
         _mgr._pins[cat] = []
         _mgr._save_pins()
 
-def _clear_all():
+def _clear_all() -> None:
     """Clear all pins."""
     from tkinter import messagebox
     if messagebox.askyesno("Clear All Favorites", "Remove all favorite items from all dropdowns?"):

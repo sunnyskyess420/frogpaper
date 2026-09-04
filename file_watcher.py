@@ -6,12 +6,11 @@ File monitoring for automatic sync triggers using watchdog.
 
 import logging
 import threading
-from pathlib import Path
 from typing import Callable, Optional
 
 try:
     from watchdog.observers import Observer
-    from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent, FileDeletedEvent
+    from watchdog.events import FileSystemEventHandler, FileCreatedEvent, FileModifiedEvent, FileDeletedEvent  # noqa: F401  (availability probe)
     WATCHDOG_AVAILABLE = True
 except ImportError:
     WATCHDOG_AVAILABLE = False
@@ -53,7 +52,6 @@ class WallpaperEventHandler(FileSystemEventHandler):
             self._debounce_timer.cancel()
             
         # Schedule sync after debounce delay
-        import threading
         self._debounce_timer = threading.Timer(self._debounce_delay, self._trigger_sync)
         self._debounce_timer.start()
         

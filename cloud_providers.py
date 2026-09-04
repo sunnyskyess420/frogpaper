@@ -5,7 +5,6 @@ OAuth and API integration for cloud storage providers (Google Drive, OneDrive, D
 """
 
 import logging
-import webbrowser
 from typing import Dict, Optional, List
 from pathlib import Path
 
@@ -652,7 +651,7 @@ class DropboxProvider:
     
     def _save_dropbox_token(self, access_token: str, refresh_token: str, expires_at: float):
         """Save Dropbox OAuth token data (access + refresh) as JSON."""
-        import json, time
+        import json
         from utils import save_oauth_token
         token_data = json.dumps({
             "access_token": access_token,
@@ -734,7 +733,7 @@ class DropboxProvider:
         try:
             import dropbox
             from dropbox import DropboxOAuth2FlowNoRedirect
-            import webbrowser, time, json
+            import webbrowser, time, json  # noqa: F401  (availability probe)
             
             # ── Try to load and use existing token ─────────────────────
             token_data = self._load_dropbox_token()

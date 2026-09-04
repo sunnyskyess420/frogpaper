@@ -9,10 +9,10 @@ All rendering uses PIL (Pillow) so effects work on any platform.
 """
 
 import tkinter as tk
-from PIL import Image, ImageDraw, ImageFilter, ImageTk, ImageFont
-import math
-import colorsys
+from PIL import Image, ImageDraw, ImageFilter, ImageTk
 import logging
+
+from theme import COLOR_BLACK, COLOR_WHITE  # shared color constants (migrated inline hex)
 
 logger = logging.getLogger(__name__)
 
@@ -213,7 +213,7 @@ def create_rounded_button_image(width: int, height: int,
 # ─── Drop Shadow ──────────────────────────────────────────────────────────
 
 def create_shadow_image(width: int, height: int,
-                        shadow_color: str = "#000000",
+                        shadow_color: str = COLOR_BLACK,
                         offset_x: int = 0, offset_y: int = 4,
                         blur_radius: int = 12,
                         corner_radius: int = 12,
@@ -264,7 +264,7 @@ def create_card_image(width: int, height: int,
     # Start with shadow
     shadow = create_shadow_image(
         width, height,
-        shadow_color="#000000",
+        shadow_color=COLOR_BLACK,
         offset_x=0, offset_y=shadow_offset,
         blur_radius=shadow_blur,
         corner_radius=corner_radius,
@@ -288,9 +288,9 @@ def create_card_image(width: int, height: int,
 
 def create_glassmorphism_image(width: int, height: int,
                                bg_color: str = "#1a1a2e",
-                               tint_color: str = "#ffffff",
+                               tint_color: str = COLOR_WHITE,
                                tint_alpha: float = 0.08,
-                               border_color: str = "#ffffff",
+                               border_color: str = COLOR_WHITE,
                                border_alpha: float = 0.15,
                                corner_radius: int = 16,
                                blur_sigma: int = 2) -> Image.Image:
@@ -561,7 +561,7 @@ class ShadowFrame:
     """
     
     def __init__(self, parent, width=300, height=200,
-                 shadow_color="#000000", offset_y=3, blur=10,
+                 shadow_color=COLOR_BLACK, offset_y=3, blur=10,
                  corner_radius=12, bg_color=None):
         self.parent = parent
         self.corner_radius = corner_radius
@@ -657,6 +657,152 @@ class GlassOverlay:
                 pass
 
 
+# ─── Keyboard accessibility ─────────────────────────────────────────────
+
+def focus_ring_color(base_bg: str) -> str:
+    """Pick a focus-ring color that visibly contrasts with ``base_bg``.
+
+    Tries the lightened and darkened variants of the resting background
+    and returns whichever is farther away in RGB distance, so the ring
+    is visible on both dark and light themes.
+    """
+    lighter = lighten(base_bg, 0.6)
+    darker = darken(base_bg, 0.45)
+    br, bc, bb = hex_to_rgb(base_bg)
+
+    def _dist(color: str) -> int:
+        r, g, b = hex_to_rgb(color)
+        return abs(br - r) + abs(bc - g) + abs(bb - b)
+
+    return lighter if _dist(lighter) >= _dist(darker) else darker
+
+
+def _safe_invoke(command) -> None:
+    if command is None:
+        return
+    try:
+        command()
+    except Exception:
+        logger.exception("Keyboard activation handler failed")
+
+
+def _kb_activate(command) -> str:
+    _safe_invoke(command)
+    return "break"
+
+
+def enable_keyboard_activation(widget: tk.Label, command, base_bg: str,
+                               ring_color: str | None = None) -> tk.Label:
+    """Make a click-only, Label-based custom button keyboard operable.
+
+    - ``takefocus=True`` so Tab / Shift+Tab reach it
+    - a visible focus ring: ``highlightcolor`` while focused,
+      ``highlightbackground`` (matched to the resting background, so it
+      is invisible) while not
+    - ``<Return>`` and ``<space>`` activate the command
+
+    Used by RoundedButton and the pinned-dropdown star/row buttons; any
+    future Label-based custom button should use it too.
+    """
+    widget.configure(
+        takefocus=True,
+        highlightthickness=2,
+        highlightbackground=base_bg,
+        highlightcolor=ring_color or focus_ring_color(base_bg),
+    )
+    widget.bind("<Return>", lambda event: _kb_activate(command))
+    widget.bind("<space>", lambda event: _kb_activate(command))
+    return widget
+
+
+def ensure_visible_focus_indicators(widget, border_color: str,
+                                    ring_color: str) -> None:
+    """Walk the widget tree and give classic (tk) button-like widgets a
+    visible keyboard-focus ring.
+
+    - ttk widgets are skipped: the rounded-elements style layer already
+      provides focus-state visuals for them.
+    - Label-based custom buttons are skipped: they manage their own ring
+      via :func:`enable_keyboard_activation`.
+
+    Safe to call repeatedly (e.g. on every theme change): it only sets
+    highlight colors/thickness, never layout, and never raises.
+    """
+    try:
+        wclass = widget.winfo_class()
+    except Exception:
+        return
+    if wclass in ("Button", "Checkbutton", "Radiobutton"):
+        try:
+            if int(widget.cget("highlightthickness")) < 1:
+                widget.configure(highlightthickness=1)
+            widget.configure(highlightbackground=border_color,
+                             highlightcolor=ring_color)
+        except Exception:
+            pass  # widget destroyed mid-walk
+    try:
+        children = widget.winfo_children()
+    except Exception:
+        return
+    for child in children:
+        ensure_visible_focus_indicators(child, border_color, ring_color)
+
+
+def make_text_tab_friendly(text) -> tk.Text:
+    """Make a ``tk.Text`` widget behave like every other field under Tab.
+
+    Tk's Text class binding *consumes* the Tab key — it inserts a literal
+    tab character (editable widget) or silently does nothing (disabled
+    widget) — so once keyboard focus lands in a Text widget, Tab can never
+    leave it. The negative-prompt Preview box was exactly such a trap.
+
+    This helper fixes both directions:
+
+    - **Read-only Text** (``state='disabled'``): removed from the Tab ring
+      entirely via ``takefocus=0``. It is not an interactive field, so it
+      has no business being a Tab stop; mouse selection/copy and wheel
+      scrolling are unaffected, and direct ``focus_set()`` still works.
+    - **Editable Text**: ``<Tab>`` moves focus to the next widget and
+      ``<Shift-Tab>`` / ``<ISO_Left_Tab>`` to the previous one — the same
+      behavior as every Entry in the app. (Consequence: a literal tab
+      character can no longer be typed into the field, which prompt text
+      never needed.)
+
+    Returns the widget for chaining, and never raises: widget-level
+    failures are logged so callers do not need their own guards.
+    """
+    try:
+        if str(text.cget("state")) == "disabled":
+            try:
+                text.configure(takefocus=0)
+            except tk.TclError:
+                pass
+            return text
+
+        def _move_focus(event, mover):
+            try:
+                target = mover(event.widget)
+                if target is not None and target is not event.widget:
+                    target.focus_set()
+            except Exception:
+                logger.exception("Text Tab traversal failed")
+            return "break"  # stop the Text class binding (no tab insert)
+
+        text.bind("<Tab>", lambda e: _move_focus(e, lambda w: w.tk_focusNext()))
+        text.bind("<Shift-Tab>", lambda e: _move_focus(e, lambda w: w.tk_focusPrev()))
+        try:
+            # X11 delivers Shift-Tab as the ISO_Left_Tab keysym; Windows Tk
+            # may not accept that keysym at bind time, so this is best-effort
+            # (the <Shift-Tab> pattern above already covers Windows delivery).
+            text.bind("<ISO_Left_Tab>", lambda e: _move_focus(e, lambda w: w.tk_focusPrev()))
+        except tk.TclError:
+            pass
+        return text
+    except Exception:
+        logger.exception("make_text_tab_friendly failed")
+        return text
+
+
 class RoundedButton:
     """
     A custom button with rounded corners, gradient fill, and hover effects.
@@ -669,7 +815,7 @@ class RoundedButton:
     """
     
     def __init__(self, parent, text="", width=180, height=38,
-                 fill_color="#4a9eff", text_color="#ffffff",
+                 fill_color="#4a9eff", text_color=COLOR_WHITE,
                  radius=10, font=("Segoe UI", 10, "bold"),
                  command=None, use_gradient=False,
                  gradient_end=None):
@@ -698,6 +844,10 @@ class RoundedButton:
         self._label.bind("<Leave>", self._on_leave)
         self._label.bind("<ButtonPress-1>", self._on_press)
         self._label.bind("<ButtonRelease-1>", self._on_release)
+        # Keyboard operable: Tab-reachable with a visible focus ring;
+        # Enter / Space trigger the command (see enable_keyboard_activation).
+        enable_keyboard_activation(
+            self._label, self._keyboard_activate, self.fill_color)
         
         self._render_images(width, height)
     
@@ -751,6 +901,19 @@ class RoundedButton:
         self._on_enter()  # Go to hover state
         if self.command:
             self.command()
+
+    def _keyboard_activate(self):
+        """Enter/Space activation: flash pressed state, run command, restore."""
+        self._on_press()
+        try:
+            if self.command:
+                self.command()
+        finally:
+            self._on_enter()
+
+    def invoke(self):
+        """Programmatic activation (mirrors tk.Button.invoke)."""
+        self._keyboard_activate()
     
     def configure(self, **kwargs):
         """Passthrough for standard label config options.
@@ -787,7 +950,7 @@ class RoundedButton:
 
 # ─── Convenience: Apply effects to existing widgets ────────────────────────
 
-def add_shadow_to_widget(widget: tk.Widget, shadow_color: str = "#000000",
+def add_shadow_to_widget(widget: tk.Widget, shadow_color: str = COLOR_BLACK,
                          offset_x: int = 0, offset_y: int = 3,
                          blur_radius: int = 10,
                          corner_radius: int = 10,
@@ -866,7 +1029,7 @@ def make_card_frame(parent, bg_color: str, corner_radius: int = 12,
 
 
 def create_rounded_button_for_sidebar(parent, text: str, width: int, height: int,
-                                       fill_color: str, text_color: str = "#ffffff",
+                                       fill_color: str, text_color: str = COLOR_WHITE,
                                        font: tuple = None, command=None) -> RoundedButton:
     """
     Convenience factory for sidebar-style rounded buttons.

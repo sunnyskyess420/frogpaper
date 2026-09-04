@@ -17,7 +17,7 @@ import logging
 
 # Import prompt validator for audit functionality
 try:
-    from prompt_validator import audit_prompt_variables, log_prompt_audit, get_audit_warnings, format_audit_summary
+    from prompt_validator import audit_prompt_variables, log_prompt_audit, get_audit_warnings, format_audit_summary  # noqa: F401  (availability probe)
     VALIDATOR_AVAILABLE = True
 except ImportError:
     VALIDATOR_AVAILABLE = False

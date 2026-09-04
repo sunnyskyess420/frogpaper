@@ -12,9 +12,11 @@ Manual use:
 """
 
 import subprocess
+import logging
 import sys
-from pathlib import Path
 from utils import get_app_dir
+
+logger = logging.getLogger(__name__)
 
 BASE_DIR = get_app_dir()
 RUNNER_BAT = BASE_DIR / "run_daily_runner.bat"

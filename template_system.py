@@ -6,7 +6,6 @@ Provides reusable prompt patterns with variables for faster iterative work.
 
 import json
 import logging
-import os
 import re
 from pathlib import Path
 from typing import Dict, List, Optional, Any

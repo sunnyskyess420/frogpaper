@@ -28,6 +28,47 @@ def center_window(parent: tk.Tk | tk.Toplevel, child: tk.Toplevel) -> None:
     child.geometry(f"+{x}+{y}")
 
 
+def get_work_area(window: tk.Misc) -> tuple[int, int, int, int]:
+    """Return the visible work area as (x, y, width, height).
+
+    The work area is the screen minus the taskbar (Windows). Falls back to
+    the full screen size on other platforms or if the query fails.
+    """
+    x = y = 0
+    width = window.winfo_screenwidth()
+    height = window.winfo_screenheight()
+    if sys.platform == "win32":
+        try:
+            import ctypes
+            from ctypes import wintypes
+
+            rect = wintypes.RECT()
+            # SPI_GETWORKAREA = 0x0030
+            if ctypes.windll.user32.SystemParametersInfoW(0x0030, 0, ctypes.byref(rect), 0):
+                x, y = rect.Left, rect.Top
+                width, height = rect.Right - rect.Left, rect.Bottom - rect.Top
+        except Exception:
+            pass
+    return x, y, width, height
+
+
+def place_on_work_area(window: tk.Misc, width: int, height: int) -> tuple[int, int]:
+    """Size *window* to fit and center it on the visible work area.
+
+    The work area excludes the taskbar, so the whole window stays visible
+    (the fixed 1600x900 startup window used to hang off the bottom of the
+    screen behind the taskbar). Returns the fitted (width, height) applied.
+    """
+    window.update_idletasks()
+    wa_x, wa_y, wa_w, wa_h = get_work_area(window)
+    fit_w = max(200, min(width, wa_w))
+    fit_h = max(200, min(height, wa_h))
+    x = wa_x + max(0, (wa_w - fit_w) // 2)
+    y = wa_y + max(0, (wa_h - fit_h) // 2)
+    window.geometry(f"{fit_w}x{fit_h}+{x}+{y}")
+    return fit_w, fit_h
+
+
 def get_app_dir() -> Path:
     """Return the directory for user-writable data (wallpapers, config, logs).
     When frozen by PyInstaller (--onefile), __file__ points into a temp extraction
@@ -140,20 +181,122 @@ def save_json_list(path: Path, data: list) -> None:
         logger.error("Failed to write %s: %s", path, e)
 
 
+# ── Config schema + versioning (improvement report §5) ──────────────────
+# Bump CONFIG_SCHEMA_VERSION whenever a migration is added; loaders upgrade
+# older configs automatically the next time they are loaded/saved.
+CONFIG_SCHEMA_VERSION = 1
+
+# Expected type for every known config key (mirrors config.template.json).
+# Unknown keys are deliberately ALLOWED and preserved — this schema guards
+# against wrong-typed values, it does not freeze the config's shape.
+CONFIG_SCHEMA = {
+    "last_style": str, "last_setting": str, "last_lighting": str,
+    "last_mood": str, "last_color": str, "last_atmosphere": str,
+    "app_theme": str, "first_run_completed": bool,
+    "last_neg_preset_selections": dict, "last_neg_custom_terms": str,
+    "completed_tutorials": list,
+    "dropbox_app_key": str, "dropbox_app_secret": str,
+    "oauth_tokens": dict,
+    "dimensions": str, "model_id": str, "provider": str,
+    "slideshow_enabled": bool, "slideshow_interval": int,
+    "slideshow_source": str, "minimize_to_tray": bool,
+    "slideshow_order": str, "slideshow_skip_duplicates": bool,
+    "remember_settings": bool, "auto_generate_on_startup": bool,
+    "startup_subject": str, "wallpaper_format": str,
+    "wallpaper_quality": str, "slideshow_pause_on_fullscreen": bool,
+    "auto_backup_enabled": bool, "sync_scope": str,
+    "huggingface_token": str, "cloudflare_token": str,
+    "cloudflare_account_id": str, "prodia_key": str,
+    "replicate_token": str, "fal_key": str,
+    "onedrive_client_id": str, "onedrive_client_secret": str,
+    "google_client_id": str, "google_client_secret": str,
+    "skipped_update_version": str,
+    "auto_backup_hour": int, "auto_backup_minute": int,
+    "auto_backup_last_run": str,
+    "pinned_options": dict,
+    "config_version": int,
+}
+
+# Legacy key renames applied on load: old_name -> new_name.
+# Add entries here when a setting is ever renamed, so older config.json
+# files upgrade transparently instead of silently losing the value.
+_CONFIG_KEY_RENAMES = {}
+
+
+def _validate_config(data: dict) -> dict:
+    """Validate a config dict against CONFIG_SCHEMA.
+
+    - Wrong-typed values are DROPPED (with a warning) so callers fall back
+      to their own defaults instead of crashing on e.g. an int that should
+      be a string.
+    - Integral floats are coerced to int ("30.0" from hand-edited JSON).
+    - Unknown keys are preserved untouched.
+    """
+    if not isinstance(data, dict):
+        return {}
+    cleaned = {}
+    for key, value in data.items():
+        expected = CONFIG_SCHEMA.get(key)
+        if expected is None:
+            cleaned[key] = value  # unknown key — keep it
+            continue
+        if type(value) is expected:
+            cleaned[key] = value
+        elif expected is int and isinstance(value, float) and value.is_integer():
+            cleaned[key] = int(value)
+        else:
+            logger.warning(
+                "Config key %r has wrong type (%s, expected %s) — using default",
+                key, type(value).__name__, expected.__name__)
+    return cleaned
+
+
+def _migrate_config(data: dict) -> dict:
+    """Bring a loaded config up to CONFIG_SCHEMA_VERSION.
+
+    Handles legacy key renames and stamps the schema version.  Read-only:
+    the migrated dict is returned but NOT written back to disk — the new
+    version gets persisted the next time save_config() runs.
+    """
+    if not isinstance(data, dict) or not data:
+        # Nothing to migrate (missing, non-dict, or fully-invalid config)
+        return {}
+    for old, new in _CONFIG_KEY_RENAMES.items():
+        if old in data and new not in data:
+            data[new] = data.pop(old)
+            logger.info("Config migration: renamed %r -> %r", old, new)
+    version = data.get("config_version")
+    if not isinstance(version, int) or version < CONFIG_SCHEMA_VERSION:
+        logger.info("Config migrated to schema version %d", CONFIG_SCHEMA_VERSION)
+        data["config_version"] = CONFIG_SCHEMA_VERSION
+    return data
+
+
 def load_config() -> dict:
     if not CONFIG_FILE.exists():
         return {}
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
             data = json.load(f)
-        return data if isinstance(data, dict) else {}
-    except Exception:
+    except Exception as e:
+        # Broken/corrupt config: back the broken file up so nothing is
+        # silently lost, then start clean — the app treats this as fresh.
+        logger.error("Failed to read config (backing it up): %s", e)
+        try:
+            import shutil
+            shutil.copy2(CONFIG_FILE, CONFIG_FILE.with_name("config.json.corrupt"))
+        except Exception:
+            pass
         return {}
+    data = _validate_config(data)
+    data = _migrate_config(data)
+    return data
 
 
 def save_config(data: dict) -> None:
     try:
         clean_data = dict(data or {})
+        clean_data["config_version"] = CONFIG_SCHEMA_VERSION
         atomic_write_json(CONFIG_FILE, clean_data, indent=2)
     except Exception as e:
         logger.error("Failed to write config: %s", e)
@@ -380,8 +523,6 @@ def invoke_windows_share(file_paths: list[Path]) -> bool:
     Returns:
         True if successful, False otherwise.
     """
-    import subprocess
-    import os
     
     if not file_paths:
         return False

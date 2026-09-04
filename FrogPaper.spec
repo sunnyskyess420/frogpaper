@@ -13,16 +13,16 @@ a = Analysis(
     ['app.py'],
     pathex=[os.getcwd()],
     binaries=[],
-    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('presets.json.bak', '.'), ('gallery_tags.json', '.'), ('gallery_tags.json.bak', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('prompt_library.json.bak', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.'), ('user_thesaurus.json.bak', '.'), ('keyword_expansion.json', '.')] + py_files,
+    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('presets.json.bak', '.'), ('gallery_tags.json.bak', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('prompt_library.json.bak', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.'), ('user_thesaurus.json.bak', '.'), ('keyword_expansion.json', '.')] + py_files,
     # SECURITY: 'config.json' is intentionally NOT bundled here. It may contain
     # the developer's real HuggingFace / Google / Dropbox / OneDrive secrets.
     # A clean 'config.template.json' is bundled instead and seeded to
     # 'config.json' beside the EXE on first launch by utils.seed_bundled_files().
-    hiddenimports=['PIL._tkinter_finder', 'theme_mixer', 'prompt_builder', 'slideshow', 'keyword_expander', 'gallery_manager', 'preset_manager', 'utils', 'setup_scheduler', 'session_manager', 'tray_manager', 'tutorial_manager', 'settings_tab', 'prompt_tab', 'gallery_tab', 'set_wallpaper', 'database', 'icons', 'negative_manager', 'prompt_validator', 'style_transfer', 'wallpaper_generator', 'ui_effects', 'nltk', 'sentence_transformers', 'huggingface_hub', 'torch', 'transformers', 'cloud_providers', 'googleapiclient', 'google_auth_oauthlib', 'msal', 'dropbox'],
+    hiddenimports=['PIL', 'PIL.Image', 'PIL.ImageTk', 'PIL._tkinter_finder', 'theme_mixer', 'prompt_builder', 'slideshow', 'keyword_expander', 'gallery_manager', 'preset_manager', 'utils', 'setup_scheduler', 'session_manager', 'tray_manager', 'tutorial_manager', 'settings_tab', 'prompt_tab', 'gallery_tab', 'set_wallpaper', 'database', 'icons', 'negative_manager', 'prompt_validator', 'style_transfer', 'wallpaper_generator', 'ui_effects', 'cloud_providers', 'googleapiclient', 'google_auth_oauthlib', 'msal', 'dropbox'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['torch', 'torchaudio', 'torchvision', 'transformers', 'sentence_transformers', 'nltk', 'tokenizers', 'safetensors'],
     noarchive=False,
     optimize=0,
 )

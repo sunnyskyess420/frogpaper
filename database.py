@@ -25,6 +25,8 @@ successfully but all operations are no-ops.  Callers should check
 ``DB_AVAILABLE`` before using any DB functions.
 """
 
+from __future__ import annotations  # lazy annotations: ORMSession may not exist without sqlalchemy
+
 import json
 import logging
 import os
@@ -40,8 +42,8 @@ logger = logging.getLogger(__name__)
 # ── Try importing sqlalchemy ──────────────────────────────────────────────
 try:
     from sqlalchemy import (
-        Column, Integer, Text, Float, Boolean, DateTime, ForeignKey,
-        create_engine, text, func,
+        Column, Integer, Text, Float, Boolean, DateTime, ForeignKey,  # noqa: F401  (availability probe)
+        create_engine, text, func,  # noqa: F401  (availability probe)
     )
     from sqlalchemy.orm import (
         declarative_base, sessionmaker, Session as ORMSession, scoped_session,

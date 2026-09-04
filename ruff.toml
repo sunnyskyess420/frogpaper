@@ -1,0 +1,40 @@
+# FrogPaper lint configuration (roadmap #7 Phase C).
+#
+# Scope: the rule families that match this project's real failure
+# history:
+#   F821 - undefined names. This is the exact bug class that crashed the
+#          first launch after the Phase B2 modularization (NameError:
+#          SV_TTK_AVAILABLE in app_theme_engine.py) while all unit tests
+#          stayed green.
+#   F811 - redefinitions / shadowed duplicates. The same extraction work
+#          left 3 dead duplicate method copies; these are now removed.
+#   F401 - unused imports. Cleaned 2026-09-03: 132 dead imports deleted,
+#          21 availability-probe imports marked inline with
+#          `# noqa: F401  (availability probe)`, and the intentional
+#          STATUS_COLORS facade re-export in settings_tab.py marked with
+#          its own noqa. New dead imports will now fail the check.
+#
+# Run:  ruff check .          (from the project root)
+#       ruff check . --fix    (where a fix is offered)
+
+line-length = 200
+target-version = "py312"
+
+extend-exclude = [
+    "backup",
+    "build",
+    "dist",
+    "venv",
+]
+
+[lint]
+select = ["F821", "F811", "F401"]
+
+[lint.per-file-ignores]
+# KNOWN, DELIBERATE: `_show_toast` references `ImageTk`, which was never
+# bound in that scope. The NameError is swallowed by `except Exception`,
+# so the toast shadow image has never rendered. Pre-existing behaviour,
+# preserved verbatim through the modularization - do not "fix" by adding
+# the import without deciding the shadow SHOULD start appearing.
+# See IMPROVEMENT_STATUS_2026-09-01.md, Phase C notes.
+"app_system_mixin.py" = ["F821"]

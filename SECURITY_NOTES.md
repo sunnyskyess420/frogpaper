@@ -4,8 +4,8 @@ This document explains how FrogPaper keeps API tokens and OAuth secrets out
 of the packaged `.exe` / installer, and what to do if a previous build
 leaked them.
 
-**First release shipping these fixes: v1.3.0.** All builds from v1.3.0
-onward use the secure build flow described below. Earlier builds (v1.2.0
+**First release shipping these fixes: v1.3.2.** All builds from v1.3.2
+onward (including v1.4.1+) use the secure build flow described below. Earlier builds (v1.2.0
 and prior) baked the developer's real `config.json` into the EXE — see
 the rotation section below if you still have users on those builds.
 

@@ -22,6 +22,27 @@ import urllib.error
 from pathlib import Path
 from typing import Optional
 
+# Import thread-safe UI update functions
+try:
+    from thread_manager import run_background, schedule_ui_update
+    THREAD_MANAGER_AVAILABLE = True
+except ImportError:
+    THREAD_MANAGER_AVAILABLE = False
+    # Fallback to direct threading if thread_manager not available
+    def schedule_ui_update(callback, *args, **kwargs):
+        """Fallback for thread-safe UI updates."""
+        if hasattr(callback, '__self__') and hasattr(callback.__self__, 'root'):
+            callback.__self__.root.after(0, lambda: callback(*args, **kwargs))
+        else:
+            # Direct call as fallback (not thread-safe, but prevents crashes)
+            callback(*args, **kwargs)
+    
+    def run_background(target, *args, daemon=True, **kwargs):
+        """Fallback for background thread execution."""
+        thread = threading.Thread(target=target, args=args, kwargs=kwargs, daemon=daemon)
+        thread.start()
+        return thread
+
 logger = logging.getLogger(__name__)
 
 GITHUB_REPO = "sunnyskyess420/frogpaper"
@@ -252,9 +273,8 @@ def check_on_startup(app, current_version: str, delay_seconds: int = 5):
         if release is not None:
             # Schedule the UI popup on the main thread
             try:
-                app.root.after(0, show_update_notification, app, release)
+                schedule_ui_update(show_update_notification, app, release)
             except Exception:
                 pass
 
-    t = threading.Thread(target=_worker, daemon=True, name="UpdateChecker")
-    t.start()
+    run_background(_worker, name="UpdateChecker")

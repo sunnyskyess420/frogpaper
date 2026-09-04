@@ -18,10 +18,11 @@ from __future__ import annotations
 
 import math
 import threading
-from pathlib import Path
 from typing import Optional, Tuple
 
 from PIL import Image, ImageDraw, ImageFont, ImageTk
+
+from theme import COLOR_GREEN_BRIGHT  # shared color constants (migrated inline hex)
 
 # ── Cache ───────────────────────────────────────────────────────────
 _cache: dict[Tuple[str, int, str], ImageTk.PhotoImage] = {}
@@ -557,7 +558,7 @@ _DRAW_FUNCS = {
 
 # ── Public API ────────────────────────────────────────────────────────
 
-def get_icon(name: str, size: int = 16, color: str = "#4ade80") -> ImageTk.PhotoImage:
+def get_icon(name: str, size: int = 16, color: str = COLOR_GREEN_BRIGHT) -> ImageTk.PhotoImage:
     """Return a cached ``PhotoImage`` for *name* at *size* × *size* pixels.
 
     Parameters
@@ -594,7 +595,7 @@ def clear_cache() -> None:
         _cache.clear()
 
 
-def get_dialog_icon(kind: str, size: int = 24, color: str = "#4ade80") -> ImageTk.PhotoImage:
+def get_dialog_icon(kind: str, size: int = 24, color: str = COLOR_GREEN_BRIGHT) -> ImageTk.PhotoImage:
     """Return the dialog icon for *kind* ("info", "warning", "error", "ask")."""
     mapping = {"info": "info", "warning": "warning", "error": "error", "ask": "help"}
     return get_icon(mapping.get(kind, "info"), size=size, color=color)

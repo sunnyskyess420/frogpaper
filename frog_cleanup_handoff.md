@@ -1,0 +1,77 @@
+# FrogPaper — Frog/Stoner Leakage Cleanup · Handoff
+
+**Date:** 2026-09-29 · **Working copy:** shallow clone of `sunnyskyess420/frogpaper` @ upstream `1fb7b8d`
+**Patch files:** `frog_cleanup.diff` (raw diff → `git apply`) · `0001-Clean-stoner-leftovers-*.patch` (mailbox → `git am`)
+**Status:** Part 1 DONE (stoner leftovers + frog force-defaults). Part 2 PENDING (frog bias → "Frog Dial"). **Nothing pushed upstream — owner wants review first.**
+
+---
+
+## TL;DR for the next AI
+
+FrogPaper's prompt generator inherited the owner's original "stoner frog" concept. Two leak classes were found and quantified with a local harness (no APIs, no image generation, $0):
+
+1. **Stoner leftovers** — `"plaid stoner frog pattern"` (subjects pool), `"retro stoner poster"` (styles pool), a `weed_elements` block, `STYLE_ALIASES["stoner"]`, and the `avoid` list being fed back as generation keywords. Measured pre-fix: **80/300 (26.7%)** of daily-runner prompts got style `retro stoner poster`.
+2. **Frog force-defaults** — subject box pre-filled `"frog"` on launch + theme_mixer "frog bias" branches (80%/85% subject, 70% mood/atmosphere). Measured pre-fix: **92.7%** of blank runs produced frogs; mood `"playful"` **300/300** when subject=frog.
+
+**Owner's accepted direction:** frogs stay THE brand, but must not be forced. User-paid outputs must respect user intent. The frog bias becomes a user-facing probability ("Frog Dial"). Do not remove frogs — make them optional/probabilistic.
+
+## DONE in this working copy (2026-09-29)
+
+| File | Change |
+|---|---|
+| `keywords.json` | Removed `"plaid stoner frog pattern"` (subjects) and `"retro stoner poster"` (styles). Renamed `weed_elements` → `_weed_elements` (+ `_weed_elements_note`) so the `_` prefix excludes it from `daily_runner.load_all_keywords()` and `keyword_expander._load_keywords()`. |
+| `theme_mixer.py` | Removed `STYLE_ALIASES["stoner"]` → `"retro stoner poster"` mapping. |
+| `app.py` | Subject box no longer pre-filled with `"frog"` (all 3 build paths now `insert(0, "")`); `startup_subject` default `"frog"` → `""` (init + auto-generate fallback `or ""`). |
+| `settings_persistence.py` | Saved `startup_subject` no longer falls back to `"frog"`. |
+| `prompt_tab.py` | "Reset Quick Build fields" no longer sets subject to `"frog"`. |
+| `config.template.json` | `"startup_subject": "frog"` → `""`. |
+| `app_generation_mixin.py` | filename/subject fallback `'frog'` → `'wallpaper'`. |
+| `daily_runner.py`, `keyword_expander.py` | `avoid` block (negatives: bong/rig/pipe/text…) no longer loaded as generation vocabulary. |
+
+**Post-fix verification (same harness):** `retro stoner poster` picked **0/300** (was 80/300). JSON valid; all edited files pass `python -m py_compile`. **NOT runtime-tested** (analysis env lacks tkinter) — run the test suite.
+
+## REMAINING — next tasks
+
+### T1 (main task) — Replace frog-bias blocks with the "Frog Dial" (`theme_mixer.py`)
+Find and remove/replace (search strings provided — line numbers shift):
+- `# General bias toward frog subjects even without explicit frog keywords (85% chance)` — the fixed 85% frog pick branch.
+- The `# Bias toward frog subjects when frog detected in keywords (80% chance)` branch above it.
+- `frog_moods = ["mystical", "serene", "whimsical"]` block (70% frog moods).
+- Frog atmosphere block (`env_atmospheres = [...]`, 70%).
+- `frog_detected and random.random() < 0.6` scenic bias.
+- Frog scenic handling in `build_sentence()` (also rename the misleading variable `fish_detected`).
+- Review with owner: `STYLE_ALIASES["frog"]`, `MOOD_ALIASES["frog"]`, `COMPOSITION_ALIASES["frog"]` — currently make every explicit-frog image samey (`"playful"` 100%).
+- **Keep:** frog pinned first in the subject dropdown (`app_prompt_data.py` sort), frog logo/sounds/styles/styles — that's the brand.
+
+Proposed design (owner to confirm numbers + UI placement):
+- New setting `frog_sneak`: **Off / Rare (p≈0.05) / Classic (p≈0.12, suggested default) / Frog Party (p≈0.5)**; persist like other settings (`settings_persistence.py` + settings UI).
+- Rule: explicit subject set → never inject frog (unless the subject itself contains "frog"). Subject blank → with probability `p` pick a frog subject; else normal pool.
+- Owner delight feature (requested): small chance a frog "sneaks into" an image as a background detail. Check `prompt_builder.py` scene support first; tie to the dial.
+
+### T2 — frog shortlist filter
+`frog_subjects = [s for s in kw["subjects"] if "frog" in s.lower()]` — becomes redundant once T1 lands; delete along with the bias branches.
+
+### T3 — Do NOT "clean" these (they are correct)
+`prompt_builder.py` frog anatomy lock (~L411–417) and frog environment handling (~L576–582): correct when the subject actually is a frog. Leave as-is.
+
+### T4 — Stoner-adjacent vocabulary (owner decision)
+Review: mood `"trippy"` / `"chill"`; styles `"psychedelic"` / `"blacklight glow"` / `"cozy vapor lounge"`; atmospheres `"smoke-filled room"` / `"neon lily pond"`; colors `"acid green"` / `"emerald smoke"` / `"lavender haze"`; `_weed_elements` block (delete if unwanted). `negative_presets.json` "bong" entry is a negative — fine as-is.
+
+### T5 — Verification
+- `python -m pytest tests/ -q` (CI expectations: `.github/workflows/tests.yml`). Some tests need tkinter/PIL.
+- Re-run harnesses in this working copy: `python sim_leak.py`, `python sim_leak2.py` (tkinter stub included). Expect: 0 stoner styles; frog rate governed by the dial after T1.
+- Manual: launch app → subject box blank; generate with blank subject; scan prompts for "stoner" occurrences.
+- Note: existing users' saved `config.json` may still hold `"startup_subject": "frog"`; optionally migrate (blank it) or leave — minor.
+
+## Applying the patch
+```bash
+git checkout -b fix/frog-stoner-cleanup   # from up-to-date main
+git apply frog_cleanup.diff               # or: git am 0001-Clean-stoner-leftovers-*.patch
+python -m pytest tests/ -q
+```
+**Do not push without owner sign-off.**
+
+## Meta / artifacts
+- Repro harnesses: `sim_leak.py`, `sim_leak2.py` (root of this working copy; stub tkinter so they run without a GUI env).
+- This working copy is a shallow clone (`--depth 50`); `git am` may need the exact parent — `git apply` always works.
+- All analysis was local text processing: no images generated, no provider APIs called, no money spent.

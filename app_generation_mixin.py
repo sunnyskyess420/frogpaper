@@ -623,14 +623,14 @@ class FrogPaperAppGenerationMixin:
             if self.prompts and self.prompts[0] and getattr(self, '_should_generate_image', False):
                 prompt = self.prompts[0]['prompt']
                 import datetime
-                filename = ui_values.get('subject', 'frog') + '_' + datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + '.png'
+                filename = (ui_values.get('subject') or 'wallpaper') + '_' + datetime.datetime.now().strftime('%Y%m%d_%H%M%S') + '.png'
                 logger.debug(f"Triggering image generation with prompt: {prompt[:100]}...")
                 self.gen_future = self.executor.submit(
                     self._generate_image_thread,
                     prompt,
                     filename,
                     False,  # auto_set_wallpaper
-                    ui_values.get('subject', 'frog'),
+                    ui_values.get('subject') or 'wallpaper',
                     ui_values.get('style', ''),
                     ui_values  # Pass full ui_values to save prompt parameters
                 )

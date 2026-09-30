@@ -165,7 +165,6 @@ STYLE_ALIASES = {
     "frog": "high-detail mascot art",
     "cat": "high-detail animal portrait",
     "cyber": "cyberpunk",
-    "stoner": "retro stoner poster",
     "cozy": "cozy vapor lounge",
     "realistic": "realistic",
     "cute": "cute cinematic render",

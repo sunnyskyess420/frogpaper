@@ -126,8 +126,9 @@ class KeywordExpander:
             if kw_path.exists():
                 with open(kw_path, 'r', encoding='utf-8') as f:
                     data = json.load(f)
-                    # Filter out comments/metadata
-                    self.keywords_data = {k: v for k, v in data.items() if not k.startswith("_")}
+                    # Filter out comments/metadata (and the 'avoid' block, which is
+                    # negative vocabulary and must not become a generation keyword)
+                    self.keywords_data = {k: v for k, v in data.items() if not k.startswith("_") and k != "avoid"}
                     
                     # Create flat set of all known keywords for O(1) lookup
                     self.all_keywords_set = set()

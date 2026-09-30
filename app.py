@@ -617,7 +617,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.auto_generate_on_startup_var = tk.BooleanVar(
             value=config.get("auto_generate_on_startup", False))
         self.startup_subject_var = tk.StringVar(
-            value=config.get("startup_subject", "frog"))
+            value=config.get("startup_subject", ""))
 
         # Initialize status variables early for slideshow
         self.statusvar = tk.StringVar(value="Starting up...")
@@ -1149,18 +1149,18 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 self.subject_entry = PinnedCombobox(left, category="subject", 
                                                      values=THEME_VARIABLE_OPTIONS["subject"])
                 self.subject_entry.pack(fill="x", pady=(0, 10))
-                self.subject_entry.insert(0, "frog")
+                self.subject_entry.insert(0, "")
                 self.subject_entry.bind("<MouseWheel>", lambda e: "break")
             except Exception as _subj_err:
                 logger.debug("Pinned subject fallback: %s", _subj_err)
                 self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
                 self.subject_entry.pack(fill="x", pady=(0, 10))
-                self.subject_entry.insert(0, "frog")
+                self.subject_entry.insert(0, "")
                 self.subject_entry.bind("<MouseWheel>", lambda e: "break")
         else:
             self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
             self.subject_entry.pack(fill="x", pady=(0, 10))
-            self.subject_entry.insert(0, "frog")
+            self.subject_entry.insert(0, "")
             self.subject_entry.bind("<MouseWheel>", lambda e: "break")
 
         # Mode dropdown
@@ -2478,7 +2478,7 @@ def main():
             if app.auto_generate_on_startup_var.get():
                 def _startup_generate():
                     # Use the configured startup subject from settings (defaults to "frog")
-                    subject = app.startup_subject_var.get().strip() or "frog"
+                    subject = app.startup_subject_var.get().strip() or ""
                     app.set_active_subject(subject)
                     # Randomize everything except subject
                     import random as _rng

@@ -36,7 +36,6 @@
     "wizard hacker",
     "robot skull",
     "dragon sigil",
-    "plaid stoner frog pattern",
     "crimson forest landscape",
     "misty pine forest",
     "dark enchanted woods",
@@ -70,7 +69,6 @@
     "cozy vapor lounge",
     "high-detail mascot art",
     "blacklight glow",
-    "retro stoner poster",
     "cute cinematic render",
     "cinematic fantasy",
     "dark fantasy",
@@ -105,7 +103,8 @@
     "video editing timeline glow",
     "creative workstation lighting"
   ],
-  "weed_elements": [
+  "_weed_elements_note": "Renamed 2026-09-29: the _ prefix keeps this block out of automatic keyword sweeps (daily_runner, keyword_expander). Kept for reference; delete if unwanted.",
+  "_weed_elements": [
     "realistic weed haze",
     "rolling tray",
     "grinder on side table",

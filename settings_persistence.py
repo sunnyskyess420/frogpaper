@@ -52,7 +52,7 @@ class SettingsPersistenceMixin:
         # Startup & tray
         config["remember_settings"] = bool(app.remember_settings_var.get())
         config["auto_generate_on_startup"] = bool(app.auto_generate_on_startup_var.get())
-        config["startup_subject"] = app.startup_subject_var.get().strip() or "frog"
+        config["startup_subject"] = app.startup_subject_var.get().strip() or ""
         config['minimize_to_tray'] = bool(app.minimize_to_tray_enabled)
 
         # HuggingFace token (dynamically created when HF provider is selected)

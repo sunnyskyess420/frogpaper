@@ -51,7 +51,7 @@ def load_all_keywords() -> list:
         data = json.load(f)
     all_words = []
     for key, values in data.items():
-        if not key.startswith("_") and isinstance(values, list):
+        if not key.startswith("_") and key != "avoid" and isinstance(values, list):
             all_words.extend(str(v).strip() for v in values if str(v).strip())
     return all_words
 

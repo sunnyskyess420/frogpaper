@@ -52,7 +52,9 @@ class SettingsPersistenceMixin:
         # Startup & tray
         config["remember_settings"] = bool(app.remember_settings_var.get())
         config["auto_generate_on_startup"] = bool(app.auto_generate_on_startup_var.get())
-        config["startup_subject"] = app.startup_subject_var.get().strip() or "frog"
+        config["startup_subject"] = app.startup_subject_var.get().strip() or ""
+        if hasattr(app, "frog_sneak_var"):
+            config["frog_sneak"] = app.frog_sneak_var.get().strip() or "classic"
         config['minimize_to_tray'] = bool(app.minimize_to_tray_enabled)
 
         # HuggingFace token (dynamically created when HF provider is selected)
@@ -164,7 +166,7 @@ class SettingsPersistenceMixin:
                 pass
         if config.get("remember_settings", False) and not config.get("auto_generate_on_startup", False):
             app.set_active_mode(config.get("last_style_mode", app.DEFAULT_PROMPT_MODE_VALUE))
-            app.set_active_subject(config.get("last_subject", "frog"))
+            app.set_active_subject(config.get("last_subject", ""))
             app.set_active_setting(config.get("last_setting", ""))
             app.set_active_style(config.get("last_style", "oil painting"))
             app.set_active_lighting(config.get("last_lighting", "neon"))
@@ -176,7 +178,7 @@ class SettingsPersistenceMixin:
         else:
             # "Remember settings" is OFF: wipe the SAVED values from config
             # so nothing from the last session persists, but leave the UI on
-            # its built-in starter defaults (frog / neon / oil painting and
+            # its built-in starter defaults (blank subject / neon / oil painting and
             # the random color/setting/atmosphere chosen at build time).
             # Previously this blanked the dropdowns themselves, which made
             # every category dropdown render empty on a fresh start.

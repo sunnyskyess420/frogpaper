@@ -162,10 +162,8 @@ STYLE_ALIASES = {
     "red": "cinematic",
     "forest": "dark fantasy",
     "woods": "dark fantasy",
-    "frog": "high-detail mascot art",
     "cat": "high-detail animal portrait",
     "cyber": "cyberpunk",
-    "stoner": "retro stoner poster",
     "cozy": "cozy vapor lounge",
     "realistic": "realistic",
     "cute": "cute cinematic render",
@@ -177,7 +175,6 @@ MOOD_ALIASES = {
     "forest": "mysterious",
     "cozy": "cozy",
     "cyber": "electric",
-    "frog": "playful",
     "cat": "playful",
     "dark": "moody",
     "luxury": "luxurious",
@@ -230,7 +227,6 @@ COMPOSITION_ALIASES = {
     "woods": "wide cinematic desktop wallpaper framing",
     "landscape": "wide cinematic desktop wallpaper framing",
     "city": "wide cinematic desktop wallpaper framing",
-    "frog": "centered hero with clean side space for desktop icons",
     "cat": "close-up portrait with clean side space for desktop icons",
     "cozy": "cozy room scene with foreground subject and back wall tech",
 }
@@ -594,11 +590,11 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
         atmosphere = ""     # suppress atmosphere too — one environment is enough
 
     # If frog + atmosphere (no tech), prefer scenic mode
-    fish_detected = "frog" in subject_lower
+    frog_detected = "frog" in subject_lower
     has_atmosphere = bool(atmosphere and atmosphere.strip())
     has_tech = bool(tech and tech.strip())
 
-    if fish_detected and has_atmosphere and not has_tech:
+    if frog_detected and has_atmosphere and not has_tech:
         scenic_mode = True
 
     # Filter out prop-heavy elements based on theme mapping
@@ -743,6 +739,28 @@ def build_sentence(subject: str, style: str, mood: str, color: str, lighting: st
     return ", ".join(scene_layers), subject_negatives
 
 
+# ---------------------------------------------------------------------------
+# "Frog Dial" — user-configurable chance a frog sneaks into a blank-subject run.
+# Levels: off / rare / classic / party; stored in config.json as "frog_sneak".
+# ---------------------------------------------------------------------------
+FROG_SNEAK_LEVELS = {"off": 0.0, "rare": 0.05, "classic": 0.12, "party": 0.5}
+FROG_SNEAK_DEFAULT = "classic"
+
+
+def get_frog_sneak_probability() -> float:
+    """Return the frog-sneak probability from config.json (default: classic)."""
+    try:
+        cfg_file = BASE_DIR / "config.json"
+        if cfg_file.exists():
+            with open(cfg_file, "r", encoding="utf-8") as f:
+                level = str(json.load(f).get("frog_sneak", FROG_SNEAK_DEFAULT)).strip().lower()
+            if level in FROG_SNEAK_LEVELS:
+                return FROG_SNEAK_LEVELS[level]
+    except Exception:
+        pass
+    return FROG_SNEAK_LEVELS[FROG_SNEAK_DEFAULT]
+
+
 def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = True, custom_subject: str = "",
                     explicit_subject: str = "", explicit_setting: str = "", explicit_style: str = "", explicit_lighting: str = "",
                     explicit_mood: str = "", explicit_color: str = "", explicit_atmosphere: str = "") -> list[dict]:
@@ -789,6 +807,7 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
     else:
         scenic_mode = env_detected or (frog_detected and random.random() < 0.6)
     include_tech = should_include_tech(tokens)
+    frog_sneak = get_frog_sneak_probability()
 
     literal_subject = custom_subject if custom_subject and subject_lock else ""
 
@@ -808,17 +827,9 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
             elif locked_subject:
                 subject = locked_subject
             else:
-                # Bias toward frog subjects when frog detected in keywords (80% chance)
-                if any("frog" in t for t in tokens) and random.random() < 0.8:
-                    frog_subjects = [s for s in kw.get("subjects", []) if "frog" in s.lower()]
-                    if frog_subjects:
-                        subject = random.choice(frog_subjects)
-                    else:
-                        subject = choose_from_alias_or_pool(
-                            user_buckets.get("subjects", []), SUBJECT_ALIASES, kw.get("subjects", []), "cinematic wallpaper subject"
-                        )
-                # General bias toward frog subjects even without explicit frog keywords (85% chance)
-                elif random.random() < 0.85:
+                # "Frog Dial": a frog sneaks in only at the user-configured chance
+                # (config.json "frog_sneak": off/rare/classic/party). No hard-coded bias.
+                if frog_sneak > 0 and random.random() < frog_sneak:
                     frog_subjects = [s for s in kw.get("subjects", []) if "frog" in s.lower()]
                     if frog_subjects:
                         subject = random.choice(frog_subjects)
@@ -831,7 +842,9 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
                         user_buckets.get("subjects", []), SUBJECT_ALIASES, kw.get("subjects", []), "cinematic wallpaper subject"
                     )
                 else:
-                    subject = choose_from_alias_or_pool([], SUBJECT_ALIASES, kw.get("subjects", []), "cinematic wallpaper subject")
+                    # Frogs are excluded from the general pool — they only come from the dial above.
+                    non_frog_pool = [s for s in kw.get("subjects", []) if "frog" not in s.lower()]
+                    subject = choose_from_alias_or_pool([], SUBJECT_ALIASES, non_frog_pool, "cinematic wallpaper subject")
 
         if explicit_style:
             style = explicit_style
@@ -846,14 +859,10 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
             if VALIDATOR_AVAILABLE:
                 mood = strengthen_mood(mood)
         else:
-            # Frog-biased mood only applies when the literal subject is a frog type
-            if not explicit_is_set and any("frog" in t for t in tokens) and random.random() < 0.7:
-                frog_moods = ["mystical", "serene", "whimsical"]
-                mood = random.choice(frog_moods)
-            else:
-                mood = choose_from_alias_or_pool(
-                    user_buckets.get("mood", []), MOOD_ALIASES, kw.get("mood", []), "moody"
-                )
+            # Moods always come from the normal pools (no frog-specific bias).
+            mood = choose_from_alias_or_pool(
+                user_buckets.get("mood", []), MOOD_ALIASES, kw.get("mood", []), "moody"
+            )
 
         # Color handling: use explicit color if provided, otherwise choose from pool
         if explicit_color:
@@ -882,10 +891,6 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
         # Atmosphere: use explicit user selection if provided, otherwise generate
         if explicit_atmosphere:
             atmosphere = explicit_atmosphere
-        elif not explicit_is_set and any("frog" in t for t in tokens) and random.random() < 0.7:
-            # Frog-biased atmospheres only when no explicit (non-frog) subject is set
-            env_atmospheres = ["misty pond", "rainforest canopy", "lily pad marsh", "desert dune", "snowy tundra", "urban sewer", "cosmic nebula", "ancient ruins", "volcanic lava", "low valley fog", "bioluminescent swamp"]
-            atmosphere = random.choice(env_atmospheres)
         else:
             # Always use the full atmosphere pool from keywords.json for variety
             atmosphere_pool = kw.get("atmosphere", [])
@@ -933,6 +938,18 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
             tech = random.choice(kw.get("tech_elements", [])) if kw.get("tech_elements") else ""
 
         sentence, subject_negatives = build_sentence(subject, style, mood, varied_color, lighting, atmosphere, tech, scenic_mode, setting, subject_lock, bool(explicit_setting))
+
+        # Frog cameo easter egg: at half the dial chance, and only on random
+        # (non-explicit) subjects, a tiny frog hides in the scene details.
+        if (frog_sneak > 0 and not explicit_subject and not literal_subject
+                and "frog" not in subject.lower()
+                and random.random() < frog_sneak * 0.5):
+            cameo_phrases = [
+                "with a tiny frog subtly hidden in the scene details",
+                "with a small frog peeking out from the background",
+                "with a little frog resting quietly in the corner of the scene",
+            ]
+            sentence += ", " + random.choice(cameo_phrases)
         
         themes.append({
             "theme_id": i + 1,

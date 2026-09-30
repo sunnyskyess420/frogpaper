@@ -2109,7 +2109,7 @@ class PromptTab:
             _subject_w = refs.get("subject_entry")
             if _subject_w is not None:
                 _subject_w.delete(0, tk.END)
-                _subject_w.insert(0, "frog")
+                _subject_w.insert(0, "")
             _style_w = refs.get("style_entry")
             if _style_w is not None:
                 _style_w.delete(0, tk.END)

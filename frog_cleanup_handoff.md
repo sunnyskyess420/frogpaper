@@ -75,3 +75,28 @@ python -m pytest tests/ -q
 - Repro harnesses: `sim_leak.py`, `sim_leak2.py` (root of this working copy; stub tkinter so they run without a GUI env).
 - This working copy is a shallow clone (`--depth 50`); `git am` may need the exact parent — `git apply` always works.
 - All analysis was local text processing: no images generated, no provider APIs called, no money spent.
+
+---
+
+## UPDATE 2026-09-29 (part 2) — Frog Dial core landed
+
+Second commit on `fix/frog-stoner-cleanup` (`0002-*.patch`; `frog_cleanup.diff` now covers both commits):
+
+- `theme_mixer.py`:
+  * Deleted the 80%/85% frog-subject bias branches → replaced with **Frog Dial** check: `if frog_sneak > 0 and random.random() < frog_sneak: pick frog subject`.
+  * New `get_frog_sneak_probability()` reads `config.json` key `"frog_sneak"`: `off`=0 · `rare`=0.05 · `classic`=0.12 (default) · `party`=0.5.
+  * General (non-dial) subject pool now **excludes frog entries**, so the dial number is the true frog rate on blank runs.
+  * Deleted the 70% frog mood block and 70% frog atmosphere block (normal pools now).
+  * Removed `"frog"` from `MOOD_ALIASES` (was forcing mood `"playful"` 100% of frog runs), `STYLE_ALIASES`, `COMPOSITION_ALIASES` → "frog" now classifies as a plain subject word.
+  * Renamed `fish_detected` → `frog_detected` in `build_sentence()`.
+- `daily_runner.py`: no longer feeds the whole keyword bank as user keywords (that forced identical frog+lily compounds every day).
+- `config.template.json`: added `"frog_sneak": "classic"`.
+
+**Verified (harness `sim_leak3.py`):** blank-subject frog rate **11.8%** (was 92.7%); daily-style runs: 45 distinct subjects (was a single repeated sentence); explicit-frog moods varied (was "playful" 100/100); zero stoner styles. All files compile.
+
+**Still remaining:**
+1. Settings-screen toggle for `frog_sneak` (currently users edit `config.json` manually; `save_settings` preserves the key since it starts from `load_config()`).
+2. Optional "background frog detail" delight feature (owner's request) — needs `prompt_builder.py` scene support; gate by dial.
+3. T4 vocabulary review (owner decision) + `_weed_elements` delete-or-keep; `negative_presets.json` bong entry is fine as a negative.
+4. Run project tests (`pytest tests/ -q`) in a full environment; then owner review → PR.
+5. Optional: review `"cat"` alias entries (MOOD/STYLE/COMPOSITION) for the same consistency treatment.

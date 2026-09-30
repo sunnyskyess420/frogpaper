@@ -96,7 +96,10 @@ def run():
         sys.exit(1)
 
     try:
-        themes = generate_themes(count=1, user_keywords=keywords)
+        # NOTE: don't feed the whole keyword bank as user keywords - it forced
+        # frog compounds (frog+lily etc.) and made daily runs identical.
+        # Variety comes from the theme pools; frog chance comes from "frog_sneak".
+        themes = generate_themes(count=1)
         if not themes:
             raise ValueError("generate_themes returned no themes")
         theme = themes[0]

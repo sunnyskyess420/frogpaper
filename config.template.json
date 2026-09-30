@@ -32,6 +32,7 @@
   "remember_settings": false,
   "auto_generate_on_startup": false,
   "startup_subject": "",
+  "frog_sneak": "classic",
   "wallpaper_format": "PNG",
   "wallpaper_quality": "Low",
   "slideshow_pause_on_fullscreen": true,

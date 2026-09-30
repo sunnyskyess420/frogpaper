@@ -618,6 +618,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             value=config.get("auto_generate_on_startup", False))
         self.startup_subject_var = tk.StringVar(
             value=config.get("startup_subject", ""))
+        self.frog_sneak_var = tk.StringVar(
+            value=config.get("frog_sneak", "classic"))
 
         # Initialize status variables early for slideshow
         self.statusvar = tk.StringVar(value="Starting up...")
@@ -2477,7 +2479,7 @@ def main():
             # Auto-generate a fresh wallpaper on startup if enabled
             if app.auto_generate_on_startup_var.get():
                 def _startup_generate():
-                    # Use the configured startup subject from settings (defaults to "frog")
+                    # Use the configured startup subject from settings (blank = random)
                     subject = app.startup_subject_var.get().strip() or ""
                     app.set_active_subject(subject)
                     # Randomize everything except subject

@@ -287,10 +287,23 @@ class SettingsCategoriesMixin:
         startup_subj_entry = ttk.Entry(subject_frame, textvariable=app.startup_subject_var, width=25)
         startup_subj_entry.pack(side="left", padx=8)
         app.configure_entry_cursor(startup_subj_entry)
+
+        # Frog sneak dial: how often frogs appear in random/blank-subject images
+        sneak_frame = tk.Frame(gen_card.get_content(), bg=pal["card_bg"])
+        sneak_frame.pack(fill="x", pady=8)
+
+        tk.Label(sneak_frame, text="Frog sneak:", font=("Segoe UI", 10),
+                fg=pal["text"], bg=pal["card_bg"]).pack(side="left")
+        frog_sneak_combo = ttk.Combobox(
+            sneak_frame, textvariable=app.frog_sneak_var,
+            values=["off", "rare", "classic", "party"],
+            state="readonly", width=12)
+        frog_sneak_combo.pack(side="left", padx=8)
+        frog_sneak_combo.bind("<<ComboboxSelected>>", lambda e: self._mark_dirty())
         
         helper_label = tk.Label(
             gen_card.get_content(),
-            text="Leave as 'frog' for classic frogs, or change to any subject you like",
+            text="Startup subject: leave blank for a random subject. Frog sneak: how often a frog sneaks into random images (off / rare ~5% / classic ~12% / party ~50%).",
             font=("Segoe UI", 9),
             fg=pal["muted"],
             bg=pal["card_bg"],

@@ -100,3 +100,18 @@ Second commit on `fix/frog-stoner-cleanup` (`0002-*.patch`; `frog_cleanup.diff` 
 3. T4 vocabulary review (owner decision) + `_weed_elements` delete-or-keep; `negative_presets.json` bong entry is fine as a negative.
 4. Run project tests (`pytest tests/ -q`) in a full environment; then owner review → PR.
 5. Optional: review `"cat"` alias entries (MOOD/STYLE/COMPOSITION) for the same consistency treatment.
+
+---
+
+## UPDATE 2026-09-29 (part 3) — Settings toggle + final default cleanups
+
+Third commit on `fix/frog-stoner-cleanup`:
+
+- `app.py`: new `app.frog_sneak_var` (initialized from config, default `"classic"`); stale comment fixed.
+- `settings_categories.py`: added a **"Frog sneak" dropdown** (off/rare/classic/party) to the Auto-Generate settings card; helper text no longer says "leave as 'frog'".
+- `settings_persistence.py`: persists `frog_sneak` on save; remembered-settings subject fallback no longer `"frog"`; comment updated.
+- `check_dial.py`: verification script for the dial levels.
+
+**Verified:** `get_frog_sneak_probability()` returns 0 / 0.05 / 0.12 / 0.5 for off/rare/classic/party, falls back to 0.12 for invalid values. All edited files compile.
+
+**Remaining (final):** run project tests in a full env (`pytest tests/ -q`), owner review → PR. Optional: background-frog delight feature, T4 vocabulary review.

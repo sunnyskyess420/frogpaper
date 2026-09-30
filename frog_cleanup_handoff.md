@@ -129,3 +129,14 @@ Fourth commit on `fix/frog-stoner-cleanup`:
 **Numbers (classic default):** ~12% frog subject + ~5% cameo ⇒ roughly 1 in 6 random images has a frog somewhere; explicit subjects never get one unless the user typed a frog. Tweak rate in `theme_mixer.py` (`frog_sneak * 0.5`) or phrasing list if desired.
 
 **Remaining:** run tests in a full env; owner review → PR.
+
+---
+
+## UPDATE 2026-09-29 (part 5) — Docs + PR draft
+
+Fifth commit on `fix/frog-stoner-cleanup`:
+
+- `CONFIG_GUIDE.md`: `startup_subject` default corrected to blank; new `frog_sneak` row documented.
+- `pr_draft_frog_cleanup.md`: ready-to-paste PR title/body for the owner.
+
+**Remaining:** full-env test run; open the PR (draft provided).

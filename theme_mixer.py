@@ -938,6 +938,18 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
             tech = random.choice(kw.get("tech_elements", [])) if kw.get("tech_elements") else ""
 
         sentence, subject_negatives = build_sentence(subject, style, mood, varied_color, lighting, atmosphere, tech, scenic_mode, setting, subject_lock, bool(explicit_setting))
+
+        # Frog cameo easter egg: at half the dial chance, and only on random
+        # (non-explicit) subjects, a tiny frog hides in the scene details.
+        if (frog_sneak > 0 and not explicit_subject and not literal_subject
+                and "frog" not in subject.lower()
+                and random.random() < frog_sneak * 0.5):
+            cameo_phrases = [
+                "with a tiny frog subtly hidden in the scene details",
+                "with a small frog peeking out from the background",
+                "with a little frog resting quietly in the corner of the scene",
+            ]
+            sentence += ", " + random.choice(cameo_phrases)
         
         themes.append({
             "theme_id": i + 1,

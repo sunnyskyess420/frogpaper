@@ -53,3 +53,17 @@ for _ in range(200):
     d[theme_mixer.generate_themes(count=1)[0]["components"]["subject"].lower()] += 1
 fr = sum(v for k, v in d.items() if "frog" in k)
 print("daily-style (count=1, no keywords): frog =", fr, "/200 =", round(100 * fr / 200, 1), "%; distinct subjects:", len(d))
+
+# Frog cameo easter-egg check
+random.seed(55)
+subj_frog = cameo = 0
+N2 = 400
+for _ in range(N2):
+    t = theme_mixer.generate_themes(count=1)[0]
+    s = t["components"]["subject"].lower()
+    if "frog" in s:
+        subj_frog += 1
+    sent = t["sentence"]
+    if "subtly hidden" in sent or "peeking out" in sent or "resting quietly" in sent:
+        cameo += 1
+print("cameo check:", N2, "blank runs | frog subject:", subj_frog, "| frog cameo:", cameo)

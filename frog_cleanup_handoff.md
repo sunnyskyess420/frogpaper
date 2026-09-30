@@ -115,3 +115,17 @@ Third commit on `fix/frog-stoner-cleanup`:
 **Verified:** `get_frog_sneak_probability()` returns 0 / 0.05 / 0.12 / 0.5 for off/rare/classic/party, falls back to 0.12 for invalid values. All edited files compile.
 
 **Remaining (final):** run project tests in a full env (`pytest tests/ -q`), owner review → PR. Optional: background-frog delight feature, T4 vocabulary review.
+
+---
+
+## UPDATE 2026-09-29 (part 4) — Sneaky frog cameo (owner's delight feature)
+
+Fourth commit on `fix/frog-stoner-cleanup`:
+
+- `theme_mixer.py`: when a random (non-explicit) run didn't pick a frog subject, a **frog cameo** can still sneak in: at half the dial chance, one of 3 subtle phrasing variants is appended to the scene ("with a tiny frog subtly hidden in the scene details", etc.). Never fires for explicit subjects; dial "off" disables it entirely.
+- `sim_leak3.py`: now also counts cameos.
+- Tests: ran the suite locally — results **identical to the `main` baseline** in this environment (3 failures / 14 errors / 71 skipped, all from missing tkinter/GUI deps in the analysis box, not from these changes). Re-run in a full env before release.
+
+**Numbers (classic default):** ~12% frog subject + ~5% cameo ⇒ roughly 1 in 6 random images has a frog somewhere; explicit subjects never get one unless the user typed a frog. Tweak rate in `theme_mixer.py` (`frog_sneak * 0.5`) or phrasing list if desired.
+
+**Remaining:** run tests in a full env; owner review → PR.

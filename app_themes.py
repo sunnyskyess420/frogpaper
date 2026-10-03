@@ -101,6 +101,7 @@ THEMES = {
         "separator":   "#263322",
         "elevated":    "#2f3f2a",          # NEW — popups/toasts/hover surfaces
         "elevated_hi": "#3a4c33",          # NEW — row hover inside popups
+        "preview_matte":"#10160f",         # NEW — dark matte behind preview images (plan section 6.3)
         "success_color":"#6fca90",         # was #65c48a
         "error_color": "#e58175",          # was #c0392b — soft coral, not alarm-red
         "warning_color":"#e3b355",         # was #e6a020

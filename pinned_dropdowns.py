@@ -41,7 +41,26 @@ from theme import (
 
 from theme import COLOR_WHITE  # shared color constants (migrated inline hex)
 
+# Visual Refresh P2 plan section 6.2: popup surface + row hover should
+# use the elevated / elevated_hi tokens when the live theme defines
+# them. We look up the matching theme by its bg color (cheap O(18)
+# scan) so the popup reads as a coherent elevated surface, not just
+# a _adjust_color(bg, +18) lightening.
+from app_themes import THEMES as _ALL_THEMES
+
 logger = logging.getLogger(__name__)
+
+
+def _find_theme_by_bg(bg_hex):
+    """Return the first theme whose 'bg' matches bg_hex, or None."""
+    if not bg_hex:
+        return None
+    bg_norm = bg_hex.lstrip("#").lower()
+    for name, pal in _ALL_THEMES.items():
+        pal_bg = str(pal.get("bg", "")).lstrip("#").lower()
+        if pal_bg and pal_bg == bg_norm:
+            return pal
+    return None
 
 
 def compute_popup_width(measure, items, min_width: int = 260,
@@ -317,23 +336,39 @@ class PinnedCombobox(ttk.Combobox):
             
             # If we got valid colors, use them
             if bg and fg:
+                # Visual Refresh P2 plan section 6.2: prefer the theme's
+                # elevated_hi token for row hover (on darkforest that's
+                # #3a4c33, a coherent elevated surface) instead of the
+                # generic _adjust_color(bg, +18). Falls back to the
+                # lightening trick for themes that don't define these
+                # tokens yet.
+                pal_match = _find_theme_by_bg(bg)
+                if pal_match:
+                    hover_bg = pal_match.get("elevated_hi") or self._adjust_color(bg, 18)
+                    popup_bg = pal_match.get("elevated") or bg
+                    separator = pal_match.get("border_color") or self._adjust_color(bg, 28)
+                else:
+                    hover_bg = self._adjust_color(bg, 18)
+                    popup_bg = bg
+                    separator = self._adjust_color(bg, 28)
+
                 # If no explicit selected colors, derive them from accent
                 if not sel_bg:
                     sel_bg = self._adjust_color(bg, 30)
                 if not sel_fg:
                     sel_fg = COLOR_WHITE
-                
+
                 # Ensure selected_fg has enough contrast against selected_bg
                 sel_fg = self._ensure_contrast(sel_bg, sel_fg, fg)
-                
+
                 return {
-                    'bg': bg,
+                    'bg': popup_bg,
                     'fg': fg,
-                    'hover': self._adjust_color(bg, 18),
+                    'hover': hover_bg,
                     'selected_bg': sel_bg,
                     'selected_fg': sel_fg,
                     'header_fg': self._adjust_color(fg, -30),  # Dimmer for header
-                    'separator': self._adjust_color(bg, 28),
+                    'separator': separator,
                     'star_off': self._adjust_color(fg, -40),
                     'star_on': COLOR_STAR_ON,
                 }

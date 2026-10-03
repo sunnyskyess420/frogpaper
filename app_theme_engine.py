@@ -954,7 +954,13 @@ class FrogPaperAppThemeMixin:
         self._apply_sidebar_icons(accent)
 
         if hasattr(self, "image_label"):
-            self.image_label.configure(bg=pal["panel"], fg=pal["muted"],
+            # Visual Refresh P2 plan section 6.3: preview area gets a dark
+            # matte (#10160f on darkforest) so wallpapers read like art on
+            # a wall. The surrounding Card.TFrame already provides the
+            # hairline border, so highlightthickness stays 0. Falls back
+            # to pal["panel"] for themes that don't define preview_matte.
+            matte = pal.get("preview_matte", pal["panel"])
+            self.image_label.configure(bg=matte, fg=pal["muted"],
                                        highlightthickness=0)
         if hasattr(self, "preview_details_frame"):
             self.preview_details_frame.configure(style="Inner.TFrame")

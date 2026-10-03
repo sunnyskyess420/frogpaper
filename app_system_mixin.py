@@ -3,10 +3,9 @@
 Extracted verbatim from app.py: system-tray actions, the toast
 notification system, the Escape handler and the application quit path.
 
-NOTE: _show_toast references ImageTk, which is never bound in that
-scope - the resulting NameError is silently caught by the surrounding
-`except Exception: pass`.  That is pre-existing app.py behaviour and is
-preserved exactly here; do NOT add an ImageTk import to this module.
+Visual Refresh P2: the long-standing ImageTk NameError in _show_toast
+is now FIXED (the shadow actually renders). Toast colors upgraded to
+the elevated surface token set per plan section 7.
 
 All methods are mixed into FrogPaperApp (see app.py), so behaviour is
 unchanged: state still lives on self / self.app and every caller keeps
@@ -28,6 +27,16 @@ from app_runtime import (
 from app_themes import THEMES
 
 from theme import COLOR_BLACK, COLOR_MID_GRAY, COLOR_WHITE  # shared color constants (migrated inline hex)
+
+# Visual Refresh P2: import ImageTk so the toast drop-shadow actually
+# renders. Was previously a NameError silently swallowed by the
+# surrounding `except Exception: pass`, leaving toasts flat.
+try:
+    from PIL import ImageTk as _ImageTk
+    _IMAGETK_AVAILABLE = True
+except ImportError:  # pragma: no cover - headless environments
+    _IMAGETK_AVAILABLE = False
+    _ImageTk = None
 
 logger = logging.getLogger(__name__)
 
@@ -173,41 +182,51 @@ class FrogPaperAppSystemMixin:
         if self._toast_frame is None:
             self._init_toast_system()
 
-        # Theme-aware colors
+        # Theme-aware colors — Visual Refresh P2 plan section 7:
+        # toast uses the ELEVATED surface (#2f3f2a on darkforest) so it
+        # reads as a moment floating above the page, plus border_strong
+        # for the hairline edge. Falls back gracefully on themes that
+        # don't define these tokens yet.
         pal = THEMES.get(self.current_theme_name, THEMES["darkforest"])
-        toast_bg = pal.get("panel2", "#2a2a3e")
+        toast_bg = pal.get("elevated", pal.get("panel2", "#2a2a3e"))
         toast_fg = pal.get("text", COLOR_WHITE)
         muted_fg = pal.get("muted", COLOR_MID_GRAY)
+        toast_border = pal.get("border_strong", pal.get("border_color", "#333"))
 
-        # Color based on message type
-        colors = {
-            "info": pal.get("accent", "#4a90e2"),
-            "success": pal.get("success_color", "#2ecc71"),
-            "warning": pal.get("warning_color", "#f39c12"),
-            "error": pal.get("error_color", "#e74c3c")
+        # Semantic left bar — uses the shared status palette so info is
+        # teal, success is green, warning is amber, error is coral.
+        # Falls back to accent for unknown types.
+        from theme import STATUS_COLORS
+        semantic = {
+            "info":    STATUS_COLORS["info"],
+            "success": STATUS_COLORS["success"],
+            "warning": STATUS_COLORS["warning"],
+            "error":   STATUS_COLORS["error"],
         }
-        bg_color = colors.get(message_type, pal.get("accent", "#4a90e2"))
+        bar_color = semantic.get(message_type, pal.get("accent", "#4a90e2"))
 
         # Shadow frame behind the toast
         toast_shadow = tk.Frame(self._toast_frame, bg="", relief="flat", bd=0)
         toast_shadow.pack(side="bottom", fill="x", padx=20, pady=(0, 4))
 
-        # Glassmorphism-style toast
+        # Glassmorphism-style toast — elevated surface + hairline border
         toast = tk.Frame(toast_shadow, bg=toast_bg, relief="flat", bd=0,
-                         highlightbackground=pal.get("border_color", "#333"), highlightthickness=1)
+                         highlightbackground=toast_border, highlightthickness=1)
         toast.pack(side="bottom", fill="x", padx=0, pady=0)
 
-        # Add shadow image if ui_effects is available
-        if UI_EFFECTS_AVAILABLE:
+        # Add shadow image if ui_effects + ImageTk are available.
+        # Visual Refresh P2: the ImageTk NameError bug is now FIXED -
+        # we use the imported _ImageTk alias instead of an unbound name.
+        if UI_EFFECTS_AVAILABLE and _IMAGETK_AVAILABLE:
             try:
                 toast_shadow.update_idletasks()
                 tw = max(toast_shadow.winfo_width(), 320)
                 shadow_img = create_shadow_image(
                     tw, 50, shadow_color=COLOR_BLACK,
                     offset_x=0, offset_y=3, blur_radius=12,
-                    corner_radius=10, opacity=0.4
+                    corner_radius=12, opacity=0.4
                 )
-                shadow_photo = ImageTk.PhotoImage(shadow_img)
+                shadow_photo = _ImageTk.PhotoImage(shadow_img)
                 shadow_canvas = tk.Canvas(toast_shadow, highlightthickness=0, bd=0,
                                          height=shadow_img.height)
                 shadow_canvas.create_image(0, 0, anchor="nw", image=shadow_photo)
@@ -217,8 +236,8 @@ class FrogPaperAppSystemMixin:
             except Exception:
                 pass
 
-        # Left accent bar
-        accent = tk.Frame(toast, bg=bg_color, width=4)
+        # Left accent bar — semantic color per message type (info/success/warning/error)
+        accent = tk.Frame(toast, bg=bar_color, width=4)
         accent.pack(side="left", fill="y")
 
         # Message label

@@ -1050,17 +1050,28 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         gen_row.columnconfigure(1, weight=1)
 
         # Use RoundedButton with gradient if ui_effects is available
+        # Visual Refresh P2 plan section 6.1: button hierarchy — primary
+        # (Generate Image) is mint with dark text; secondary (Generate
+        # Prompt) is panel2 with light text. One primary per area.
         if UI_EFFECTS_AVAILABLE:
-            accent_preview = THEMES.get(
+            pal_preview = THEMES.get(
                 load_config().get("app_theme", "darkforest"),
                 THEMES["darkforest"]
-            ).get("accent", "#4a9eff")
+            )
+            accent_preview = pal_preview.get("accent", "#4a9eff")
+            # NEW primary_button_fg token (#0d2113 on darkforest); fall back
+            # to COLOR_WHITE for themes that don't define it yet (so we
+            # don't regress on the 17 themes still using bright accents).
+            primary_text = pal_preview.get("primary_button_fg", COLOR_WHITE)
+            panel2_preview = pal_preview.get("panel2", "#263322")
+            button_fg_preview = pal_preview.get("button_fg", COLOR_WHITE)
 
+            # Secondary button — Generate Prompt (panel2 fill, light text, no gradient)
             self._rounded_prompt_btn = RoundedButton(
                 gen_row, text="Generate Prompt", width=140, height=38,
-                fill_color=accent_preview, text_color=COLOR_WHITE,
+                fill_color=panel2_preview, text_color=button_fg_preview,
                 radius=10, font=("Segoe UI", 10, "bold"),
-                command=self.generate_prompt_only, use_gradient=True,
+                command=self.generate_prompt_only, use_gradient=False,
             )
             self._rounded_prompt_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 0))
             # Keep a reference to an invisible tk.Button for compatibility
@@ -1068,9 +1079,10 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             gen_prompt_btn.configure(font=tkfont.Font(family="Segoe UI", size=10, weight="bold"))
             gen_prompt_btn.grid_forget()
 
+            # Primary button — Generate Image (mint accent fill, dark text, subtle gradient)
             self._rounded_gen_btn = RoundedButton(
                 gen_row, text="Generate Image", width=140, height=38,
-                fill_color=accent_preview, text_color=COLOR_WHITE,
+                fill_color=accent_preview, text_color=primary_text,
                 radius=10, font=("Segoe UI", 10, "bold"),
                 command=self.generate, use_gradient=True,
             )
@@ -1589,8 +1601,10 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         bottom.grid(row=1, column=0, columnspan=3, sticky="ew", padx=8, pady=(4, 4))
         self.bottom_bar = bottom
 
-        # Cloud sync quick button (left side of status bar)
-        self._statusbar_sync_btn = ttk.Button(bottom, text="☁ Sync",
+        # Cloud sync quick button (left side of status bar).
+        # Visual Refresh P2 plan section 6.3: dropped the "☁ " cloud glyph
+        # because it renders as "?" on systems lacking an emoji font.
+        self._statusbar_sync_btn = ttk.Button(bottom, text="Sync",
                                                   command=self._manual_sync, width=9)
         self._statusbar_sync_btn.pack(side="left", padx=(0, 8))
         self._statusbar_sync_lbl = ttk.Label(bottom, text="", font=self.small_font)

@@ -3055,36 +3055,41 @@ class GalleryTab:
         """Apply selection highlight to all selected gallery cards (multi-select support)."""
         app = self.app
         pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
+        # Visual Refresh P2 plan section 6.3: selected cards use accent_soft
+        # (#8fd3a5 on darkforest) — visibly brighter than the old accent
+        # border which read as near-invisible. Falls back to accent for
+        # themes that don't define accent_soft yet.
         accent = pal.get("accent", pal["progress"])
+        accent_soft = pal.get("accent_soft", accent)
         border = pal.get("border_color", pal["panel2"])
         surface = pal.get("surface", pal["panel2"])
-        
+
         for path_str, card_data in app.gallery_cards.items():
             # Handle variable-length card data (some have 2, 3, 4, or 6 elements)
             card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
             name_label = card_data[1] if len(card_data) > 1 else None
             tags_label = card_data[2] if len(card_data) > 2 else None
             heart_btn = card_data[3] if len(card_data) > 3 else None
-            
+
             is_multi_sel = path_str in app.selected_gallery_paths
             is_primary = app.selected_gallery_path and path_str == str(app.selected_gallery_path)
-            
+
             if is_primary and len(app.selected_gallery_paths) > 1:
-                # Primary selection in multi-select: accent border, surface bg
+                # Primary selection in multi-select: accent_soft border (2px), surface bg
                 bg = surface
-                hi = accent
-                thickness = 3
+                hi = accent_soft
+                thickness = 2
             elif is_multi_sel:
-                # Multi-selected: surface bg, accent border
+                # Multi-selected: surface bg, accent_soft border (2px)
                 bg = surface
-                hi = accent
+                hi = accent_soft
                 thickness = 2
             else:
-                # Not selected: panel bg, border color
+                # Not selected: panel bg, border color (1px)
                 bg = pal["panel"]
                 hi = border
                 thickness = 1
-            
+
             card.config(bg=bg, highlightbackground=hi, highlightthickness=thickness)
             for child in card.winfo_children():
                 if isinstance(child, tk.Label):
@@ -3104,12 +3109,15 @@ class GalleryTab:
             card = card_data[0] if isinstance(card_data, (tuple, list)) else card_data
             name_label = card_data[1] if len(card_data) > 1 else None
             heart_btn = card_data[2] if len(card_data) > 2 else None
-            
+
             is_sel = path_str == sel_str
+            # Visual Refresh P2 plan section 6.3: selected uses accent_soft
+            # (brighter than accent) so the highlight reads clearly.
             accent = pal.get("accent", pal["progress"])
+            accent_soft = pal.get("accent_soft", accent)
             border = pal.get("border_color", pal["panel2"])
             bg = pal.get("surface", pal["panel2"]) if is_sel else pal["panel"]
-            hi = accent if is_sel else border
+            hi = accent_soft if is_sel else border
 
             card.config(bg=bg, highlightbackground=hi, highlightthickness=1 if not is_sel else 2)
             name_label.config(bg=bg, fg=pal["text"])

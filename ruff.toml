@@ -31,10 +31,9 @@ extend-exclude = [
 select = ["F821", "F811", "F401"]
 
 [lint.per-file-ignores]
-# KNOWN, DELIBERATE: `_show_toast` references `ImageTk`, which was never
-# bound in that scope. The NameError is swallowed by `except Exception`,
-# so the toast shadow image has never rendered. Pre-existing behaviour,
-# preserved verbatim through the modularization - do not "fix" by adding
-# the import without deciding the shadow SHOULD start appearing.
-# See IMPROVEMENT_STATUS_2026-09-01.md, Phase C notes.
-"app_system_mixin.py" = ["F821"]
+# Visual Refresh P2: the historical `_show_toast references ImageTk, which
+# was never bound in that scope` F821 baseline is RESOLVED. The ImageTk
+# import is now present at the top of app_system_mixin.py (as `_ImageTk`),
+# the toast drop-shadow actually renders, and the silent `except: pass`
+# fallback is no longer the code path. No per-file F821 carve-out needed
+# for this module any more.

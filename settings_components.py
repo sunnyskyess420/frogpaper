@@ -14,7 +14,7 @@ from typing import TYPE_CHECKING, Callable
 from theme import STATUS_COLORS as _SHARED_STATUS_COLORS  # single source of truth
 from theme import lighten as _theme_lighten
 
-from theme import COLOR_ACCENT, COLOR_ERROR, COLOR_GRAY_200, COLOR_GRAY_400, COLOR_GRAY_700, COLOR_GRAY_800, COLOR_GRAY_900, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING, COLOR_WHITE  # shared color constants (migrated inline hex)
+from theme import COLOR_ACCENT, COLOR_ERROR, COLOR_GRAY_200, COLOR_GRAY_400, COLOR_GRAY_700, COLOR_GRAY_800, COLOR_GRAY_900, COLOR_INFO, COLOR_MUTED, COLOR_SUCCESS, COLOR_WARNING, COLOR_WHITE  # shared color constants (migrated inline hex)
 
 if TYPE_CHECKING:
     from app import FrogPaperApp
@@ -228,7 +228,7 @@ class StatusBadge:
         "error": COLOR_ERROR,
         "success": COLOR_SUCCESS,
         "warning": COLOR_WARNING,
-        "info": "#3b82f6"
+        "info": COLOR_INFO,        # was hardcoded "#3b82f6" — now uses the shared teal info token
     }
     
     @staticmethod

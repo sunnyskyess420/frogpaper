@@ -8,7 +8,7 @@ import logging
 
 from tkinter import ttk
 
-from theme import COLOR_ACCENT, COLOR_ERROR, COLOR_GRAY_200, COLOR_GRAY_400, COLOR_GRAY_700, COLOR_GRAY_800, COLOR_GRAY_900, COLOR_MID_GRAY, COLOR_SUCCESS, COLOR_WARNING  # shared color constants (migrated inline hex)
+from theme import COLOR_ACCENT, COLOR_ERROR, COLOR_GRAY_200, COLOR_GRAY_400, COLOR_GRAY_700, COLOR_GRAY_800, COLOR_GRAY_900, COLOR_INFO, COLOR_MID_GRAY, COLOR_SUCCESS, COLOR_WARNING  # shared color constants (migrated inline hex)
 
 # Pinned Dropdown Options feature (since v1.4.1 - Favorite Items)
 try:
@@ -564,7 +564,7 @@ class SettingsTab(SettingsCategoriesMixin, SettingsProvidersMixin, SettingsSlide
                                         # coloured icons or status badges.
                                         status_colors = {
                                             COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING,
-                                            "#3b82f6", accent,
+                                            COLOR_INFO, accent,
                                         }
                                         if cur_fg and cur_fg not in (
                                             muted, text_fg, "gray", "grey",

@@ -24,28 +24,39 @@ logger = logging.getLogger(__name__)
 # ── Status colors ────────────────────────────────────────────────────────
 # One definition. settings_tab.py re-exports this for app.py; the cloud
 # provider cards read it via the class attribute.
+#
+# Visual Refresh P0 — these now follow the FrogPaper frog-palette family
+# (greens / coral / amber / teal) instead of raw Tailwind hues. Computed
+# WCAG ratios on the default darkforest bg #161d14 / panel2 #263322:
+#   connected/success #6fca90 -> 8.6 | 6.7
+#   not_connected    #93a092 -> 6.3 | 4.9
+#   error             #e58175 -> 6.3 | 4.9   (was alarm-red #ef4444)
+#   warning           #e3b355 -> 8.9 | 6.9
+#   info              #66bdcb -> 8.0 | 6.2   (teal counterpoint)
 STATUS_COLORS = {
-    "connected": "#22c55e",
-    "not_connected": "#6b7280",
-    "error": "#ef4444",
-    "success": "#22c55e",
-    "warning": "#f59e0b",
-    "info": "#3b82f6",
+    "connected":     "#6fca90",
+    "not_connected": "#93a092",
+    "error":         "#e58175",
+    "success":       "#6fca90",
+    "warning":       "#e3b355",
+    "info":          "#66bdcb",
 }
 
 # ── Shared semantic palette ──────────────────────────────────────────────
-COLOR_SUCCESS = "#22c55e"
-COLOR_WARNING = "#f59e0b"
-COLOR_ERROR = "#ef4444"
-COLOR_INFO = "#3b82f6"
-COLOR_MUTED = "#6b7280"
+# Mirror of STATUS_COLORS so legacy module-level names stay readable on
+# every theme. Updated in the same P0 pass.
+COLOR_SUCCESS = "#6fca90"
+COLOR_WARNING = "#e3b355"
+COLOR_ERROR = "#e58175"
+COLOR_INFO = "#66bdcb"     # teal — info/status accent (cool counterpoint to the greens)
+COLOR_MUTED = "#93a092"
 
 # ── Shared inline-color constants (Phase C hotspot migration) ────────────
 # The hex values below used to be hardcoded as string literals across the
 # UI modules (settings cards, gallery, tray, effects).  They now live here
 # so a palette tweak is a one-line change.  Values are byte-identical to
 # the literals they replaced - pure refactor, no visual change.
-COLOR_ACCENT = "#8b5cf6"        # violet — default card accent (Tailwind violet-500)
+COLOR_ACCENT = "#8fd3a5"        # was #8b5cf6 (violet) — now soft frog-green to align with the palette
 COLOR_WHITE = "#ffffff"
 COLOR_BLACK = "#000000"
 COLOR_NEAR_BLACK = "#111111"
@@ -87,10 +98,13 @@ FALLBACK_POPUP_COLORS = {
     "star_on": "#FFD700",
 }
 
-# Small floating tooltips
-TOOLTIP_BG = "#252525"
-TOOLTIP_FG = "#f5f5f5"
-TOOLTIP_BORDER = "#4a4a5a"
+# Small floating tooltips — elevated surface tone, frog-palette border.
+# Visual Refresh P0: was a neutral #252525 with a bluish #4a4a5a border
+# that matched no theme; now reads as a small elevated surface in the
+# darkforest family (and inherits well on other dark themes).
+TOOLTIP_BG = "#2f3f2a"
+TOOLTIP_FG = "#d6eacf"
+TOOLTIP_BORDER = "#52754a"
 
 
 # ── Color math ───────────────────────────────────────────────────────────

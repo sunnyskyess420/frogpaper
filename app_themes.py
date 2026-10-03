@@ -67,32 +67,44 @@ def _readable_fg(preferred, fallback_dark, fallback_light, surface,
 THEMES = {
 
     # ── Dark Moss / Lily Pad (default) ────────────────────────────────
+    # Visual Refresh P0 (Option B — mint primary): accent is now mint
+    # #63bd88 with dark text #0d2113 (7.4:1). button_hover no longer
+    # double-duties with progress. New tokens: border_strong, accent_soft,
+    # accent_hover, primary_button_fg, elevated, elevated_hi — these are
+    # consumed by P1 (sprites) and P2 (components) and gracefully fall
+    # back via pal.get(...) on the other 17 themes.
     "darkforest": {
         "bg":          "#161d14",
         "panel":       "#1e2a1b",
         "panel2":      "#263322",
         "surface":     "#2c3d28",
         "text":        "#d6eacf",
-        "muted":       "#7a9b72",
-        "entrybg":     "#1a2418",
+        "muted":       "#85a77c",          # was #7a9b72 — passes AA on panel2 at 9px
+        "entrybg":     "#1e2a1b",          # was #1a2418 — aligns with panel
         "entryfg":     "#cde4c6",
         "tabbg":       "#222e1f",
         "tabsel":      "#3a5c34",
-        "accent":      "#5aad78",
-        "progress":    "#4a8c62",
+        "accent":      "#63bd88",          # was #5aad78 — mint primary fill (Option B)
+        "progress":    "#4a8c62",          # keep — progress bar stays deep green
         "actions":     ["#2a6644","#358055","#429966","#52b077","#65c48a","#7dd49e"],
-        "button_fg":   "#e6f5e0",
-        "button_hover":"#4a8c62",
+        "button_fg":   "#d6eacf",          # was #e6f5e0 — secondary button text
+        "primary_button_fg": "#0d2113",   # NEW — dark text on mint primary (Option B)
+        "button_hover":"#32432d",          # was #4a8c62 — neutral lift, no double-duty
+        "accent_hover":"#4fb077",         # NEW — mint hover (slightly darker than rest)
+        "accent_soft": "#8fd3a5",          # NEW — green text/icons on dark surfaces
         "scrollbar_bg":"#1e2a1b",
-        "scrollbar_fg":"#4a8c62",
+        "scrollbar_fg":"#4f9e70",          # was #4a8c62 — thumb vs trough 4.1:1
         "selected_bg": "#3a5c34",
         "selected_fg": "#f0fff0",
-        "border_color":"#334d2f",
+        "border_color":"#42603b",          # was #334d2f — visible without shouting
+        "border_strong":"#52754a",         # NEW — form-field borders, 3.28:1 vs bg
         "separator":   "#263322",
-        "success_color":"#65c48a",
-        "error_color": "#c0392b",
-        "warning_color":"#e6a020",
-        "tag_fg":      "#7dd49e",
+        "elevated":    "#2f3f2a",          # NEW — popups/toasts/hover surfaces
+        "elevated_hi": "#3a4c33",          # NEW — row hover inside popups
+        "success_color":"#6fca90",         # was #65c48a
+        "error_color": "#e58175",          # was #c0392b — soft coral, not alarm-red
+        "warning_color":"#e3b355",         # was #e6a020
+        "tag_fg":      "#8fd3a5",          # was #7dd49e — unified with accent_soft
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
         "glow_color":   "",

@@ -799,27 +799,38 @@ THEMES = {
 
 UI = {
 
-    "small_pad":       5,   # tight inline spacing (icon-to-label, radio buttons)
+    # Visual Refresh P3 plan section 5.1: spacing ramp is now 4-8-12-16-24.
+    # The legacy small_pad/med_pad/large_pad keys are kept (callers still
+    # reference them) but adjusted to land on the ramp.
+    "small_pad":       8,   # was 5  - tight inline spacing (icon-to-label)
 
-    "med_pad":        10,   # standard row/column padding
+    "med_pad":        12,   # was 10 - standard row/column padding
 
-    "large_pad":      16,   # between control groups
+    "large_pad":      16,   # between control groups (already on the ramp)
 
-    "section_spacing": 20,  # between LabelFrame sections inside a tab
+    "section_spacing": 24,  # was 20 - between LabelFrame sections inside a tab
 
-    "card_pad":         6,  # gallery/favorites card outer margin
+    "card_pad":         10,  # was 6  - gallery/favorites card outer margin
 
-    "card_inner":       4,  # gallery/favorites card inner padding
+    "card_inner":       8,  # was 4  - gallery/favorites card inner padding
 
-    "button_padx":      4,  # horizontal spacing between action buttons
+    "button_padx":      6,  # was 4  - horizontal spacing between action buttons
 
-    "tab_padding":    (16, 9),  # ttk.Notebook tab padding (same as style)
+    "tab_padding":    (18, 9),  # was (16, 9) - ttk.Notebook tab padding
 
-    "heading_font":  ("Segoe UI", 11, "bold"),
+    # Visual Refresh P3 plan section 4: type scale - 6 steps, weights
+    # reserved for headings and buttons. New 13px title-s step fills
+    # the previous 11->18 gap.
+    "heading_font":  ("Segoe UI", 11, "bold"),   # body-l heading (kept; tab/section sub-headers)
+    "title_s_font":  ("Segoe UI", 13, "bold"),   # NEW - card titles, dialog titles, section headers
+    "title_l_font":  ("Segoe UI", 18, "bold"),   # settings page headers, About title (was 20)
 
     "body_font":     ("Segoe UI", 10),
+    "body_l_font":   ("Segoe UI", 11),           # NEW - reading text (prompt preview, tutorials)
 
-    "small_font":    ("Segoe UI", 9),
+    "small_font":    ("Segoe UI", 9),            # micro: captions, timestamps, file size, status bar
+    "label_font":    ("Segoe UI", 10),           # NEW - helper text, dialog body, list rows
+    "body_strong_font": ("Segoe UI", 10, "bold"), # NEW - field labels, button labels
 
     "mono_font":     ("Consolas", 10),
 

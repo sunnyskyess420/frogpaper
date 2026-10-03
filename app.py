@@ -443,17 +443,23 @@ class ThemedDialog:
             bg = accent if is_primary else pal["panel2"]
             # Secondary buttons sit on the panel2 surface — a white
             # button_fg (neoncyber_light) would be invisible there.
+            # Visual Refresh P2: primary button uses primary_button_fg
+            # token (dark text on mint) when the theme defines it.
             if is_primary:
-                fg = _readable_fg(pal["button_fg"], COLOR_NEAR_BLACK,
-                                  COLOR_WHITE, accent)
+                primary_fg = pal.get("primary_button_fg")
+                if primary_fg:
+                    fg = primary_fg
+                else:
+                    fg = _readable_fg(pal["button_fg"], COLOR_NEAR_BLACK,
+                                      COLOR_WHITE, accent)
             else:
                 fg = _readable_fg(pal["text"], COLOR_NEAR_BLACK,
                                   COLOR_WHITE, pal["panel2"])
             if UI_EFFECTS_AVAILABLE and is_primary:
                 btn = RoundedButton(
-                    btn_row, text=label, width=80, height=30,
+                    btn_row, text=label, width=80, height=32,
                     fill_color=accent, text_color=fg,
-                    radius=8, font=("Segoe UI", 9, "bold"),
+                    radius=10, font=("Segoe UI", 9, "bold"),
                     command=make_cmd(label), use_gradient=True,
                 )
                 btn.pack(side="right", padx=(6, 0))
@@ -2240,7 +2246,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         title_label = tk.Label(
             content_frame,
             text="🐸 FrogPaper",
-            font=("Segoe UI", 20, "bold"),
+            font=("Segoe UI", 18, "bold"),  # Visual Refresh P3 plan section 4: was 20 — align with title_l_font
             bg=pal["panel"],
             fg=pal.get("accent", pal["text"])
         )

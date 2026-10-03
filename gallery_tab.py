@@ -1358,7 +1358,7 @@ class GalleryTab:
                                    selectforeground=pal["bg"],
                                    highlightthickness=1,
                                    highlightbackground=pal.get("border_color", pal["panel2"]),
-                                   font=("TkDefaultFont", 11),
+                                   font=("Segoe UI", 11),  # was ("TkDefaultFont", 11) — Visual Refresh P3 plan section 4
                                    relief="flat", bd=2)
         font_listbox.pack(fill="x", pady=(0, 8))
 

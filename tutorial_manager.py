@@ -557,7 +557,7 @@ class TutorialManager:
         title_label = ttk.Label(
             main_container,
             text="🎓 FrogPaper Tutorials",
-            font=("Segoe UI", 20, "bold"),
+            font=("Segoe UI", 18, "bold"),  # Visual Refresh P3 plan section 4: was 20 — align with title_l_font
             foreground=pal["accent"]
         )
         title_label.pack(pady=(0, 15))

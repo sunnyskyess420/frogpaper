@@ -720,7 +720,7 @@ class HelpResourceCard:
         self.icon_label = tk.Label(
             self.card,
             text=icon,
-            font=("Segoe UI", 16),
+            font=("Segoe UI", 13),  # Visual Refresh P3 plan section 4: was 16 — align with title_s_font
             fg=self._accent,
             bg=self._card_bg
         )

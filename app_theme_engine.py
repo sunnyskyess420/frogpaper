@@ -779,7 +779,7 @@ class FrogPaperAppThemeMixin:
             troughcolor=pal["panel2"],
             borderwidth=0,
             relief="flat",
-            thickness=14,
+            thickness=10,  # Visual Refresh P1 section 6.3: was 14 - slimmer countdown slab
         )
         style.configure("Vertical.TProgressbar",
             background=accent,

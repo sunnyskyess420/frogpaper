@@ -29,8 +29,8 @@ logger = logging.getLogger(__name__)
 
 # ── Constants ────────────────────────────────────────────────────────────
 IMG_SIZE = 40          # Base sprite size (pixels); enough for 9-patch stretch
-CORNER_R = 6           # Corner radius in pixels
-BORDER_W = 2           # Border width for entry / combobox fields
+CORNER_R = 8           # Corner radius in pixels (was 6 — Visual Refresh P1)
+BORDER_W = 1           # Border width for entry / combobox fields (was 2 — P1 section 6.2: 1px #52754a)
 
 
 # ── Drawing helpers ─────────────────────────────────────────────────────
@@ -196,6 +196,14 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     hover      = pal.get("button_hover", _lighten(button_bg, 25))
     tabsel     = pal.get("tabsel", _lighten(accent, 15))
     disabled_bg = _darken(bg, 20)
+    # Visual Refresh P1 — new tokens with safe fallbacks for the 17 themes
+    # that don't define them yet. pal.get(...) returns the fallback so no
+    # KeyError is possible on themes other than darkforest.
+    border_strong  = pal.get("border_strong", border)             # form-field 1px border (3.28:1 vs bg)
+    accent_hover_c = pal.get("accent_hover", _lighten(accent, 25))  # primary button hover
+    elevated       = pal.get("elevated", panel2)                  # popup / toast surface
+    elevated_hi    = pal.get("elevated_hi", _lighten(panel2, 12))  # row hover inside popups
+    progress_color = pal.get("progress", accent)                 # progress bar fill (deep green, not mint)
 
     # ── Make entry/combobox fields visually distinct (obviously editable) ──
     # Use a noticeably lighter background than the page bg so the user
@@ -224,10 +232,13 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  ENTRY — slightly lighter bg + clear border = obviously editable
     # ════════════════════════════════════════════════════════════════
     try:
-        e_rest  = register_image(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
-        e_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
-        e_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
-        e_dis   = register_image(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
+        # Visual Refresh P1 section 6.2: 1px border_strong at rest,
+        # lighter on hover (NO width change - was 3px chunky+faint),
+        # accent on focus. Disabled dims the border.
+        e_rest  = register_image(_rr(entry_field_bg, outline=border_strong, outline_w=BORDER_W))
+        e_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border_strong, 30), outline_w=BORDER_W))
+        e_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W))
+        e_dis   = register_image(_rr(disabled_bg, outline=_darken(border_strong, 20), outline_w=BORDER_W))
 
         style.element_create("Frog.Entry.field", "image",
             e_rest, ("hover", e_hov), ("focus", e_foc), ("disabled", e_dis),
@@ -247,13 +258,14 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  COMBOBOX
     # ════════════════════════════════════════════════════════════════
     try:
-        c_rest  = register_image(_rr(entry_field_bg, outline=border, outline_w=BORDER_W))
-        c_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border, 40), outline_w=BORDER_W + 1))
-        c_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W + 1))
-        c_dis   = register_image(_rr(disabled_bg, outline=_darken(border, 20), outline_w=BORDER_W))
+        # Visual Refresh P1 section 6.2: 1px border_strong (was 2px border_color)
+        c_rest  = register_image(_rr(entry_field_bg, outline=border_strong, outline_w=BORDER_W))
+        c_hov   = register_image(_rr(entry_field_bg, outline=_lighten(border_strong, 30), outline_w=BORDER_W))
+        c_foc   = register_image(_rr(entry_field_bg, outline=accent, outline_w=BORDER_W))
+        c_dis   = register_image(_rr(disabled_bg, outline=_darken(border_strong, 20), outline_w=BORDER_W))
         c_ro    = register_image(_rr(button_bg, outline=border, outline_w=BORDER_W))
         c_ro_h  = register_image(_rr(hover, outline=border, outline_w=BORDER_W))
-        c_ro_f  = register_image(_rr(hover, outline=accent, outline_w=BORDER_W + 1))
+        c_ro_f  = register_image(_rr(hover, outline=accent, outline_w=BORDER_W))
 
         style.element_create("Frog.Combobox.field", "image",
             c_rest, ("hover", c_hov), ("focus", c_foc), ("disabled", c_dis),
@@ -323,8 +335,11 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  ACCENT.TBUTTON
     # ════════════════════════════════════════════════════════════════
     try:
+        # Visual Refresh P1: primary (accent) button hover now uses the
+        # accent_hover token (mint slightly darker than rest) instead of
+        # _lighten(accent, 25). On darkforest: rest #63bd88 -> hover #4fb077.
         a_rest = register_image(_rr(accent, radius=CORNER_R + 1))
-        a_hov  = register_image(_rr(_lighten(accent, 25), radius=CORNER_R + 1))
+        a_hov  = register_image(_rr(accent_hover_c, radius=CORNER_R + 1))
         a_prs  = register_image(_rr(_darken(accent, 20), radius=CORNER_R + 1))
         a_dis  = register_image(_rr(_darken(disabled_bg, 10), radius=CORNER_R + 1))
 
@@ -398,7 +413,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
             register_image(cb["off"]), ("selected", register_image(cb["on"])),
             ("disabled", register_image(cb["dis"])),
             ("selected disabled", register_image(cb["dis"])),
-            ("hover", register_image(_make_checkbox(_lighten(panel2, 15), accent, button_fg)["off"])),
+            ("hover", register_image(_make_checkbox(elevated_hi, accent, button_fg)["off"])),
             ("selected hover", register_image(cb["on"])),
             ("focus", register_image(cb["off"])),
             ("selected focus", register_image(cb["on"])),
@@ -427,7 +442,7 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
             register_image(rb["off"]), ("selected", register_image(rb["on"])),
             ("disabled", register_image(rb["dis"])),
             ("selected disabled", register_image(rb["dis"])),
-            ("hover", register_image(_make_radio(_lighten(panel2, 15), accent, button_fg)["off"])),
+            ("hover", register_image(_make_radio(elevated_hi, accent, button_fg)["off"])),
             ("selected hover", register_image(rb["on"])),
             border=CORNER_R, sticky="w")
         style.layout("TRadiobutton", [
@@ -541,16 +556,19 @@ def apply_rounded_elements(style, pal: dict, root: tk.Tk) -> None:
     #  PROGRESSBAR
     # ════════════════════════════════════════════════════════════════
     try:
-        pb_tr = register_image(_rr(_darken(bg, 10), outline=border, radius=4, outline_w=1))
-        pb_br = register_image(_rr(accent, radius=4))
+        # Visual Refresh P1 section 6.3: trough uses panel2 (was _darken(bg, 10)),
+        # bar uses progress_color (was accent - accent is now mint, but the
+        # plan keeps the deep green #4a8c62 progress fill). Radius 4 -> 5.
+        pb_tr = register_image(_rr(pal.get("panel2", bg), outline=border, radius=5, outline_w=1))
+        pb_br = register_image(_rr(progress_color, radius=5))
         style.element_create("Frog.Horizontal.Progressbar.trough", "image",
-            pb_tr, border=4, sticky="ew")
+            pb_tr, border=5, sticky="ew")
         style.element_create("Frog.Horizontal.Progressbar.pbar", "image",
-            pb_br, border=4, sticky="ew")
+            pb_br, border=5, sticky="ew")
         style.element_create("Frog.Vertical.Progressbar.trough", "image",
-            pb_tr, border=4, sticky="ns")
+            pb_tr, border=5, sticky="ns")
         style.element_create("Frog.Vertical.Progressbar.pbar", "image",
-            pb_br, border=4, sticky="ns")
+            pb_br, border=5, sticky="ns")
         logger.debug("  PROGRESSBAR rounded OK")
     except Exception as exc:
         logger.warning("  PROGRESSBAR rounded failed: %s", exc)

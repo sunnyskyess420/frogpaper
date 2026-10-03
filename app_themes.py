@@ -145,6 +145,14 @@ THEMES = {
         "success_color":"#388e3c",
         "error_color": "#c62828",
         "warning_color":"#ef6c00",
+        "border_strong":"#97b78f",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#29783c",   # softer accent for text/icons
+        "accent_hover": "#318044",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#ecf3e8",   # popup / toast surface
+        "elevated_hi": "#e8efe4",   # row hover inside popups
+        "preview_matte":"#eaf1e6",   # dark matte behind preview images
+        "border_color":"#b0d0a8",   # keep existing (tuned in audit)
         "tag_fg":      "#2e7d32",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -186,6 +194,14 @@ THEMES = {
         "success_color":"#0288d1",
         "error_color": "#c62828",
         "warning_color":"#ef6c00",
+        "border_strong":"#73afcf",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#066aa4",   # softer accent for text/icons
+        "accent_hover": "#0e72ac",   # primary button hover
+        "primary_button_fg": "#ffffff",   # text on primary (accent) fill
+        "elevated":    "#e6f0f8",   # popup / toast surface
+        "elevated_hi": "#e2ecf4",   # row hover inside popups
+        "preview_matte":"#e4eef6",   # dark matte behind preview images
+        "border_color":"#8cc8e8",   # keep existing (tuned in audit)
         "tag_fg":      "#0277bd",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -225,6 +241,14 @@ THEMES = {
         "success_color":"#ff8a65",
         "error_color": "#b71c1c",
         "warning_color":"#ffd54f",
+        "border_strong":"#5e3818",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#fe965e",   # softer accent for text/icons
+        "accent_hover": "#d46c34",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#3c2616",   # popup / toast surface
+        "elevated_hi": "#422c1c",   # row hover inside popups
+        "preview_matte":"#160b02",   # dark matte behind preview images
+        "border_color":"#522c0c",   # keep existing (tuned in audit)
         "tag_fg":      "#ff8a65",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -265,6 +289,14 @@ THEMES = {
         "success_color":"#f57c00",
         "error_color": "#c62828",
         "warning_color":"#fdd835",
+        "border_strong":"#d7b387",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#c4540c",   # softer accent for text/icons
+        "accent_hover": "#cc5c14",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#faf4ec",   # popup / toast surface
+        "elevated_hi": "#f6f0e8",   # row hover inside popups
+        "preview_matte":"#f8f2ea",   # dark matte behind preview images
+        "border_color":"#f0cca0",   # keep existing (tuned in audit)
         "tag_fg":      "#e65100",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -304,6 +336,14 @@ THEMES = {
         "success_color":"#aaaaaa",
         "error_color": "#ff4444",
         "warning_color":"#ffcc00",
+        "border_strong":"#3c3c3c",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#aeeeae",   # softer accent for text/icons
+        "accent_hover": "#84c484",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#222222",   # popup / toast surface
+        "elevated_hi": "#282828",   # row hover inside popups
+        "preview_matte":"#020202",   # dark matte behind preview images
+        "border_color":"#303030",   # keep existing (tuned in audit)
         "tag_fg":      "#cccccc",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -344,6 +384,14 @@ THEMES = {
         "success_color":"#333333",
         "error_color": "#cc0000",
         "warning_color":"#cc7700",
+        "border_strong":"#b3b3b3",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#26763c",   # softer accent for text/icons
+        "accent_hover": "#2e7e44",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#f4f4f4",   # popup / toast surface
+        "elevated_hi": "#f0f0f0",   # row hover inside popups
+        "preview_matte":"#f2f2f2",   # dark matte behind preview images
+        "border_color":"#cccccc",   # keep existing (tuned in audit)
         "tag_fg":      "#333333",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -383,6 +431,14 @@ THEMES = {
         "success_color":"#40e0b0",
         "error_color": "#ff4070",
         "warning_color":"#ffd040",
+        "border_strong":"#503484",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#e682ff",   # softer accent for text/icons
+        "accent_hover": "#bc58f3",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#2a1e46",   # popup / toast surface
+        "elevated_hi": "#30244c",   # row hover inside popups
+        "preview_matte":"#0c0218",   # dark matte behind preview images
+        "border_color":"#442878",   # keep existing (tuned in audit)
         "tag_fg":      "#d090ff",
         "heading_font_size": 12, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -423,6 +479,14 @@ THEMES = {
         "success_color":"#558b2f",
         "error_color": "#b71c1c",
         "warning_color":"#e65100",
+        "border_strong":"#b3a787",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#8c5c2c",   # softer accent for text/icons
+        "accent_hover": "#946434",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#f0e9dc",   # popup / toast surface
+        "elevated_hi": "#ece5d8",   # row hover inside popups
+        "preview_matte":"#eee7da",   # dark matte behind preview images
+        "border_color":"#ccc0a0",   # keep existing (tuned in audit)
         "tag_fg":      "#6d4c41",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -462,6 +526,14 @@ THEMES = {
         "success_color":"#80cbc4",
         "error_color": "#ef9a9a",
         "warning_color":"#ffe082",
+        "border_strong":"#505050",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#98dcbe",   # softer accent for text/icons
+        "accent_hover": "#6eb294",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#3c3c3c",   # popup / toast surface
+        "elevated_hi": "#424242",   # row hover inside popups
+        "preview_matte":"#1c1c1c",   # dark matte behind preview images
+        "border_color":"#444444",   # keep existing (tuned in audit)
         "tag_fg":      "#aaaaaa",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -501,6 +573,14 @@ THEMES = {
         "success_color":"#5898c8",
         "error_color": "#e05060",
         "warning_color":"#f0b030",
+        "border_strong":"#2e3f50",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#66b7ea",   # softer accent for text/icons
+        "accent_hover": "#3c8dc0",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#243244",   # popup / toast surface
+        "elevated_hi": "#2a384a",   # row hover inside popups
+        "preview_matte":"#08101a",   # dark matte behind preview images
+        "border_color":"#223344",   # keep existing (tuned in audit)
         "tag_fg":      "#80b8e0",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -540,6 +620,14 @@ THEMES = {
         "success_color":"#38a8e8",
         "error_color": "#e85060",
         "warning_color":"#f0b830",
+        "border_strong":"#26466c",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#56c6ff",   # softer accent for text/icons
+        "accent_hover": "#2c9cdc",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#1c2e4a",   # popup / toast surface
+        "elevated_hi": "#223450",   # row hover inside popups
+        "preview_matte":"#041022",   # dark matte behind preview images
+        "border_color":"#1a3a60",   # keep existing (tuned in audit)
         "tag_fg":      "#58b0e8",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -579,6 +667,14 @@ THEMES = {
         "success_color":"#6ae845",
         "error_color":  "#d94f1e",   # red-eyed treefrog red
         "warning_color":"#f0d020",   # golden poison frog yellow
+        "border_strong":"#2a5924",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#7bf848",   # softer accent for text/icons
+        "accent_hover": "#51ce1e",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#1c391f",   # popup / toast surface
+        "elevated_hi": "#223f25",   # row hover inside popups
+        "preview_matte":"#041402",   # dark matte behind preview images
+        "border_color":"#1e4d18",   # keep existing (tuned in audit)
         "tag_fg":       "#a8f060",   # bright frog-spot green
         "heading_font_size": 11, "label_font_weight": "bold",
         # Special effects for FrogSwamp
@@ -619,6 +715,14 @@ THEMES = {
         "success_color":"#3d8c20",
         "error_color": "#c0392b",
         "warning_color":"#e6a020",
+        "border_strong":"#719f57",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#29780c",   # softer accent for text/icons
+        "accent_hover": "#318014",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#e4f1dc",   # popup / toast surface
+        "elevated_hi": "#e0edd8",   # row hover inside popups
+        "preview_matte":"#e2efda",   # dark matte behind preview images
+        "border_color":"#8ab870",   # keep existing (tuned in audit)
         "tag_fg":      "#2e7a18",
         "heading_font_size": 11, "label_font_weight": "bold",
         # Special effects for FrogSwamp Light
@@ -659,6 +763,14 @@ THEMES = {
         "success_color":"#008868",
         "error_color": "#cc2244",
         "warning_color":"#b87800",
+        "border_strong":"#af87bf",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#7414cc",   # softer accent for text/icons
+        "accent_hover": "#7c1cd4",   # primary button hover
+        "primary_button_fg": "#ffffff",   # text on primary (accent) fill
+        "elevated":    "#f4ecfb",   # popup / toast surface
+        "elevated_hi": "#f0e8f7",   # row hover inside popups
+        "preview_matte":"#f2eaf9",   # dark matte behind preview images
+        "border_color":"#c8a0d8",   # keep existing (tuned in audit)
         "tag_fg":      "#7020b8",
         "heading_font_size": 12, "label_font_weight": "bold",
         # Default special effects (disabled)
@@ -698,6 +810,14 @@ THEMES = {
         "success_color":"#80a040",
         "error_color": "#c04040",
         "warning_color":"#c09030",
+        "border_strong":"#4c3c2c",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#de9e5e",   # softer accent for text/icons
+        "accent_hover": "#b47434",   # primary button hover
+        "primary_button_fg": "#111111",   # text on primary (accent) fill
+        "elevated":    "#362a26",   # popup / toast surface
+        "elevated_hi": "#3c302c",   # row hover inside popups
+        "preview_matte":"#140e0a",   # dark matte behind preview images
+        "border_color":"#403020",   # keep existing (tuned in audit)
         "tag_fg":      "#c08040",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -738,6 +858,14 @@ THEMES = {
         "success_color":"#406050",
         "error_color": "#c04040",
         "warning_color":"#c08030",
+        "border_strong":"#979797",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#3c6c4c",   # softer accent for text/icons
+        "accent_hover": "#447454",   # primary button hover
+        "primary_button_fg": "#ffffff",   # text on primary (accent) fill
+        "elevated":    "#ececec",   # popup / toast surface
+        "elevated_hi": "#e8e8e8",   # row hover inside popups
+        "preview_matte":"#eaeaea",   # dark matte behind preview images
+        "border_color":"#b0b0b0",   # keep existing (tuned in audit)
         "tag_fg":      "#406050",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)
@@ -778,6 +906,14 @@ THEMES = {
         "success_color":"#185090",
         "error_color": "#c04050",
         "warning_color":"#c08030",
+        "border_strong":"#87a7bf",   # Visual Refresh audit — stronger form-field border
+        "accent_soft":  "#0c4c8c",   # softer accent for text/icons
+        "accent_hover": "#145494",   # primary button hover
+        "primary_button_fg": "#ffffff",   # text on primary (accent) fill
+        "elevated":    "#e4ecf4",   # popup / toast surface
+        "elevated_hi": "#e0e8f0",   # row hover inside popups
+        "preview_matte":"#e2eaf2",   # dark matte behind preview images
+        "border_color":"#a0c0d8",   # keep existing (tuned in audit)
         "tag_fg":      "#2060a0",
         "heading_font_size": 11, "label_font_weight": "normal",
         # Default special effects (disabled)

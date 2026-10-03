@@ -1325,19 +1325,28 @@ class FrogPaperAppThemeMixin:
             accent_fg = _readable_fg(pal.get("button_fg", COLOR_WHITE),
                                      COLOR_NEAR_BLACK, COLOR_WHITE, accent)
             # ── Re-render sidebar buttons with theme accent color ──
+            # Visual Refresh P2 plan section 6.1: RESPECT the button hierarchy.
+            # Primary (Generate Image) = accent fill + primary_button_fg text.
+            # Secondary (Generate Prompt) = panel2 fill + button_fg text, no gradient.
+            # Was: both buttons overridden to accent fill + accent_fg text, which
+            # flattened the hierarchy that app.py sets up at construction time.
+            primary_fg = pal.get("primary_button_fg") or accent_fg
+            secondary_fg = pal.get("button_fg", COLOR_WHITE)
+            secondary_fill = pal.get("panel2", pal.get("bg", "#263322"))
             if hasattr(self, '_rounded_gen_btn') and self._rounded_gen_btn:
                 self._rounded_gen_btn.fill_color = accent
-                self._rounded_gen_btn.text_color = accent_fg
+                self._rounded_gen_btn.text_color = primary_fg
                 self._rounded_gen_btn.gradient_end = self._lighten_color(
                     accent, 20)
                 self._rounded_gen_btn._render_images(
                     self._rounded_gen_btn.width, self._rounded_gen_btn.height)
                 self._rounded_gen_btn._on_leave()
             if hasattr(self, '_rounded_prompt_btn') and self._rounded_prompt_btn:
-                self._rounded_prompt_btn.fill_color = accent
-                self._rounded_prompt_btn.text_color = accent_fg
-                self._rounded_prompt_btn.gradient_end = self._lighten_color(
-                    accent, 20)
+                # Secondary button: panel2 fill, light text, no gradient
+                # (gradient_end == fill_color renders flat).
+                self._rounded_prompt_btn.fill_color = secondary_fill
+                self._rounded_prompt_btn.text_color = secondary_fg
+                self._rounded_prompt_btn.gradient_end = secondary_fill
                 self._rounded_prompt_btn._render_images(
                     self._rounded_prompt_btn.width, self._rounded_prompt_btn.height)
                 self._rounded_prompt_btn._on_leave()

@@ -61,6 +61,17 @@ class TestAppStartupSmoke(unittest.TestCase):
         except Exception as exc:  # no display (headless CI without Xvfb)
             raise unittest.SkipTest(f"No usable Tk display: {exc}")
 
+        # Never let this class' theme loops touch the real config.json:
+        # every apply_theme() call persists the active theme, and this
+        # test drives every palette.  Point config I/O at a throwaway file.
+        import tempfile
+        import utils as utils_mod
+        from pathlib import Path as _Path
+
+        cls._config_tmp = tempfile.TemporaryDirectory()
+        cls._orig_config_file = utils_mod.CONFIG_FILE
+        utils_mod.CONFIG_FILE = _Path(cls._config_tmp.name) / "config.json"
+
         try:
             from app import FrogPaperApp
 
@@ -77,6 +88,17 @@ class TestAppStartupSmoke(unittest.TestCase):
                 cls.root.destroy()
             except Exception:
                 pass
+        # Restore the real config path / clean up the throwaway file.
+        try:
+            import utils as utils_mod
+
+            utils_mod.CONFIG_FILE = cls._orig_config_file
+        except Exception:
+            pass
+        try:
+            cls._config_tmp.cleanup()
+        except Exception:
+            pass
 
     def test_app_built_with_valid_theme(self):
         self.assertIsNotNone(self.app)

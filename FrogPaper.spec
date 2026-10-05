@@ -13,7 +13,7 @@ a = Analysis(
     ['app.py'],
     pathex=[os.getcwd()],
     binaries=[],
-    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('presets.json.bak', '.'), ('gallery_tags.json.bak', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('prompt_library.json.bak', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.'), ('user_thesaurus.json.bak', '.'), ('keyword_expansion.json', '.')] + py_files,
+    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.')] + py_files,
     # SECURITY: 'config.json' is intentionally NOT bundled here. It may contain
     # the developer's real HuggingFace / Google / Dropbox / OneDrive secrets.
     # A clean 'config.template.json' is bundled instead and seeded to

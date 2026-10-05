@@ -77,8 +77,11 @@ class TkTestBase(unittest.TestCase):
         focus_set() only *requests* focus from the window manager; under
         Xvfb (no WM) the request is never granted and key events go
         nowhere. focus_force() bypasses the WM and works everywhere.
+        Only deiconify when the window is actually hidden - deiconifying
+        an already-visible window steals focus away from open popups.
         """
-        self.root.deiconify()
+        if not self.root.winfo_viewable():
+            self.root.deiconify()
         self.root.update()
         widget.focus_force()
         self.root.update()
@@ -325,7 +328,15 @@ class TestPopupKeyboardOperable(TkTestBase):
         return combo
 
     def _open_popup(self, combo):
-        result = combo._on_click(types.SimpleNamespace(x=2, y=2))
+        # Make the window viewable and laid out first: the combobox needs
+        # real geometry so we can click the arrow-button region explicitly
+        # (text-area clicks intentionally allow typing instead).
+        if not self.root.winfo_viewable():
+            self.root.deiconify()
+            self.root.update()
+        width = combo.winfo_width()
+        self.assertGreater(width, 40, "combobox has no real geometry yet")
+        result = combo._on_click(types.SimpleNamespace(x=width - 5, y=2))
         self.assertEqual(result, "break")
         self.assertIsNotNone(combo._popup_window)
         self.root.update()

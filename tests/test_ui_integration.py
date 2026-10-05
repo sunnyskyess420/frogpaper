@@ -371,9 +371,16 @@ class TestDropdownFocusReturn(TkTestBase):
         self.root.update_idletasks()
         self.root.update()
 
-    def test_popup_opens_on_text_area_click(self):
+    def test_text_area_click_allows_typing_and_arrow_click_opens_popup(self):
         self._focus_elsewhere()
+        # Text-area click: allow typing, do NOT open the starred popup.
         result = self.combo._on_click(types.SimpleNamespace(x=2, y=2))
+        self.assertIsNone(result)
+        self.assertIsNone(self.combo._popup_window)
+        # Arrow-button click: open the starred popup and consume the click.
+        width = self.combo.winfo_width()
+        self.assertGreater(width, 40, "combobox has no real geometry")
+        result = self.combo._on_click(types.SimpleNamespace(x=width - 5, y=2))
         self.assertEqual(result, "break")
         self.assertIsNotNone(self.combo._popup_window)
         self.combo._close_popup()

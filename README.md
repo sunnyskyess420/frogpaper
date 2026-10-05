@@ -315,6 +315,22 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.6.0 - Visual Refresh
+**Look & Feel:**
+- **Visual Refresh across all 18 themes**: new palette tokens (elevated surfaces, muted text, stronger borders) extended to every dark and light theme, harmonized control surfaces, refined buttons/tabs/cards, and spacing & type polish throughout
+- **No more startup theme flash**: the window is now built and fully themed while hidden, then appears - instead of visibly switching from raw system colours to your chosen theme mid-load
+
+**Fixes:**
+- **Mouse-wheel scrolling fixed everywhere**: the gallery, sidebar and prompt preview worked, and now the Settings window, tutorial windows and other dialogs scroll too - wheel events are routed to the page under the pointer, and pinned dropdowns keep their own scrolling
+- **Popups stay keyboard-friendly**: dropdown popups no longer dismiss while navigating their rows with the keyboard
+
+**Under the Hood:**
+- 304 automated tests (added gallery-scroll and dialog-scroll regression tests; the test suite no longer touches your real config.json)
+- Dependency security bumps (nltk 3.10.3 clears most Dependabot alerts; pillow, opencv-python, sentence-transformers, huggingface-hub updated)
+- `FrogPaper.spec` and `build_installer.bat` file lists now match the post-cleanup file set
+
+---
+
 ### v1.5.0 - Quality Release (Performance, Accessibility, Resilience)
 **Speed:**
 - **Gallery views open instantly**: Favorites, Styled, and Manual views no longer decode a thumbnail for every item on the UI thread — cards appear with placeholders and thumbnails decode in one background worker (cache hits render immediately)

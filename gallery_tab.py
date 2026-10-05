@@ -55,6 +55,13 @@ from gallery_manager import (
 
 from utils import load_json_list, save_json_list, get_app_dir
 
+# Pinned dropdown support
+try:
+    from pinned_dropdowns import PinnedCombobox, PINNED_DROPDOWNS_AVAILABLE
+except ImportError:
+    PinnedCombobox = None
+    PINNED_DROPDOWNS_AVAILABLE = False
+
 logger = logging.getLogger(__name__)
 
 
@@ -373,37 +380,52 @@ class GalleryTab:
 
         app.sort_combo_var = tk.StringVar(value="Date Newest")
 
-        app.sort_combo = ttk.Combobox(org_row, textvariable=app.sort_combo_var,
-                                        values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
-                                        state="readonly", width=14)
-        app.sort_combo.pack(side='left', padx=(0, 10))
-        app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
-        
-        # Enhanced scroll prevention for dropdown
-        def prevent_gallery_scroll(event):
-            """Prevent scroll events from propagating to gallery when dropdown is active."""
-            return "break"
-        
-        app.sort_combo.bind("<MouseWheel>", prevent_gallery_scroll)
-        app.sort_combo.bind("<Button-4>", prevent_gallery_scroll)
-        app.sort_combo.bind("<Button-5>", prevent_gallery_scroll)
+        # Use PinnedCombobox for Sort dropdown to have its own popup window layer
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(app, '_pinned_dropdowns_enabled', False):
+            try:
+                app.sort_combo = PinnedCombobox(org_row, category="gallery_sort",
+                                                values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
+                                                state="readonly", textvariable=app.sort_combo_var, width=14)
+                app.sort_combo.pack(side='left', padx=(0, 10))
+                app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
+            except Exception as _sort_err:
+                logger.debug("Pinned sort fallback: %s", _sort_err)
+                app.sort_combo = ttk.Combobox(org_row, textvariable=app.sort_combo_var,
+                                                values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
+                                                state="readonly", width=14)
+                app.sort_combo.pack(side='left', padx=(0, 10))
+                app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
+        else:
+            app.sort_combo = ttk.Combobox(org_row, textvariable=app.sort_combo_var,
+                                            values=["Date Newest", "Date Oldest", "Name A-Z", "Name Z-A", "Size Largest", "Size Smallest", "Resolution Largest", "Resolution Smallest"],
+                                            state="readonly", width=14)
+            app.sort_combo.pack(side='left', padx=(0, 10))
+            app.sort_combo.bind('<<ComboboxSelected>>', app.sort_gallery)
 
         ttk.Label(org_row, text="Tag:", font=app.small_font).pack(side='left', padx=(10, 8))
         app.gallery_tag_var = tk.StringVar(value='All tags')
-        app.gallery_tag_combo = ttk.Combobox(org_row, textvariable=app.gallery_tag_var,
-                                              values=['All tags'] + get_all_tags(),
-                                              state="readonly", width=12)
-        app.gallery_tag_combo.pack(side='left', padx=(0, 8))
-        app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
-        
-        # Enhanced scroll prevention for dropdown
-        def prevent_gallery_scroll_tag(event):
-            """Prevent scroll events from propagating to gallery when dropdown is active."""
-            return "break"
-        
-        app.gallery_tag_combo.bind("<MouseWheel>", prevent_gallery_scroll_tag)
-        app.gallery_tag_combo.bind("<Button-4>", prevent_gallery_scroll_tag)
-        app.gallery_tag_combo.bind("<Button-5>", prevent_gallery_scroll_tag)
+
+        # Use PinnedCombobox for Tag dropdown to have its own popup window layer
+        if PINNED_DROPDOWNS_AVAILABLE and getattr(app, '_pinned_dropdowns_enabled', False):
+            try:
+                app.gallery_tag_combo = PinnedCombobox(org_row, category="gallery_tag",
+                                                        values=['All tags'] + get_all_tags(),
+                                                        state="readonly", textvariable=app.gallery_tag_var, width=12)
+                app.gallery_tag_combo.pack(side='left', padx=(0, 8))
+                app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
+            except Exception as _tag_err:
+                logger.debug("Pinned tag fallback: %s", _tag_err)
+                app.gallery_tag_combo = ttk.Combobox(org_row, textvariable=app.gallery_tag_var,
+                                                      values=['All tags'] + get_all_tags(),
+                                                      state="readonly", width=12)
+                app.gallery_tag_combo.pack(side='left', padx=(0, 8))
+                app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
+        else:
+            app.gallery_tag_combo = ttk.Combobox(org_row, textvariable=app.gallery_tag_var,
+                                                  values=['All tags'] + get_all_tags(),
+                                                  state="readonly", width=12)
+            app.gallery_tag_combo.pack(side='left', padx=(0, 8))
+            app.gallery_tag_combo.bind('<<ComboboxSelected>>', lambda e: app._on_tag_selected())
 
         _btn_tag = ttk.Button(org_row, text="Tag Image", command=app._gallery_tag_selected)
         _btn_tag.pack(side='left', padx=(0, 8))
@@ -506,45 +528,12 @@ class GalleryTab:
         _bind_wheel(app.gallery_styled_canvas)
         _bind_wheel(app.gallery_manual_canvas)
 
-        def _on_mousewheel(event):
-            # Prevent gallery scrolling if mouse is over dropdown widgets
-            try:
-                widget = event.widget
-                widget_class = widget.winfo_class()
-                # Check if the widget or any parent is a combobox or listbox
-                current = widget
-                while current:
-                    class_name = current.winfo_class()
-                    if "TCombobox" in class_name or "Listbox" in class_name:
-                        return "break"
-                    current = current.master
-            except Exception:
-                pass
-            c = app._hover_canvas
-            if c is not None:
-                c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        # Wheel routing for the gallery (and the rest of the window) is
+        # handled centrally by app._on_mousewheel, bound once via
+        # root.bind_all in app.build_ui.  Do not bind <MouseWheel> here as
+        # well: a later bind_all silently replaces the earlier handler, so
+        # which one would win depends on build order.
 
-        def _on_mousewheel_linux(event):
-            # Prevent gallery scrolling if mouse is over dropdown widgets
-            try:
-                widget = event.widget
-                widget_class = widget.winfo_class()
-                # Check if the widget or any parent is a combobox or listbox
-                current = widget
-                while current:
-                    class_name = current.winfo_class()
-                    if "TCombobox" in class_name or "Listbox" in class_name:
-                        return "break"
-                    current = current.master
-            except Exception:
-                pass
-            c = app._hover_canvas
-            if c is not None:
-                c.yview_scroll(int(-1 * event.delta), "units")
-
-        app.root.bind_all("<MouseWheel>", _on_mousewheel)
-        app.root.bind_all("<Button-4>", _on_mousewheel_linux)
-        app.root.bind_all("<Button-5>", _on_mousewheel_linux)
 
         
 
@@ -2806,7 +2795,15 @@ class GalleryTab:
 
         # Rebuild tag dropdown from current storage
         tags = ['All tags', 'Untagged'] + get_all_tags()
-        app.gallery_tag_combo['values'] = tags
+
+        # Update values for both regular Combobox and PinnedCombobox
+        if hasattr(app.gallery_tag_combo, '_base_values'):
+            # PinnedCombobox: update _base_values and rebuild display values
+            app.gallery_tag_combo._base_values = tags
+            app.gallery_tag_combo['values'] = app.gallery_tag_combo._build_display_values()
+        else:
+            # Regular Combobox: just update values
+            app.gallery_tag_combo['values'] = tags
 
         # Restore or reset selection — always call set() so the combobox
         # display refreshes even when the deleted tag was previously shown.

@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.5.0"
+APP_VERSION = "1.6.0"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -783,7 +783,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         if PYSTRAY_AVAILABLE:
             self._start_tray()
 
-        # Show window normally on startup
+        # First visible moment for the window: UI build and theme are
+        # complete, so the user never sees a mid-load colour switch.
         self.root.deiconify()
         self.root.state("normal")
 
@@ -1143,18 +1144,18 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.mood_entry = PinnedCombobox(left, category="mood", values=mood_options,
-                                                  textvariable=self.mood_var, state="readonly")
+                                                  textvariable=self.mood_var, state="normal")
                 self.mood_entry.pack(fill="x", pady=(0, 10))
                 self.mood_entry.bind("<MouseWheel>", lambda e: "break")
             except Exception as _mood_err:
                 logger.debug("Pinned mood fallback: %s", _mood_err)
                 self.mood_entry = ttk.Combobox(left, textvariable=self.mood_var,
-                                               values=mood_options, state="readonly")
+                                               values=mood_options, state="normal")
                 self.mood_entry.pack(fill="x", pady=(0, 10))
                 self.mood_entry.bind("<MouseWheel>", lambda e: "break")
         else:
             self.mood_entry = ttk.Combobox(left, textvariable=self.mood_var,
-                                           values=mood_options, state="readonly")
+                                           values=mood_options, state="normal")
             self.mood_entry.pack(fill="x", pady=(0, 10))
             self.mood_entry.bind("<MouseWheel>", lambda e: "break")
 
@@ -1166,19 +1167,19 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # Subject - Use PinnedCombobox if available
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
-                self.subject_entry = PinnedCombobox(left, category="subject", 
-                                                     values=THEME_VARIABLE_OPTIONS["subject"])
+                self.subject_entry = PinnedCombobox(left, category="subject",
+                                                     values=THEME_VARIABLE_OPTIONS["subject"], state="normal")
                 self.subject_entry.pack(fill="x", pady=(0, 10))
                 self.subject_entry.insert(0, "")
                 self.subject_entry.bind("<MouseWheel>", lambda e: "break")
             except Exception as _subj_err:
                 logger.debug("Pinned subject fallback: %s", _subj_err)
-                self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
+                self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"], state="normal")
                 self.subject_entry.pack(fill="x", pady=(0, 10))
                 self.subject_entry.insert(0, "")
                 self.subject_entry.bind("<MouseWheel>", lambda e: "break")
         else:
-            self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"])
+            self.subject_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["subject"], state="normal")
             self.subject_entry.pack(fill="x", pady=(0, 10))
             self.subject_entry.insert(0, "")
             self.subject_entry.bind("<MouseWheel>", lambda e: "break")
@@ -1207,18 +1208,18 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.lighting_entry = PinnedCombobox(left, category="lighting",
-                                                      values=THEME_VARIABLE_OPTIONS["lighting"])
+                                                      values=THEME_VARIABLE_OPTIONS["lighting"], state="normal")
                 self.lighting_entry.pack(fill="x", pady=(0, 10))
                 self.lighting_entry.insert(0, "neon")
                 self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
             except Exception as _lit_err:
                 logger.debug("Pinned lighting fallback: %s", _lit_err)
-                self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"])
+                self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"], state="normal")
                 self.lighting_entry.pack(fill="x", pady=(0, 10))
                 self.lighting_entry.insert(0, "neon")
                 self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
         else:
-            self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"])
+            self.lighting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["lighting"], state="normal")
             self.lighting_entry.pack(fill="x", pady=(0, 10))
             self.lighting_entry.insert(0, "neon")
             self.lighting_entry.bind("<MouseWheel>", lambda e: "break")
@@ -1244,41 +1245,41 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.color_family_combo = PinnedCombobox(color_frame, category="color_family",
-                                                          values=COLOR_FAMILIES, state="readonly",
+                                                          values=COLOR_FAMILIES, state="normal",
                                                           textvariable=self.color_family_var, width=14)
                 self.color_family_combo.pack(side="left", padx=(0, 6))
                 self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
             except Exception as _cf_err:
                 logger.debug("Pinned color family fallback: %s", _cf_err)
                 self.color_family_combo = ttk.Combobox(color_frame, textvariable=self.color_family_var,
-                                                       values=COLOR_FAMILIES, state="readonly", width=14)
+                                                       values=COLOR_FAMILIES, state="normal", width=14)
                 self.color_family_combo.pack(side="left", padx=(0, 6))
                 self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
         else:
             self.color_family_combo = ttk.Combobox(color_frame, textvariable=self.color_family_var,
-                                                   values=COLOR_FAMILIES, state="readonly", width=14)
+                                                   values=COLOR_FAMILIES, state="normal", width=14)
             self.color_family_combo.pack(side="left", padx=(0, 6))
             self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
         
         self.color_variation_var = tk.StringVar(value=default_variation)
         
-        # Color Variation - Use PinnedCombobox if available  
+        # Color Variation - Use PinnedCombobox if available
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.color_variation_combo = PinnedCombobox(color_frame, category="color_variation",
-                                                             values=COLOR_VARIATIONS, state="readonly",
+                                                             values=COLOR_VARIATIONS, state="normal",
                                                              textvariable=self.color_variation_var, width=14)
                 self.color_variation_combo.pack(side="left")
                 self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
             except Exception as _cv_err:
                 logger.debug("Pinned color variation fallback: %s", _cv_err)
                 self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
-                                                          values=COLOR_VARIATIONS, state="readonly", width=14)
+                                                          values=COLOR_VARIATIONS, state="normal", width=14)
                 self.color_variation_combo.pack(side="left")
                 self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
         else:
             self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
-                                                      values=COLOR_VARIATIONS, state="readonly", width=14)
+                                                      values=COLOR_VARIATIONS, state="normal", width=14)
             self.color_variation_combo.pack(side="left")
             self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
 
@@ -1291,7 +1292,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.setting_entry = PinnedCombobox(left, category="setting",
-                                                     values=THEME_VARIABLE_OPTIONS["setting"])
+                                                     values=THEME_VARIABLE_OPTIONS["setting"], state="normal")
                 self.setting_entry.pack(fill="x", pady=(0, 10))
                 first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
                 if first_setting:
@@ -1299,14 +1300,14 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 self.setting_entry.bind("<MouseWheel>", lambda e: "break")
             except Exception as _set_err:
                 logger.debug("Pinned setting fallback: %s", _set_err)
-                self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"])
+                self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"], state="normal")
                 self.setting_entry.pack(fill="x", pady=(0, 10))
                 first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
                 if first_setting:
                     self.setting_entry.insert(0, first_setting[0])
                 self.setting_entry.bind("<MouseWheel>", lambda e: "break")
         else:
-            self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"])
+            self.setting_entry = ttk.Combobox(left, values=THEME_VARIABLE_OPTIONS["setting"], state="normal")
             self.setting_entry.pack(fill="x", pady=(0, 10))
             first_setting = [opt for opt in THEME_VARIABLE_OPTIONS["setting"] if opt]
             if first_setting:
@@ -1328,7 +1329,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             try:
                 self.atmosphere_combo = PinnedCombobox(left, category="atmosphere",
                                                        values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
-                                                       state="readonly",
+                                                       state="normal",
                                                        textvariable=self.atmosphere_var)
                 self.atmosphere_combo.pack(fill="x", pady=(0, 10))
                 self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
@@ -1336,13 +1337,13 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 logger.debug("Pinned atmosphere fallback: %s", _atm_err)
                 self.atmosphere_combo = ttk.Combobox(left, textvariable=self.atmosphere_var,
                                                      values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
-                                                     state="readonly")
+                                                     state="normal")
                 self.atmosphere_combo.pack(fill="x", pady=(0, 10))
                 self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
         else:
             self.atmosphere_combo = ttk.Combobox(left, textvariable=self.atmosphere_var,
                                                  values=THEME_VARIABLE_OPTIONS.get("atmosphere", [""]),
-                                                 state="readonly")
+                                                 state="normal")
             self.atmosphere_combo.pack(fill="x", pady=(0, 10))
             self.atmosphere_combo.bind("<MouseWheel>", lambda e: "break")
 
@@ -2025,132 +2026,163 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
 
     def _on_mousewheel(self, event):
         """Handle mousewheel scrolling with context awareness."""
-        try:
-            # ── If mouse is over a Toplevel (e.g. Settings window), skip gallery ──
-            # The gallery hit-test below uses root-relative coordinates, so when a
-            # Toplevel overlaps the gallery the gallery would steal the scroll event.
-            # Instead, fall through to the _hover_canvas fallback which the settings
-            # canvas sets up via <Enter>/<Leave> bindings.
-            pointer_x = self.root.winfo_pointerx()
-            pointer_y = self.root.winfo_pointery()
-            for child_win in self.root.winfo_children():
-                if isinstance(child_win, tk.Toplevel) and child_win.winfo_exists() and child_win.winfo_viewable():
-                    wx = child_win.winfo_rootx()
-                    wy = child_win.winfo_rooty()
-                    ww = child_win.winfo_width()
-                    wh = child_win.winfo_height()
-                    if wx <= pointer_x <= wx + ww and wy <= pointer_y <= wy + wh:
-                        # Mouse is over a Toplevel — let _hover_canvas handle it
-                        hover_c = getattr(self, '_hover_canvas', None)
-                        if hover_c is not None:
+        # Route by the window the wheel is actually in: events inside
+        # popups/dialogs (pinned dropdowns, the settings window, tutorials)
+        # must never scroll the main window's canvases.
+        ev_widget = getattr(event, 'widget', None)
+        ev_toplevel = None
+        if ev_widget is not None:
+            try:
+                ev_toplevel = ev_widget.winfo_toplevel()
+            except Exception:
+                ev_toplevel = None
+
+        if ev_toplevel is not None and ev_toplevel is not self.root:
+            if not ev_toplevel.overrideredirect():
+                # Scroll the innermost scrollable canvas the pointer is in.
+                # Settings/tutorial pages put their content in a canvas, so
+                # walking up from the wheeled widget finds it even when the
+                # pointer is over a child control (hover tracking alone goes
+                # stale as soon as the pointer crosses onto a child).
+                widget = ev_widget
+                try:
+                    while widget is not None and widget is not ev_toplevel:
+                        if isinstance(widget, tk.Canvas):
                             try:
-                                hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                                if widget.cget("scrollregion"):
+                                    widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                                    return "break"
                             except Exception:
                                 pass
-                        return "break"
-
-            # Get mouse position (used for all hit-testing below)
-            mouse_x = pointer_x - self.root.winfo_rootx()
-            mouse_y = pointer_y - self.root.winfo_rooty()
-
-            # If focus is in an input widget, ONLY block scrolling when the
-            # mouse is actually over that input widget.  Otherwise the scroll
-            # event should still reach the canvas the mouse is hovering over.
-            focus_widget = self.root.focus_get()
-            if focus_widget:
-                widget_class = focus_widget.winfo_class()
-                if widget_class in ('TEntry', 'Entry', 'TCombobox', 'Combobox', 'Text'):
+                        widget = getattr(widget, 'master', None)
+                except Exception:
+                    pass
+                # Fallback: the canvas this window registered on hover.
+                hover_c = getattr(self, '_hover_canvas', None)
+                if hover_c is not None:
                     try:
-                        fx = focus_widget.winfo_rootx() - self.root.winfo_rootx()
-                        fy = focus_widget.winfo_rooty() - self.root.winfo_rooty()
-                        fw = focus_widget.winfo_width()
-                        fh = focus_widget.winfo_height()
-                        if (fx <= mouse_x <= fx + fw and fy <= mouse_y <= fy + fh):
-                            # Mouse IS over the focused input — let it scroll
-                            # the input natively (e.g. combobox dropdown list).
-                            return
+                        if hover_c.winfo_toplevel() is ev_toplevel:
+                            hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
                     except Exception:
                         pass
-                    # Mouse is NOT over the focused input — fall through and
-                    # scroll the canvas the mouse is actually hovering over.
+            # Pinned dropdown popups already scrolled themselves via their
+            # own bindings; everything else in a dialog stays contained.
+            return "break"
 
-            # Check if mouse is over Prompt Preview text widget
-            if hasattr(self, 'prompt_text'):
-                try:
-                    widget_x = self.prompt_text.winfo_rootx() - self.root.winfo_rootx()
-                    widget_y = self.prompt_text.winfo_rooty() - self.root.winfo_rooty()
-                    widget_w = self.prompt_text.winfo_width()
-                    widget_h = self.prompt_text.winfo_height()
-                    if (widget_x <= mouse_x <= widget_x + widget_w and
-                        widget_y <= mouse_y <= widget_y + widget_h):
-                        # Mouse is over prompt text - scroll it locally
-                        self.prompt_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
-                        return "break"
-                except Exception:
-                    pass
-
-            # Gallery is always visible — scroll the active view canvas
-            # First determine which canvas to scroll based on mouse position
-            target_canvas = None
-            view = getattr(self, "gallery_view_var", None)
-            
-            if view:
-                current_view = view.get()
-                # Check if mouse is over the active gallery canvas
-                if current_view == "Favorites" and hasattr(self, 'gallery_fav_canvas'):
-                    widget_x = self.gallery_fav_canvas.winfo_rootx() - self.root.winfo_rootx()
-                    widget_y = self.gallery_fav_canvas.winfo_rooty() - self.root.winfo_rooty()
-                    widget_w = self.gallery_fav_canvas.winfo_width()
-                    widget_h = self.gallery_fav_canvas.winfo_height()
-                    if (widget_x <= mouse_x <= widget_x + widget_w and
-                        widget_y <= mouse_y <= widget_y + widget_h):
-                        target_canvas = self.gallery_fav_canvas
-                elif current_view == "Styled" and hasattr(self, 'gallery_styled_canvas'):
-                    widget_x = self.gallery_styled_canvas.winfo_rootx() - self.root.winfo_rootx()
-                    widget_y = self.gallery_styled_canvas.winfo_rooty() - self.root.winfo_rooty()
-                    widget_w = self.gallery_styled_canvas.winfo_width()
-                    widget_h = self.gallery_styled_canvas.winfo_height()
-                    if (widget_x <= mouse_x <= widget_x + widget_w and
-                        widget_y <= mouse_y <= widget_y + widget_h):
-                        target_canvas = self.gallery_styled_canvas
-                elif current_view == "Manual" and hasattr(self, 'gallery_manual_canvas'):
-                    widget_x = self.gallery_manual_canvas.winfo_rootx() - self.root.winfo_rootx()
-                    widget_y = self.gallery_manual_canvas.winfo_rooty() - self.root.winfo_rooty()
-                    widget_w = self.gallery_manual_canvas.winfo_width()
-                    widget_h = self.gallery_manual_canvas.winfo_height()
-                    if (widget_x <= mouse_x <= widget_x + widget_w and
-                        widget_y <= mouse_y <= widget_y + widget_h):
-                        target_canvas = self.gallery_manual_canvas
-                elif hasattr(self, 'gallery_canvas'):
-                    # Default gallery view
-                    widget_x = self.gallery_canvas.winfo_rootx() - self.root.winfo_rootx()
-                    widget_y = self.gallery_canvas.winfo_rooty() - self.root.winfo_rooty()
-                    widget_w = self.gallery_canvas.winfo_width()
-                    widget_h = self.gallery_canvas.winfo_height()
-                    if (widget_x <= mouse_x <= widget_x + widget_w and
-                        widget_y <= mouse_y <= widget_y + widget_h):
-                        target_canvas = self.gallery_canvas
-
-            # Scroll the target canvas if found
-            if target_canvas:
-                target_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-                if target_canvas == self.gallery_canvas:
-                    self._on_gallery_scroll()
+        # A dialog window is open: don't scroll the main window behind it.
+        for win in self.root.winfo_children():
+            if isinstance(win, tk.Toplevel) and win.winfo_exists() and win.winfo_viewable():
                 return "break"
 
-            # Fallback: scroll whatever canvas the mouse is hovering over
-            # (settings tab, tutorial popups, prompt template vars, etc.)
-            hover_c = getattr(self, '_hover_canvas', None)
-            if hover_c is not None:
+        # Where did the wheel happen?  Prefer the event's screen coords
+        # (correct for real events); fall back to the live pointer.
+        pointer_x = getattr(event, 'x_root', 0) or self.root.winfo_pointerx()
+        pointer_y = getattr(event, 'y_root', 0) or self.root.winfo_pointery()
+        mouse_x = pointer_x - self.root.winfo_rootx()
+        mouse_y = pointer_y - self.root.winfo_rooty()
+        step = int(-1 * (event.delta / 120))
+
+        # If focus is in an input widget, ONLY block scrolling when the
+        # mouse is actually over that input widget.  Otherwise the scroll
+        # event should still reach the canvas the mouse is hovering over.
+        focus_widget = self.root.focus_get()
+        if focus_widget:
+            try:
+                widget_class = focus_widget.winfo_class()
+            except Exception:
+                widget_class = ""
+            if widget_class in ('TEntry', 'Entry', 'TCombobox', 'Combobox', 'Text'):
                 try:
-                    hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
-                    return "break"
+                    fx = focus_widget.winfo_rootx() - self.root.winfo_rootx()
+                    fy = focus_widget.winfo_rooty() - self.root.winfo_rooty()
+                    fw = focus_widget.winfo_width()
+                    fh = focus_widget.winfo_height()
+                    if (fx <= mouse_x <= fx + fw and fy <= mouse_y <= fy + fh):
+                        # Mouse IS over the focused input - let it scroll
+                        # the input natively (e.g. combobox dropdown list).
+                        return
                 except Exception:
                     pass
+                # Mouse is NOT over the focused input - fall through and
+                # scroll the canvas the mouse is actually hovering over.
 
-        except Exception:
-            pass
+        # Check if mouse is over Prompt Preview text widget
+        if hasattr(self, 'prompt_text'):
+            try:
+                widget_x = self.prompt_text.winfo_rootx() - self.root.winfo_rootx()
+                widget_y = self.prompt_text.winfo_rooty() - self.root.winfo_rooty()
+                widget_w = self.prompt_text.winfo_width()
+                widget_h = self.prompt_text.winfo_height()
+                if (widget_x <= mouse_x <= widget_x + widget_w and
+                        widget_y <= mouse_y <= widget_y + widget_h):
+                    # Mouse is over prompt text - scroll it locally
+                    self.prompt_text.yview_scroll(step, "units")
+                    return "break"
+            except Exception:
+                pass
 
+        # Gallery is always visible - scroll the active view canvas.
+        # First determine which canvas to scroll based on mouse position.
+        target_canvas = None
+        view = getattr(self, "gallery_view_var", None)
+
+        if view:
+            current_view = view.get()
+            # Check if mouse is over the active gallery canvas
+            if current_view == "Favorites" and hasattr(self, 'gallery_fav_canvas'):
+                canvas = self.gallery_fav_canvas
+                widget_x = canvas.winfo_rootx() - self.root.winfo_rootx()
+                widget_y = canvas.winfo_rooty() - self.root.winfo_rooty()
+                widget_w = canvas.winfo_width()
+                widget_h = canvas.winfo_height()
+                if (widget_x <= mouse_x <= widget_x + widget_w and
+                        widget_y <= mouse_y <= widget_y + widget_h):
+                    target_canvas = canvas
+            elif current_view == "Styled" and hasattr(self, 'gallery_styled_canvas'):
+                canvas = self.gallery_styled_canvas
+                widget_x = canvas.winfo_rootx() - self.root.winfo_rootx()
+                widget_y = canvas.winfo_rooty() - self.root.winfo_rooty()
+                widget_w = canvas.winfo_width()
+                widget_h = canvas.winfo_height()
+                if (widget_x <= mouse_x <= widget_x + widget_w and
+                        widget_y <= mouse_y <= widget_y + widget_h):
+                    target_canvas = canvas
+            elif current_view == "Manual" and hasattr(self, 'gallery_manual_canvas'):
+                canvas = self.gallery_manual_canvas
+                widget_x = canvas.winfo_rootx() - self.root.winfo_rootx()
+                widget_y = canvas.winfo_rooty() - self.root.winfo_rooty()
+                widget_w = canvas.winfo_width()
+                widget_h = canvas.winfo_height()
+                if (widget_x <= mouse_x <= widget_x + widget_w and
+                        widget_y <= mouse_y <= widget_y + widget_h):
+                    target_canvas = canvas
+            elif hasattr(self, 'gallery_canvas'):
+                # Default gallery view
+                canvas = self.gallery_canvas
+                widget_x = canvas.winfo_rootx() - self.root.winfo_rootx()
+                widget_y = canvas.winfo_rooty() - self.root.winfo_rooty()
+                widget_w = canvas.winfo_width()
+                widget_h = canvas.winfo_height()
+                if (widget_x <= mouse_x <= widget_x + widget_w and
+                        widget_y <= mouse_y <= widget_y + widget_h):
+                    target_canvas = canvas
+
+        # Scroll the target canvas if found
+        if target_canvas:
+            target_canvas.yview_scroll(step, "units")
+            if target_canvas == getattr(self, 'gallery_canvas', None):
+                self._on_gallery_scroll()
+            return "break"
+
+        # Fallback: scroll whatever canvas the mouse is hovering over
+        # (settings tab, tutorial popups, prompt template vars, etc.)
+        hover_c = getattr(self, '_hover_canvas', None)
+        if hover_c is not None:
+            try:
+                hover_c.yview_scroll(step, "units")
+                return "break"
+            except Exception:
+                pass
     def _on_prompt_text_scroll(self, event):
         """Handle mousewheel scrolling specifically for Prompt Preview text widget."""
         try:
@@ -2274,7 +2306,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # New features
         tk.Label(
             content_frame,
-            text="✨ v1.5.0: Faster gallery views (lazy thumbnails + caching), keyboard navigation & Tab fixes, friendly file-error dialogs • v1.4.1: Fixed gallery scroll bug after switching views/ratios",
+            text="✨ v1.6.0: Visual Refresh, mouse-wheel scrolling fixed everywhere, no startup theme flash • v1.5.0: Faster gallery views, keyboard nav & friendlier errors • v1.4.1: Fixed gallery scroll bug after switching views/ratios",
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),
@@ -2482,6 +2514,11 @@ def main():
 
         try:
             root = tk.Tk()
+            # Build the UI and apply the saved theme while the window is
+            # hidden; FrogPaperApp.__init__ deiconifies it when ready.
+            # Showing the window earlier lets the user watch raw Tk/sv_ttk
+            # colours switch to the chosen theme mid-load (startup flash).
+            root.withdraw()
 
             app = FrogPaperApp(root)
 

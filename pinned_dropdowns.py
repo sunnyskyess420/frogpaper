@@ -204,7 +204,7 @@ class PinnedCombobox(ttk.Combobox):
     def __init__(self, parent, category: str = "", values: list[str] | None = None, **kwargs) -> None:
         """
         Create a PinnedCombobox.
-        
+
         Args:
             parent: Parent widget
             category: Category key ('subject', 'mood', etc.)
@@ -216,10 +216,31 @@ class PinnedCombobox(ttk.Combobox):
         self._popup_window: tk.Toplevel | None = None
         self._popup_active = False  # Flag to track popup state
         self._selection_in_progress = False  # Flag to prevent click-outside during selection
+        self._scroll_handlers = []  # Store scroll handler IDs
         
         # CRITICAL: Preserve original state (readonly/normal/disabled)
         # Don't force normal - respect what the caller wants!
         super().__init__(parent, values=self._build_display_values(), **kwargs)
+        
+        # Patch Tcl ttk::combobox::Post globally to NEVER show native listbox for PinnedCombobox
+        # This guarantees the star-less dropdown is gone, overriding any sv_ttk or Tk 9 quirks.
+        if not hasattr(parent.winfo_toplevel(), '_pinned_patched'):
+            parent.winfo_toplevel()._pinned_patched = True
+            try:
+                self.tk.eval('''
+                    if {[info commands ttk::combobox::Post_Real] eq ""} {
+                        rename ttk::combobox::Post ttk::combobox::Post_Real
+                        proc ttk::combobox::Post {w} {
+                            if {[info exists ::is_pinned_combobox($w)] && $::is_pinned_combobox($w)} {
+                                return
+                            }
+                            ttk::combobox::Post_Real $w
+                        }
+                    }
+                ''')
+            except tk.TclError:
+                pass
+        self.tk.eval(f'set ::is_pinned_combobox({self._w}) 1')
         
         # Remember if this is an editable combobox
         self._is_editable = (self.cget('state') != 'readonly')
@@ -229,13 +250,17 @@ class PinnedCombobox(ttk.Combobox):
         self.bind("<ButtonPress-1>", self._on_click)
         # Tk 9 note: some platforms post the native list on the RELEASE
         # half of the click — suppress that too so only the starred popup
-        # ever appears.
-        self.bind("<ButtonRelease-1>", lambda e: "break")
+        # ever appears for readonly comboboxes. For editable, allow normal behavior.
+        self.bind("<ButtonRelease-1>", self._on_release)
         
         # For editable comboboxes, also bind to key events
         if self._is_editable:
             # Show popup when pressing down arrow in editable mode
             self.bind("<Down>", self._on_arrow_key)
+            # Prevent native ttk dropdown via keyboard shortcuts
+            self.bind("<Alt-Down>", self._on_arrow_key)
+            self.bind("<Alt-Up>",   lambda e: "break")
+            self.bind("<F4>",       self._on_arrow_key)
         
         # Register for pin change notifications
         if _mgr:
@@ -268,24 +293,50 @@ class PinnedCombobox(ttk.Combobox):
         return display
     
     def _on_click(self, event: tk.Event | None = None) -> str | None:
-        """Handle click - ALWAYS show the custom starred dropdown.
+        """Handle click - show dropdown for arrow, allow typing for text area.
 
-        One dropdown per category: the starred popup replaces the native
-        ttk list everywhere, whether the click lands on the arrow or on
-        the text area. (The native list has no favorites and used to open
-        separately when clicking the words of editable comboboxes.)
-        Typing still works — focus returns to the field when the popup
-        closes (see _close_popup).
+        For editable comboboxes:
+        - Clicking the arrow button (right side) shows the custom starred dropdown
+        - Clicking the text area allows typing custom text without showing dropdown
+
+        For readonly comboboxes:
+        - Always show the dropdown (same as before)
         """
         if not _mgr:
             return
 
-        logger.info(f"Click detected on {self._category} dropdown - showing star popup")
+        # For readonly comboboxes, always show dropdown (old behavior)
+        if not self._is_editable:
+            logger.info(f"Click detected on readonly {self._category} dropdown - showing star popup")
+            self._show_popup()
+            return "break"
 
-        # Show our custom popup immediately
-        self._show_popup()
+        # For editable comboboxes, check if click was on arrow button
+        # Arrow button is typically on the right side (last ~25 pixels)
+        widget_width = self.winfo_width()
+        arrow_width = 32  # sv_ttk arrow button is wider than the original 25px guess
+        click_x = event.x
 
-        # Prevent the native ttk dropdown from showing
+        if click_x > widget_width - arrow_width:
+            # Click was on arrow button - show dropdown
+            logger.info(f"Click on arrow button for {self._category} - showing star popup")
+            self._show_popup()
+            return "break"
+        else:
+            # Click was on text area - allow typing, don't show dropdown
+            logger.info(f"Click on text area for {self._category} - allowing typing")
+            # Don't break - let the normal click behavior proceed
+            return None
+
+    def _on_release(self, event: tk.Event | None = None) -> str | None:
+        """Always suppress native ttk dropdown on release.
+
+        The press handler (_on_click) already decided whether to show the
+        starred popup (arrow click) or just focus for typing (text area click).
+        Always breaking here prevents ttk's default ButtonRelease handler
+        from popping the native listbox, which would otherwise appear as a
+        second star-less dropdown when the user clicks near the arrow.
+        """
         return "break"
     
     def _on_arrow_key(self, event: tk.Event | None = None) -> str:
@@ -413,14 +464,81 @@ class PinnedCombobox(ttk.Combobox):
         except Exception as e:
             logger.debug(f"Mousewheel error: {e}")
     
+    def _close_popup_if_focus_left(self) -> None:
+        """Close the popup only if keyboard focus truly left it.
+
+        FocusOut fires on the popup for every focus move among its own
+        children too (they carry the popup's toplevel in their bindtags),
+        so closing unconditionally would dismiss the popup while the user
+        is navigating its rows with Tab / arrow keys.
+        """
+        if not self._popup_active or not self._popup_window or self._selection_in_progress:
+            return
+        try:
+            if not self._popup_window.winfo_exists():
+                return
+            focused = self._popup_window.focus_get()
+        except Exception:
+            focused = None
+        if focused is not None:
+            widget = focused
+            while widget is not None:
+                if widget is self._popup_window:
+                    return  # Focus is still inside the popup - keep it open.
+                widget = getattr(widget, 'master', None)
+        self._close_popup()
+
     def _show_popup(self) -> None:
         """Show the custom pinnable dropdown popup with clickable stars."""
         # Close any existing popup first
         self._close_popup()
-        
+
         # Set popup active flag
         self._popup_active = True
-        
+
+        # Try to find and disable gallery scrollbars when popup opens
+        try:
+            root = self.winfo_toplevel()
+            if hasattr(root, 'app'):
+                app = root.app
+                scrollbar_names = ['_gallery_scroll', '_gallery_fav_scroll', '_gallery_styled_scroll', '_gallery_manual_scroll']
+                self._disabled_scrollbars = []
+
+                for scrollbar_name in scrollbar_names:
+                    if hasattr(app, scrollbar_name):
+                        scrollbar = getattr(app, scrollbar_name)
+                        # Store original command
+                        if not hasattr(self, '_original_scrollbar_commands'):
+                            self._original_scrollbar_commands = {}
+                        try:
+                            original_cmd = scrollbar.cget('command')
+                            self._original_scrollbar_commands[scrollbar_name] = original_cmd
+                            # Disable the scrollbar by setting command to None
+                            scrollbar.configure(command=None)
+                            self._disabled_scrollbars.append(scrollbar_name)
+                        except Exception:
+                            pass
+
+                # Also disable canvas yscrollcommand
+                canvas_names = ['gallery_canvas', 'gallery_fav_canvas', 'gallery_styled_canvas', 'gallery_manual_canvas']
+                if not hasattr(self, '_original_canvas_yscroll'):
+                    self._original_canvas_yscroll = {}
+
+                for canvas_name in canvas_names:
+                    if hasattr(app, canvas_name):
+                        canvas = getattr(app, canvas_name)
+                        try:
+                            original_yscroll = canvas.cget('yscrollcommand')
+                            self._original_canvas_yscroll[canvas_name] = original_yscroll
+                            # Disable yscrollcommand
+                            canvas.configure(yscrollcommand=None)
+                        except Exception:
+                            pass
+
+                logger.info(f"Disabled gallery scrollbars for {self._category}")
+        except Exception as e:
+            logger.debug(f"Could not disable gallery scrollbars: {e}")
+
         logger.info(f"Showing starred popup for category: {self._category}")
         
         # Get theme-matching colors!
@@ -441,11 +559,19 @@ class PinnedCombobox(ttk.Combobox):
         # Create popup window (toplevel)
         self._popup_window = tk.Toplevel(self)
         self._popup_window.wm_overrideredirect(True)
-        
+
         # CRITICAL: Make sure popup stays on top and visible!
         self._popup_window.wm_attributes('-topmost', True)
         self._popup_window.lift()
         self._popup_window.focus_force()
+
+        # CRITICAL: Grab mouse globally to prevent events from propagating to gallery
+        # grab_set_global is more aggressive than grab_set
+        try:
+            self._popup_window.grab_set_global()
+        except Exception:
+            # Fallback to regular grab if global grab fails
+            self._popup_window.grab_set()
         
         self._popup_window.configure(bg=bg_color)
         
@@ -595,31 +721,6 @@ class PinnedCombobox(ttk.Combobox):
             max_height = min(280, len(unpinned_items) * item_height + 20)
             canvas.config(height=max_height)
             
-            # === MOUSE WHEEL SCROLLING (Windows compatible) ===
-            def _mousewheel_handler(event):
-                self._on_mousewheel(event, canvas)
-                return "break"
-            
-            # Bind to canvas
-            canvas.bind("<MouseWheel>", _mousewheel_handler)  # Windows/Mac
-            canvas.bind("<Button-4>", _mousewheel_handler)     # Linux scroll up  
-            canvas.bind("<Button-5>", _mousewheel_handler)     # Linux scroll down
-            
-            # Bind to scrollable frame
-            scrollable_frame.bind("<MouseWheel>", _mousewheel_handler)
-            scrollable_frame.bind("<Button-4>", _mousewheel_handler)
-            scrollable_frame.bind("<Button-5>", _mousewheel_handler)
-            
-            # CRITICAL: Bind to popup window itself for Windows
-            self._popup_window.bind("<MouseWheel>", _mousewheel_handler)
-            self._popup_window.bind("<Button-4>", _mousewheel_handler)
-            self._popup_window.bind("<Button-5>", _mousewheel_handler)
-            
-            # Also bind to frame container
-            frame.bind("<MouseWheel>", _mousewheel_handler)
-            frame.bind("<Button-4>", _mousewheel_handler)
-            frame.bind("<Button-5>", _mousewheel_handler)
-            
             # Store reference for external access
             self._popup_canvas = canvas
         else:
@@ -630,36 +731,73 @@ class PinnedCombobox(ttk.Combobox):
             )
             no_items.pack()
             self._popup_canvas = None
+
+        # Hack to stop main gallery scrolling: force clear hover canvas
+        try:
+            root_win = self.winfo_toplevel()
+            if hasattr(root_win, 'app') and hasattr(root_win.app, '_hover_canvas'):
+                root_win.app._hover_canvas = None
+        except Exception:
+            pass
+
+        # === MOUSE WHEEL SCROLLING (Windows/Linux) ===
+        # Bind to the popup window itself. Because it's the Toplevel, it intercepts
+        # scrolling over ANY widget inside the popup (stars, text labels, etc) BEFORE
+        # it reaches the "all" bindtag, preventing the main gallery from scrolling.
+        def _global_mousewheel_handler(event):
+            if self._popup_canvas:
+                self._on_mousewheel(event, self._popup_canvas)
+            return "break"
+
+        self._popup_window.bind("<MouseWheel>", _global_mousewheel_handler)
+        self._popup_window.bind("<Button-4>", _global_mousewheel_handler)
+        self._popup_window.bind("<Button-5>", _global_mousewheel_handler)
+
+        # Force focus when mouse enters popup so Windows sends MouseWheel events here
+        self._popup_window.bind("<Enter>", lambda e: self._popup_window.focus_set())
         
-        # Close popup when clicking outside
+        # Close popup when clicking outside or losing focus
         def on_popup_click(event):
             # Only process if popup is still active and we're not selecting an item
             if not self._popup_active or not self._popup_window or self._selection_in_progress:
                 return
-            
+
             # Check if click is within the popup window
             try:
                 x = self._popup_window.winfo_rootx()
                 y = self._popup_window.winfo_rooty()
                 w = self._popup_window.winfo_width()
                 h = self._popup_window.winfo_height()
-                
+
                 ex = event.x_root
                 ey = event.y_root
-                
+
                 # If click is outside popup bounds, close it
                 if not (x <= ex <= x+w and y <= ey <= y+h):
                     self._close_popup()
             except Exception:
                 # If popup window no longer exists, close it
                 self._close_popup()
-        
+
+        # Close popup when it loses focus (this catches clicks outside when grab is active)
+        def on_focus_out(event):
+            if not self._popup_active or not self._popup_window or self._selection_in_progress:
+                return
+            # Give a small delay to allow the click to register, then close
+            # only if focus truly left the popup (focus moving between the
+            # popup's own rows fires FocusOut on the popup as well).
+            self._popup_window.after(10, self._close_popup_if_focus_left)
+
         # Store reference to the handler
         self._popup_click_handler = on_popup_click
-        
-        # Bind to the root window for click-outside detection
-        root = self.winfo_toplevel()
-        root.bind("<Button-1>", on_popup_click, add="+")
+
+        # Bind to the popup window itself for click-outside detection
+        # During a grab, all events are redirected to the grabbed window (the popup),
+        # so root never receives them!
+        self._popup_click_binding = self._popup_window.bind("<Button-1>", on_popup_click, add="+")
+
+        # Bind focus-out to popup window (works with grab_set)
+        self._popup_window.bind("<FocusOut>", on_focus_out)
         
         self._popup_window.bind("<Escape>", lambda e: self._close_popup())
         # Keyboard: start focus inside the popup so Tab can reach the
@@ -776,14 +914,56 @@ class PinnedCombobox(ttk.Combobox):
         """Close the popup."""
         # Set popup inactive flag first to prevent multiple close attempts
         self._popup_active = False
-        
+
+        # Remove click-outside bindings (no longer strictly necessary as window is destroyed, but good for cleanliness)
+        try:
+            if hasattr(self, '_popup_window') and self._popup_window and hasattr(self, '_popup_click_binding'):
+                self._popup_window.unbind("<Button-1>", self._popup_click_binding)
+                self._popup_click_binding = None
+        except Exception:
+            pass
+
+        # Restore gallery scrollbars and canvas yscrollcommands
+        try:
+            root = self.winfo_toplevel()
+            if hasattr(root, 'app'):
+                app = root.app
+
+                # Restore scrollbar commands
+                if hasattr(self, '_original_scrollbar_commands'):
+                    for scrollbar_name, original_cmd in self._original_scrollbar_commands.items():
+                        if hasattr(app, scrollbar_name):
+                            scrollbar = getattr(app, scrollbar_name)
+                            try:
+                                scrollbar.configure(command=original_cmd)
+                            except Exception:
+                                pass
+                    self._original_scrollbar_commands = {}
+
+                # Restore canvas yscrollcommands
+                if hasattr(self, '_original_canvas_yscroll'):
+                    for canvas_name, original_yscroll in self._original_canvas_yscroll.items():
+                        if hasattr(app, canvas_name):
+                            canvas = getattr(app, canvas_name)
+                            try:
+                                canvas.configure(yscrollcommand=original_yscroll)
+                            except Exception:
+                                pass
+                    self._original_canvas_yscroll = {}
+
+                logger.info(f"Restored gallery scrollbars")
+        except Exception as e:
+            logger.debug(f"Could not restore gallery scrollbars: {e}")
+
         if self._popup_window:
             try:
+                # Release mouse grab before destroying
+                self._popup_window.grab_release()
                 self._popup_window.destroy()
             except Exception:
                 pass
             self._popup_window = None
-        
+
         # The popup_active flag will prevent the click handler from doing anything
         # No need to unbind - the flag handles it
 

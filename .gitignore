@@ -77,3 +77,6 @@ gh-portable/
 Thumbs.db
 desktop.ini
 .aider*
+
+# Generated Inno Setup script (build_installer.bat creates and removes it)
+frogpaper_installer.iss

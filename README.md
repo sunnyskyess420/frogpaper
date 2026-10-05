@@ -324,6 +324,9 @@ AppData/FrogPaper/
 - **Mouse-wheel scrolling fixed everywhere**: the gallery, sidebar and prompt preview worked, and now the Settings window, tutorial windows and other dialogs scroll too - wheel events are routed to the page under the pointer, and pinned dropdowns keep their own scrolling
 - **Popups stay keyboard-friendly**: dropdown popups no longer dismiss while navigating their rows with the keyboard
 
+**Frog Sneak:**
+- **The Frog Dial got manners**: frogs now appear only when you want them to. A new dropdown in Settings > Generation controls how often a frog sneaks into blank-subject random runs - `off`, `rare` (~5%), `classic` (~12%, default) or `party` (~50%). The hard-coded frog bias is gone; daily runs vary it on their own.
+
 **Under the Hood:**
 - 304 automated tests (added gallery-scroll and dialog-scroll regression tests; the test suite no longer touches your real config.json)
 - Dependency security bumps (nltk 3.10.3 clears most Dependabot alerts; pillow, opencv-python, sentence-transformers, huggingface-hub updated)

@@ -429,6 +429,7 @@ class GalleryTab:
 
         _btn_tag = ttk.Button(org_row, text="Tag Image", command=app._gallery_tag_selected)
         _btn_tag.pack(side='left', padx=(0, 8))
+        app.btn_tag_image = _btn_tag  # kept for the dynamic multi-select label
         _btn_autotag = ttk.Button(org_row, text="Auto-Tag All", command=self._bulk_auto_tag)
 
         # Even distribution spacer between tag controls
@@ -996,7 +997,7 @@ class GalleryTab:
                 on_context=lambda e, p=img_path: app.show_gallery_context_menu(e, p),
             )
 
-            card.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
+            card.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p, ctrl=((e.state & 0x4) != 0)))
             card.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
 
         except Exception as e:
@@ -1009,7 +1010,7 @@ class GalleryTab:
                              bg=pal["panel"], fg=pal["text"],
                              anchor="w", justify="left", padx=6, pady=2)
         name_label.pack(fill="x")
-        name_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
+        name_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # File size + resolution info (dimensions via shared cache)
         try:
@@ -1022,7 +1023,7 @@ class GalleryTab:
         info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
                               bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
         info_label.pack(fill="x")
-        info_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
+        info_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # Tags label
         tags = get_tags_for_image(img_path) or []
@@ -1030,7 +1031,7 @@ class GalleryTab:
                               fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
                               bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
         tags_label.pack(fill="x")
-        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p))
+        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_manual_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # Heart button (positioned in bottom-right corner)
         heart_btn = self._create_heart_button(card, img_path, pal)
@@ -1061,7 +1062,7 @@ class GalleryTab:
                 on_context=lambda e, p=img_path: app.show_gallery_context_menu(e, p),
             )
 
-            card.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
+            card.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p, ctrl=((e.state & 0x4) != 0)))
             card.bind('<Button-3>', lambda e, p=img_path: app.show_gallery_context_menu(e, p))
 
         except Exception as e:
@@ -1074,7 +1075,7 @@ class GalleryTab:
                              bg=pal["panel"], fg=pal["text"],
                              anchor="w", justify="left", padx=6, pady=2)
         name_label.pack(fill="x")
-        name_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
+        name_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # File size + resolution info (dimensions via shared cache)
         try:
@@ -1087,7 +1088,7 @@ class GalleryTab:
         info_label = tk.Label(card, text=info_text, fg=pal["muted"], font=app.tinyfont,
                               bg=pal["panel"], anchor="w", justify="left", padx=6, pady=0)
         info_label.pack(fill="x")
-        info_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
+        info_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # Tags label (fall back to original image's tags for styled copies)
         tags = self._get_tags_with_fallback(img_path)
@@ -1095,7 +1096,7 @@ class GalleryTab:
                               fg=pal.get("tag_fg", pal["muted"]), font=app.small_font,
                               bg=pal["panel"], anchor="w", justify="left", padx=6, pady=4)
         tags_label.pack(fill="x")
-        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p))
+        tags_label.bind('<Button-1>', lambda e, p=img_path: app._select_styled_image(p, ctrl=((e.state & 0x4) != 0)))
 
         # Heart button (positioned in bottom-right corner)
         heart_btn = self._create_heart_button(card, img_path, pal)
@@ -2118,6 +2119,16 @@ class GalleryTab:
         app = self.app
         mode = app.gallery_view_var.get()
 
+        # Fresh selection per view: prevents stale cross-view tag targeting
+        try:
+            app.selected_gallery_paths.clear()
+            app.selected_gallery_path = None
+            app.selected_manual_path = None
+            app.selected_styled_path = None
+            self._update_tag_button_label()
+        except Exception:
+            pass
+
         # Ensure all canvases use the current theme background
         pal = app.THEMES.get(app.current_theme_name, app.THEMES["darkforest"])
         canvas_bg = pal["bg"]
@@ -2316,6 +2327,7 @@ class GalleryTab:
             app.status_var.set(f'Selected: {path.name}')
         
         app._update_gallery_highlight_multi()
+        self._update_tag_button_label()
 
 
     def _open_wallpapers_folder(self):
@@ -2626,7 +2638,7 @@ class GalleryTab:
 
                 tl.pack()
 
-                tl.bind("<Button-1>", lambda e, d=item, u=ui: app._select_visual_item(u, None, d))
+                tl.bind("<Button-1>", lambda e, d=item, u=ui: app._select_visual_item(u, None, d, ctrl=((e.state & 0x4) != 0)))
 
             # Filename label — matches Gallery view style
             filename_text = path.name if path else ((item.get("theme_sentence") or item.get("prompt") or "")[:40])
@@ -2949,34 +2961,67 @@ class GalleryTab:
         return result
 
 
-    def _select_manual_image(self, path):
-        """Handle manual image selection with highlighting."""
+    def _select_manual_image(self, path, ctrl=False):
+        """Handle manual image selection (Ctrl+click = multi-select)."""
         app = self.app
-        app.selected_gallery_path = Path(path)
-        app.selected_manual_path = Path(path)
-        app.show_preview_in_left_panel(path, f'Manual: {path.name}')
-        app.status_var.set(f'Selected manual: {path.name}')
-        app._update_manual_highlight(app.selected_manual_path)
+        path_obj = Path(path)
+        app.selected_manual_path = path_obj
+        if ctrl:
+            self._toggle_multi_selection(path_obj)
+            count = len(app.selected_gallery_paths)
+            app.status_var.set(f'Selected {count} images' if count > 1 else f'Selected manual: {path_obj.name}')
+        else:
+            self._sync_single_selection(path_obj)
+            app.show_preview_in_left_panel(path, f'Manual: {path_obj.name}')
+            app.status_var.set(f'Selected manual: {path_obj.name}')
+        app._update_manual_highlight(path_obj)
+        self._update_tag_button_label()
 
 
-    def _select_styled_image(self, path):
-        """Handle styled image selection with highlighting."""
+    def _select_styled_image(self, path, ctrl=False):
+        """Handle styled image selection (Ctrl+click = multi-select)."""
         app = self.app
-        app.selected_gallery_path = Path(path)
-        app.selected_styled_path = Path(path)
-        app.show_preview_in_left_panel(path, f'Styled: {path.name}')
-        app.status_var.set(f'Selected styled: {path.name}')
-        app._update_styled_highlight(app.selected_styled_path)
+        path_obj = Path(path)
+        app.selected_styled_path = path_obj
+        if ctrl:
+            self._toggle_multi_selection(path_obj)
+            count = len(app.selected_gallery_paths)
+            app.status_var.set(f'Selected {count} images' if count > 1 else f'Selected styled: {path_obj.name}')
+        else:
+            self._sync_single_selection(path_obj)
+            app.show_preview_in_left_panel(path, f'Styled: {path_obj.name}')
+            app.status_var.set(f'Selected styled: {path_obj.name}')
+        app._update_styled_highlight(path_obj)
+        self._update_tag_button_label()
 
 
-    def _select_visual_item(self, ui, path, data):
+    def _select_visual_item(self, ui, path, data, ctrl=False):
         app = self.app
         mode = ui["mode"]
         app.set_prompt_text(data.get("prompt", ""))
-        if path:
-            app.show_preview_in_left_panel(path, f"{mode.capitalize()} selection: {path.name}")
+
+        resolved = path
+        if resolved is None:
+            candidate = data.get("image_path") or data.get("copied_image_path")
+            resolved = Path(candidate) if candidate else None
+
+        if resolved is not None:
+            resolved_obj = Path(resolved)
+            if ctrl:
+                self._toggle_multi_selection(resolved_obj)
+                count = len(app.selected_gallery_paths)
+                if count > 1:
+                    app.status_var.set(f'Selected {count} images')
+                else:
+                    app.status_var.set(f"{mode.capitalize()} selected: {resolved_obj.name}")
+            else:
+                self._sync_single_selection(resolved_obj)
+                app.show_preview_in_left_panel(resolved, f"{mode.capitalize()} selection: {resolved_obj.name}")
+                app.status_var.set(f"{mode.capitalize()} selected: {resolved_obj.name}")
+
         app.favorite_selected_item = data
         app._update_fav_card_highlight(data)
+        self._update_tag_button_label()
 
 
     def _style_applied_error(self, error):
@@ -3095,6 +3140,56 @@ class GalleryTab:
                     child.config(bg=bg, activebackground=pal["panel2"])
 
 
+    # -- Multi-select tagging helpers -------------------------------------------
+
+    def _sync_single_selection(self, path) -> None:
+        """Make *path* the sole selection (single + multi state stay in sync)."""
+        app = self.app
+        path_obj = Path(path)
+        app.selected_gallery_path = path_obj
+        app.selected_gallery_paths.clear()
+        app.selected_gallery_paths.add(str(path_obj))
+
+    def _toggle_multi_selection(self, path) -> None:
+        """Ctrl-click behaviour: toggle *path* in the multi-selection set."""
+        app = self.app
+        path_obj = Path(path)
+        path_str = str(path_obj)
+        if path_str in app.selected_gallery_paths:
+            app.selected_gallery_paths.discard(path_str)
+        else:
+            app.selected_gallery_paths.add(path_str)
+        app.selected_gallery_path = path_obj
+
+    def _update_tag_button_label(self) -> None:
+        """Show 'Tag N Images' while a multi-selection is active."""
+        app = self.app
+        btn = getattr(app, "btn_tag_image", None)
+        if btn is None:
+            return
+        try:
+            count = len(app.selected_gallery_paths)
+            btn.configure(text=f"Tag {count} Images" if count > 1 else "Tag Image")
+        except Exception:
+            pass
+
+    def _update_all_selection_highlights(self) -> None:
+        """Repaint selection highlights in every gallery view."""
+        app = self.app
+        for fn in (self._update_gallery_highlight_multi,
+                   lambda: self._update_manual_highlight(app.selected_gallery_path),
+                   lambda: self._update_styled_highlight(app.selected_gallery_path)):
+            try:
+                fn()
+            except Exception:
+                pass
+        try:
+            self._update_fav_card_highlight(getattr(app, "favorite_selected_item", None))
+        except Exception:
+            pass
+        self._update_tag_button_label()
+
+
     def _update_manual_highlight(self, selected_path):
         """Apply selection highlight to the selected manual card."""
         app = self.app
@@ -3107,9 +3202,8 @@ class GalleryTab:
             name_label = card_data[1] if len(card_data) > 1 else None
             heart_btn = card_data[2] if len(card_data) > 2 else None
 
-            is_sel = path_str == sel_str
-            # Visual Refresh P2 plan section 6.3: selected uses accent_soft
-            # (brighter than accent) so the highlight reads clearly.
+            is_sel = (path_str in app.selected_gallery_paths) or \
+                     (app.selected_gallery_path and path_str == str(app.selected_gallery_path))
             accent = pal.get("accent", pal["progress"])
             accent_soft = pal.get("accent_soft", accent)
             border = pal.get("border_color", pal["panel2"])
@@ -3138,11 +3232,13 @@ class GalleryTab:
             name_label = card_data[1] if len(card_data) > 1 else None
             heart_btn = card_data[2] if len(card_data) > 2 else None
             
-            is_sel = path_str == sel_str
+            is_sel = (path_str in app.selected_gallery_paths) or \
+                     (app.selected_gallery_path and path_str == str(app.selected_gallery_path))
             accent = pal.get("accent", pal["progress"])
+            accent_soft = pal.get("accent_soft", accent)
             border = pal.get("border_color", pal["panel2"])
             bg = pal.get("surface", pal["panel2"]) if is_sel else pal["panel"]
-            hi = accent if is_sel else border
+            hi = accent_soft if is_sel else border
 
             card.config(bg=bg, highlightbackground=hi, highlightthickness=1 if not is_sel else 2)
             name_label.config(bg=bg, fg=pal["text"])
@@ -5562,6 +5658,7 @@ class GalleryTab:
         
         # Refresh gallery tag filters to show new tags
         app._refresh_gallery_tag_filter()
+        self._update_all_selection_highlights()
         
         if failed_paths:
             app.status_var.set(f'Error tagging some images: {failed_paths[0][1]}')

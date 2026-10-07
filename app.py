@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.6.0"
+APP_VERSION = "1.6.1"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -2306,7 +2306,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # New features
         tk.Label(
             content_frame,
-            text="✨ v1.6.0: Visual Refresh, mouse-wheel scrolling fixed everywhere, no startup theme flash • v1.5.0: Faster gallery views, keyboard nav & friendlier errors • v1.4.1: Fixed gallery scroll bug after switching views/ratios",
+            text="✨ v1.6.1: Multi-select tagging - Ctrl+click to pick several images, fixed tagging the wrong image after switching views • v1.6.0: Visual Refresh, mouse-wheel scrolling fixed everywhere, no startup theme flash • v1.5.0: Faster gallery views, keyboard nav & friendlier errors • v1.4.1: Fixed gallery scroll bug after switching views/ratios",
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),

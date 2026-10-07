@@ -315,6 +315,18 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.6.1 - Multi-Select Tagging Fixes
+**Multi-Select Tagging:**
+- **Multi-select tagging in every view** - Ctrl+click to pick several images at once (Gallery, Favorites, Manual and Styled views), then tag them all in one go.
+- **Fixed tagging the wrong image** - after switching views, tagging now targets what you actually selected (before it could silently re-tag an old gallery selection).
+- **Clearer button** - it now says "Tag 3 Images" (or however many you picked), so you always know what a click will do.
+- **Fresh selection per view** - switching views starts a clean selection; a plain click resets the multi-selection.
+
+**Under the Hood:**
+- 307 automated tests (added gallery multi-select regression tests; the test suite no longer touches your real config.json)
+
+---
+
 ### v1.6.0 - Visual Refresh
 **Look & Feel:**
 - **Visual Refresh across all 18 themes**: new palette tokens (elevated surfaces, muted text, stronger borders) extended to every dark and light theme, harmonized control surfaces, refined buttons/tabs/cards, and spacing & type polish throughout

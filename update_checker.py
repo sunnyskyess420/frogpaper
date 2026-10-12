@@ -16,11 +16,15 @@ Persistence:
 
 import json
 import logging
+import os
+import subprocess
+import sys
+import tempfile
 import threading
 import urllib.request
 import urllib.error
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 # Import thread-safe UI update functions
 try:
@@ -51,6 +55,18 @@ DOWNLOADS_URL = "https://sunnyskyess420.github.io/frogpaper-website/#downloads"
 
 # Field in config.json used to persist the user's "skip this version" choice.
 SKIPPED_VERSION_KEY = "skipped_update_version"
+
+# Release asset filename must contain this hint (and end with .exe) to be
+# treated as the installer for the one-click update flow.
+INSTALLER_ASSET_HINT = "Setup"
+
+# Stream the installer download in ~256 KiB chunks so progress can be reported
+# and a runaway download can be cancelled without freezing the UI.
+DOWNLOAD_CHUNK_SIZE = 256 * 1024
+
+# Refuse to treat a download as a valid installer below this size — a few KB
+# almost certainly means an HTML error page was saved instead of the EXE.
+MIN_INSTALLER_BYTES = 1024 * 1024
 
 
 def _config_path() -> Path:
@@ -176,10 +192,15 @@ def check_for_update(current_version: str) -> Optional[dict]:
 
     # Find the .exe installer asset
     download_url = DOWNLOADS_URL  # fallback to website
+    download_size = 0
     for asset in data.get("assets", []):
         name = asset.get("name", "")
-        if name.endswith(".exe") and "Setup" in name:
+        if name.lower().endswith(".exe") and INSTALLER_ASSET_HINT in name:
             download_url = asset.get("browser_download_url", download_url)
+            try:
+                download_size = int(asset.get("size") or 0)
+            except (TypeError, ValueError):
+                download_size = 0
             break
 
     # Clean and truncate body for the popup
@@ -206,39 +227,511 @@ def check_for_update(current_version: str) -> Optional[dict]:
         "html_url": data.get("html_url", ""),
         "body": body,
         "download_url": download_url,
+        "download_size": download_size,
     }
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+#  One-click update: download the installer straight from GitHub and run it
+# ═══════════════════════════════════════════════════════════════════════════
+
+class DownloadCancelled(Exception):
+    """Raised when the user cancels an in-progress installer download."""
+
+
+def is_installer_url(url: str) -> bool:
+    """Return True when *url* points directly at a downloadable .exe."""
+    if not url or not url.lower().startswith(("http://", "https://")):
+        return False
+    # Strip any query string/fragment before checking the extension.
+    path = url.split("#", 1)[0].split("?", 1)[0]
+    return path.lower().endswith(".exe")
+
+
+def default_download_dir() -> Path:
+    """Folder where the downloaded installer is staged before launching."""
+    return Path(tempfile.gettempdir()) / "FrogPaper-Update"
+
+
+def _format_size(num_bytes: float) -> str:
+    """Human-readable size (e.g. '3.4 MB') for progress feedback."""
+    try:
+        size = float(num_bytes)
+    except (TypeError, ValueError):
+        return "?"
+    for unit in ("B", "KB", "MB", "GB"):
+        if size < 1024 or unit == "GB":
+            return f"{size:.0f} {unit}" if unit == "B" else f"{size:.1f} {unit}"
+        size /= 1024
+    return f"{size:.1f} GB"
+
+
+def download_installer(
+    url: str,
+    dest_dir: Path,
+    progress_cb: Optional[Callable[[int, int], None]] = None,
+    cancel_event: Optional[threading.Event] = None,
+    timeout: int = 30,
+    chunk_size: int = DOWNLOAD_CHUNK_SIZE,
+) -> Path:
+    """Stream the installer at *url* into *dest_dir* and return its path.
+
+    Args:
+        url: direct browser_download_url from the GitHub release asset.
+        dest_dir: folder to write the installer into (created if missing).
+        progress_cb: called as progress_cb(bytes_done, total_bytes); total is
+            0 when the server does not report a Content-Length.
+        cancel_event: when set, the download aborts and the partial file is
+            removed.
+
+    Raises:
+        DownloadCancelled: the user cancelled.
+        OSError / urllib.error.URLError: the download failed.
+    """
+    if not is_installer_url(url):
+        raise ValueError(f"Not a direct installer download URL: {url!r}")
+
+    dest_dir = Path(dest_dir)
+    dest_dir.mkdir(parents=True, exist_ok=True)
+    name = url.split("#", 1)[0].split("?", 1)[0].rsplit("/", 1)[-1] or "FrogPaper-Setup.exe"
+    if not name.lower().endswith(".exe"):
+        name = "FrogPaper-Setup.exe"
+    dest = dest_dir / name
+
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Accept": "application/octet-stream",
+            "User-Agent": "FrogPaper-Updater",
+        },
+    )
+
+    def _abort(partial: Path) -> None:
+        try:
+            partial.unlink(missing_ok=True)
+        except Exception:
+            pass
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            try:
+                total = int(resp.headers.get("Content-Length") or 0)
+            except (TypeError, ValueError):
+                total = 0
+            done = 0
+            with dest.open("wb") as fh:
+                while True:
+                    if cancel_event is not None and cancel_event.is_set():
+                        raise DownloadCancelled("Download cancelled by user")
+                    chunk = resp.read(chunk_size)
+                    if not chunk:
+                        break
+                    fh.write(chunk)
+                    done += len(chunk)
+                    if progress_cb is not None:
+                        try:
+                            progress_cb(done, total)
+                        except Exception:
+                            pass
+    except DownloadCancelled:
+        _abort(dest)
+        raise
+    except (urllib.error.URLError, OSError, ValueError) as exc:
+        _abort(dest)
+        raise OSError(f"Download failed: {exc}") from exc
+
+    if dest.stat().st_size < MIN_INSTALLER_BYTES:
+        _abort(dest)
+        raise OSError("Downloaded file is far too small to be the installer")
+
+    logger.info("Downloaded installer to %s (%s)", dest, _format_size(dest.stat().st_size))
+    return dest
+
+
+def _palette(app) -> dict:
+    """Best-effort theme palette lookup, with a safe fallback."""
+    try:
+        return app._dialog._pal()
+    except Exception:
+        return {
+            "bg": "#1b231d",
+            "panel2": "#2a3329",
+            "text": "#e6efe2",
+            "accent": "#4fbf7a",
+            "border_color": "#3a463a",
+            "button_hover": "#38452f",
+        }
+
+
+class UpdateProgressWindow:
+    """Small themed, cancellable progress window shown while the installer
+    downloads. Must be constructed on the main UI thread; progress_cb may be
+    called from a worker thread (updates are marshalled back to the UI)."""
+
+    def __init__(self, app, tag: str, expected_size: int = 0):
+        import tkinter as tk
+        from tkinter import ttk
+
+        self._app = app
+        self._closed = False
+        self.cancel_event = threading.Event()
+        self._total = int(expected_size or 0)
+        pal = _palette(app)
+
+        top = tk.Toplevel(app.root)
+        self._top = top
+        top.title("Updating FrogPaper")
+        top.configure(bg=pal["bg"])
+        top.resizable(False, False)
+        try:
+            top.transient(app.root)
+        except Exception:
+            pass
+
+        w, h = 440, 190
+        try:
+            px = app.root.winfo_rootx()
+            py = app.root.winfo_rooty()
+            pw = app.root.winfo_width()
+            ph = app.root.winfo_height()
+            x = px + max(0, (pw - w) // 2)
+            y = py + max(0, (ph - h) // 2)
+        except Exception:
+            x = y = 200
+        top.geometry(f"{w}x{h}+{x}+{y}")
+
+        tk.Label(
+            top, text=f"Downloading FrogPaper {tag}", bg=pal["bg"],
+            fg=pal["text"], font=("Segoe UI", 11, "bold"),
+        ).pack(pady=(18, 4))
+        tk.Label(
+            top, text="Fetching the update straight from GitHub…",
+            bg=pal["bg"], fg=pal["text"], font=("Segoe UI", 9),
+        ).pack()
+
+        style_name = "FrogUpdate.Horizontal.TProgressbar"
+        try:
+            ttk.Style(top).configure(
+                style_name,
+                troughcolor=pal.get("panel2", "#2a3329"),
+                background=pal.get("accent", "#4fbf7a"),
+                bordercolor=pal.get("border_color", "#3a463a"),
+            )
+            bar_style = style_name
+        except Exception:
+            bar_style = None
+
+        self._bar = ttk.Progressbar(
+            top, orient="horizontal", length=360, maximum=100,
+            mode="determinate" if self._total > 0 else "indeterminate",
+            style=bar_style,
+        )
+        self._bar.pack(pady=(16, 6))
+        if self._total <= 0:
+            try:
+                self._bar.start(12)
+            except Exception:
+                pass
+
+        self._pct = tk.Label(
+            top, text="Starting…" if self._total > 0 else "Connecting…",
+            bg=pal["bg"], fg=pal["text"], font=("Segoe UI", 9),
+        )
+        self._pct.pack()
+
+        tk.Button(
+            top, text="Cancel", command=self._on_cancel,
+            bg=pal.get("panel2", "#2a3329"), fg=pal["text"],
+            activebackground=pal.get("button_hover", pal.get("panel2", "#2a3329")),
+            activeforeground=pal["text"], relief="flat", padx=14, pady=4,
+            cursor="hand2", font=("Segoe UI", 9),
+        ).pack(pady=(12, 10))
+
+        top.protocol("WM_DELETE_WINDOW", self._on_cancel)
+
+    # -- progress plumbing -------------------------------------------------
+
+    def update(self, downloaded: int, total: int = 0) -> None:
+        """Thread-safe progress callback (called from the download worker)."""
+        if self._closed:
+            return
+        try:
+            schedule_ui_update(self._apply, int(downloaded), int(total or 0))
+        except Exception:
+            pass
+
+    def _apply(self, downloaded: int, total: int) -> None:
+        if self._closed:
+            return
+        effective_total = total or self._total
+        try:
+            if effective_total > 0:
+                pct = max(0.0, min(100.0, downloaded / effective_total * 100.0))
+                if str(self._bar.cget("mode")) != "determinate":
+                    self._bar.stop()
+                    self._bar.configure(mode="determinate")
+                self._bar["value"] = pct
+                self._pct.configure(
+                    text=f"{pct:.0f}%  ({_format_size(downloaded)} of {_format_size(effective_total)})"
+                )
+            else:
+                self._pct.configure(text=f"{_format_size(downloaded)} downloaded")
+        except Exception:
+            pass
+
+    # -- lifecycle ---------------------------------------------------------
+
+    def _on_cancel(self) -> None:
+        self.cancel_event.set()
+        self.close()
+
+    def close(self) -> None:
+        """Close the window (safe from any thread)."""
+        if self._closed:
+            return
+        self._closed = True
+        try:
+            schedule_ui_update(self._destroy)
+        except Exception:
+            self._destroy()
+
+    def _destroy(self) -> None:
+        try:
+            self._bar.stop()
+        except Exception:
+            pass
+        try:
+            self._top.destroy()
+        except Exception:
+            pass
+
+
+DETACHED_PROCESS = 0x00000008
+CREATE_NEW_PROCESS_GROUP = 0x00000200
+
+
+def spawn_installer_after_exit(installer_path: Path, max_wait_seconds: int = 180) -> bool:
+    """Launch the downloaded installer *after* FrogPaper exits.
+
+    A detached helper batch waits until this process is gone (so the installer
+    can overwrite the currently-running EXE without a "file in use" prompt),
+    then starts the installer and deletes itself. Returns True when the helper
+    was started. On non-Windows platforms the file is simply opened.
+    """
+    installer_path = Path(installer_path)
+    if not installer_path.exists():
+        return False
+
+    if sys.platform != "win32":
+        try:
+            opener = "open" if sys.platform == "darwin" else "xdg-open"
+            subprocess.Popen([opener, str(installer_path)])
+            return True
+        except Exception as exc:
+            logger.warning("Could not open installer: %s", exc)
+            return False
+
+    pid = os.getpid()
+    loops = max(1, int(max_wait_seconds) * 2)  # ~0.5 s per iteration
+    script = (
+        "@echo off\r\n"
+        "setlocal enabledelayedexpansion\r\n"
+        "set /a n=0\r\n"
+        ":wait\r\n"
+        f'tasklist /FI "PID eq {pid}" 2>nul | find "{pid}" >nul\r\n'
+        "if errorlevel 1 goto launch\r\n"
+        "set /a n+=1\r\n"
+        f"if !n! GEQ {loops} goto launch\r\n"
+        "ping -n 2 127.0.0.1 >nul\r\n"
+        "goto wait\r\n"
+        ":launch\r\n"
+        f'start "" "{installer_path}"\r\n'
+        'del "%~f0"\r\n'
+    )
+    bat_path = Path(tempfile.gettempdir()) / "frogpaper_update_launch.bat"
+    try:
+        bat_path.write_text(script, encoding="utf-8")
+        subprocess.Popen(
+            ["cmd", "/c", str(bat_path)],
+            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            close_fds=True,
+        )
+        logger.info("Installer will launch once FrogPaper exits: %s", installer_path)
+        return True
+    except Exception as exc:
+        logger.warning("Could not schedule installer launch: %s", exc)
+        return False
+
+
+def open_in_browser(url: str) -> None:
+    """Open *url* in the default browser (best-effort)."""
+    try:
+        import webbrowser
+        webbrowser.open(url)
+    except Exception as exc:
+        logger.warning("Could not open browser for %s: %s", url, exc)
+
+
+def _install_and_quit(app, installer_path: Path, tag: str) -> None:
+    """Launch the installer (after we exit) and shut FrogPaper down."""
+    if not spawn_installer_after_exit(installer_path):
+        try:
+            app._dialog.error(
+                "Could Not Start Installer",
+                f"FrogPaper downloaded the update but couldn't launch it.\n\n"
+                f"Please run this file manually:\n{installer_path}",
+            )
+        except Exception:
+            pass
+        return
+    try:
+        app._quit_app()
+    except Exception:
+        try:
+            app.root.destroy()
+        except Exception:
+            pass
+        try:
+            os._exit(0)
+        except Exception:
+            pass
+
+
+def _confirm_install(app, installer_path: Path, tag: str) -> None:
+    """Ask before closing the app to run the freshly downloaded installer."""
+    msg = (
+        f"FrogPaper {tag} is ready to install.\n\n"
+        "FrogPaper will close and the installer will open.\n"
+        "Your wallpapers, settings and API keys are kept."
+    )
+    try:
+        choice = app._dialog._show(
+            "ask", "Ready to Install", msg,
+            buttons=("Install Now", "Later"), primary="Install Now",
+        )
+    except Exception:
+        choice = "Install Now"
+
+    if choice == "Install Now":
+        _install_and_quit(app, installer_path, tag)
+    else:
+        try:
+            app._dialog.info(
+                "Installer Saved",
+                f"The update was saved to:\n{installer_path}\n\n"
+                "You can run it any time to finish installing.",
+            )
+        except Exception:
+            pass
+
+
+def _download_failed(app, release_info: dict, error: str) -> None:
+    """Automatic download failed — point the user at the download page."""
+    try:
+        app._dialog.warning(
+            "Automatic Update Failed",
+            "FrogPaper couldn't download the update automatically.\n\n"
+            f"{error}\n\n"
+            "Opening the download page in your browser instead.",
+        )
+    except Exception:
+        pass
+    open_in_browser(release_info.get("html_url") or release_info.get("download_url", DOWNLOADS_URL))
+
+
+def start_update_install(app, release_info: dict) -> None:
+    """Download the installer for *release_info* in the background, then run it.
+
+    Falls back to opening the download page when the release has no direct
+    installer asset or when FrogPaper is running from source (an EXE install
+    wouldn't update this copy).
+    """
+    url = release_info.get("download_url", "")
+    tag = release_info.get("tag_name", "latest")
+
+    if not getattr(sys, "frozen", False):
+        # Running from source — installing the EXE wouldn't update this tree.
+        logger.info("Source run detected; opening download page instead of auto-install")
+        open_in_browser(release_info.get("html_url") or url or DOWNLOADS_URL)
+        return
+
+    if not is_installer_url(url):
+        logger.info("No direct installer asset found; opening download page")
+        open_in_browser(release_info.get("html_url") or url or DOWNLOADS_URL)
+        return
+
+    expected = int(release_info.get("download_size") or 0)
+    try:
+        progress = UpdateProgressWindow(app, tag, expected_size=expected)
+    except Exception as exc:
+        logger.warning("Could not show progress window: %s", exc)
+        open_in_browser(release_info.get("html_url") or url)
+        return
+
+    def _worker():
+        try:
+            installer = download_installer(
+                url,
+                default_download_dir(),
+                progress_cb=progress.update,
+                cancel_event=progress.cancel_event,
+            )
+        except DownloadCancelled:
+            logger.info("Installer download cancelled by user")
+            progress.close()
+            return
+        except Exception as exc:
+            logger.warning("Installer download failed: %s", exc)
+            progress.close()
+            try:
+                schedule_ui_update(_download_failed, app, release_info, str(exc))
+            except Exception:
+                pass
+            return
+
+        progress.close()
+        try:
+            schedule_ui_update(_confirm_install, app, installer, tag)
+        except Exception:
+            pass
+
+    run_background(_worker, name="UpdateDownload")
 
 
 def show_update_notification(app, release_info: dict):
     """Display a themed update notification using the app's dialog system.
 
     Offers three actions:
-      - "Yes"                   → open download page in browser
-      - "Skip This Version"     → suppress popup for this exact version
-      - "No"                    → dismiss for this launch only
+      - "Install Update"      → download the installer from GitHub and run it
+      - "Skip This Version"   → suppress popup for this exact version
+      - "Not Now"             → dismiss for this launch only
 
     Must be called on the main thread (scheduled via root.after).
     """
     try:
         tag = release_info["tag_name"]
         name = release_info["name"]
-        url = release_info["download_url"]
 
         title = "Update Available"
         msg = (
             f"A new version of FrogPaper is available!\n\n"
             f"{name}\n\n"
-            f"Would you like to download it now?"
+            "Click 'Install Update' and FrogPaper will download and set it up "
+            "for you automatically."
         )
 
         # Use the dialog's underlying _show() so we can supply three buttons.
         # _show returns the label of the button that was clicked.
-        buttons = ("Yes", "Skip This Version", "No")
-        choice = app._dialog._show("ask", title, msg, buttons=buttons)
+        buttons = ("Install Update", "Skip This Version", "Not Now")
+        choice = app._dialog._show(
+            "ask", title, msg, buttons=buttons, primary="Install Update",
+        )
 
-        if choice == "Yes":
-            import webbrowser
-            webbrowser.open(url)
+        if choice == "Install Update":
+            start_update_install(app, release_info)
         elif choice == "Skip This Version":
             skip_version(tag)
             try:

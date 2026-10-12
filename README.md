@@ -72,7 +72,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Favorites** | Bookmark wallpapers with dedicated slideshow source |
 | **Sessions** | Save and restore complete working states with auto-naming |
 | **Recipe Library** | Save, load, import, export reusable prompt configurations |
-| **13 App Themes** | Full theme system with dark, light, and specialty color schemes |
+| **19 App Themes** | Full theme system with dark, light, and specialty color schemes |
 | **Windows Integration** | Native wallpaper setting, system tray with full controls, minimize-to-tray, startup tasks |
 | **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate) |
 
@@ -131,7 +131,7 @@ Opened via the Settings button, **Ctrl+S**, or tray menu. Opens in a resizable w
 
 | Category | Cards & Controls |
 |---|---|
-| **General** | App theme (13 themes), wallpaper resolution preset (16:9 / Portrait / Square) |
+| **General** | App theme (19 themes), wallpaper resolution preset (16:9 / Portrait / Square) |
 | **Generation** | AI provider (Pollinations/Cloudflare/HuggingFace), API tokens, Cloudflare Account ID, model selection + custom model |
 | **Appearance** | Wallpaper output format (PNG/JPEG/WebP), JPEG quality |
 | **Startup** | Run on Windows startup, auto-generate on launch + startup subject, system tray behavior |
@@ -314,6 +314,23 @@ AppData/FrogPaper/
 ---
 
 ## Changelog
+
+### v1.7.0 - Halloween Edition
+**New Features:**
+- **🎃 Halloween theme** (Settings > General > App Theme): pumpkin orange on a haunted night - deep purple panels, bone-white text, pumpkin-glow button borders, candle focus indicators, rounded pumpkin buttons, and a ghost-fog overlay in dialogs.
+- **Theme-only popup sound**: while the Halloween theme is active, popups play a ghost-attack sound (`sounds/halloween-ghost-attack.mp3`) instead of the frog ribbit. Every other theme keeps the ribbit, and a missing sound file falls back to it automatically.
+- **Halloween startup subject**: this edition pre-fills the startup subject with "Halloween", so auto-generate greets the season on every launch. Change or clear it any time in Settings > Startup - a deliberate edition default, and v1.8 returns to the blank default.
+- **One-click updates**: the "Update Available" popup now offers **Install Update** — FrogPaper downloads the installer straight from the GitHub release and launches it for you. No more opening GitHub, hunting for the file, and running it by hand.
+- **Live download progress**: a themed, cancellable progress window shows the download percentage and size while the installer is fetched from GitHub.
+- **Graceful fallback**: if the release has no direct installer asset, or the download fails, FrogPaper warns you and opens the download page in your browser instead.
+
+**Under the Hood:**
+- `THEME_POPUP_SOUNDS` in `app_themes.py` maps themes to their popup sound files; `ThemedDialog._popup_sound_path()` resolves the audio per popup, so switching themes takes effect immediately.
+- `update_checker.py` gained `download_installer()` (streaming download with progress/cancel), `UpdateProgressWindow`, and `spawn_installer_after_exit()` — a detached helper waits for FrogPaper to exit before starting the installer, so it can replace the running EXE without a "file in use" prompt.
+- `ThemedDialog._show()` accepts an optional `primary` button label (styled as the primary action and bound to Enter); default behaviour is unchanged.
+- Added `tests/test_theme_popup_sounds.py` (theme registration, full token set, sound mapping and fallbacks) and `tests/test_update_checker.py` (version/URL parsing, release asset selection, streaming download, launch handoff and notification orchestration).
+
+---
 
 ### v1.6.1 - Multi-Select Tagging Fixes
 **Multi-Select Tagging:**

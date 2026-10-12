@@ -5,7 +5,15 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.6.1"
+APP_VERSION = "1.7.0"
+
+# Halloween Edition branding (v1.7.x only). Clear this string in the next
+# release to drop the edition label - the theme and sounds stay.
+APP_EDITION = "Halloween Edition"
+
+# Halloween Edition default startup subject (v1.7.x only). Fresh installs seed
+# it from config.template.json; the next release restores the blank "" default.
+HALLOWEEN_STARTUP_SUBJECT = "Halloween"
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -141,6 +149,7 @@ from app_themes import (  # noqa: F401
     UI,
     THEME_DISPLAY_NAMES,
     THEME_INTERNAL_NAMES,
+    THEME_POPUP_SOUNDS,
     _rel_luminance,   # noqa: F401 (re-export; used by ThemedDialog too)
     _contrast_ratio,  # noqa: F401
     _readable_fg,
@@ -302,6 +311,18 @@ class _FakePresetListbox:
         return self._info[idx][1]
 
 
+def resolve_dialog_buttons(buttons, primary=None):
+    """Return (primary_label, return_label) for a themed dialog button row.
+
+    ``primary`` optionally names the button to style as the primary action and
+    bind to the Enter key. When it is None (the historical behaviour) the last
+    button carries the primary styling and the first button is bound to Enter.
+    """
+    if primary in buttons:
+        return primary, primary
+    return buttons[-1], buttons[0]
+
+
 class ThemedDialog:
     """Themed replacements for tkinter.messagebox dialogs.
 
@@ -321,18 +342,38 @@ class ThemedDialog:
 
     def __init__(self, app):
         self._app = app
-        # Resolve popup sound path once
-        self._sound_path = Path(__file__).parent / "sounds" / "frog-croak.mp3"
+        # Base popup sound; themes can override it via THEME_POPUP_SOUNDS
+        # (see _popup_sound_path) — resolved per popup so theme switches
+        # take effect immediately.
+        self._sounds_dir = Path(__file__).parent / "sounds"
+        self._sound_path = self._sounds_dir / "frog-croak.mp3"
+
+    def _popup_sound_path(self):
+        """Resolve the popup sound for the active theme.
+
+        Themes listed in app_themes.THEME_POPUP_SOUNDS (e.g. Halloween's
+        ghost attack) play their own bundled sound; every other theme keeps
+        the signature frog ribbit.  Falls back to the ribbit when the themed
+        file is missing so a popup never goes silent.
+        """
+        theme = getattr(self._app, "current_theme_name", "darkforest")
+        filename = THEME_POPUP_SOUNDS.get(theme, "")
+        if filename:
+            themed = self._sounds_dir / filename
+            if themed.exists():
+                return themed
+        return self._sound_path
 
     def _play_popup_sound(self):
-        """Play ribbit sound non-blocking on every popup. Each call gets a unique alias so overlapping popups don't cut each other short."""
+        """Play the active theme's popup sound (frog ribbit by default) non-blocking. Each call gets a unique alias so overlapping popups don't cut each other short."""
         import uuid
         alias = f"popup_snd_{uuid.uuid4().hex[:8]}"
+        sound_path = self._popup_sound_path()
         def _play():
             try:
                 import sys
-                sp = str(self._sound_path)
-                if not self._sound_path.exists():
+                sp = str(sound_path)
+                if not sound_path.exists():
                     return
                 if sys.platform == "win32":
                     import ctypes
@@ -358,7 +399,16 @@ class ThemedDialog:
         theme = getattr(self._app, "current_theme_name", "darkforest")
         return THEMES.get(theme, THEMES["darkforest"])
 
-    def _show(self, kind: str, title: str, message: str, buttons=("OK",)) -> str:
+    def _show(self, kind: str, title: str, message: str, buttons=("OK",),
+              primary: str | None = None) -> str:
+        """Show a themed dialog and return the label of the button clicked.
+
+        ``primary`` optionally names the button that should be styled as the
+        primary action and triggered by the Enter key. When omitted, behaviour
+        is unchanged: the last button carries the primary styling and the first
+        button is triggered by Enter.
+        """
+        primary_label, return_label = resolve_dialog_buttons(buttons, primary)
         self._play_popup_sound()
         pal = self._pal()
         accent = pal.get("accent", pal["progress"])
@@ -404,7 +454,7 @@ class ThemedDialog:
         y = py + (ph - h) // 2
         dlg.geometry(f"{w}x{h}+{x}+{y}")
 
-        result = tk.StringVar(value=buttons[-1])
+        result = tk.StringVar(value=primary_label)
 
         # Icon + message
         top = tk.Frame(dlg, bg=pal["bg"], padx=18, pady=14)
@@ -439,7 +489,7 @@ class ThemedDialog:
             return _cmd
 
         for i, label in enumerate(reversed(buttons)):
-            is_primary = (i == 0)
+            is_primary = (label == primary_label)
             bg = accent if is_primary else pal["panel2"]
             # Secondary buttons sit on the panel2 surface — a white
             # button_fg (neoncyber_light) would be invisible there.
@@ -473,7 +523,7 @@ class ThemedDialog:
                 )
                 btn.pack(side="right", padx=(6, 0))
 
-        dlg.bind("<Return>", lambda e: make_cmd(buttons[0])())
+        dlg.bind("<Return>", lambda e: make_cmd(return_label)())
         dlg.bind("<Escape>", lambda e: make_cmd(buttons[-1])())
         dlg.protocol("WM_DELETE_WINDOW", make_cmd(buttons[-1]))
 
@@ -623,7 +673,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.auto_generate_on_startup_var = tk.BooleanVar(
             value=config.get("auto_generate_on_startup", False))
         self.startup_subject_var = tk.StringVar(
-            value=config.get("startup_subject", ""))
+            value=config.get("startup_subject", HALLOWEEN_STARTUP_SUBJECT))
         self.frog_sneak_var = tk.StringVar(
             value=config.get("frog_sneak", "classic"))
 
@@ -2032,10 +2082,24 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         ev_widget = getattr(event, 'widget', None)
         ev_toplevel = None
         if ev_widget is not None:
-            try:
-                ev_toplevel = ev_widget.winfo_toplevel()
-            except Exception:
-                ev_toplevel = None
+            if not hasattr(ev_widget, 'winfo_toplevel'):
+                # Widgets created entirely in Tcl (e.g. the ttk combobox
+                # popdown listbox) arrive as plain path strings instead of
+                # Python widget objects. Resolve the toplevel through Tcl:
+                # a plain AttributeError here used to fall through to the
+                # main-window path and scroll the gallery beneath an open
+                # dropdown (the "tag dropdown scrolls the gallery" bug).
+                try:
+                    ev_toplevel_path = str(self.root.tk.call('winfo', 'toplevel', str(ev_widget)))
+                    if ev_toplevel_path != self.root._w:
+                        return "break"
+                except Exception:
+                    pass
+            else:
+                try:
+                    ev_toplevel = ev_widget.winfo_toplevel()
+                except Exception:
+                    ev_toplevel = None
 
         if ev_toplevel is not None and ev_toplevel is not self.root:
             if not ev_toplevel.overrideredirect():
@@ -2306,7 +2370,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # New features
         tk.Label(
             content_frame,
-            text="✨ v1.6.1: Multi-select tagging - Ctrl+click to pick several images, fixed tagging the wrong image after switching views • v1.6.0: Visual Refresh, mouse-wheel scrolling fixed everywhere, no startup theme flash • v1.5.0: Faster gallery views, keyboard nav & friendlier errors • v1.4.1: Fixed gallery scroll bug after switching views/ratios",
+            text="🎃 v1.7.0 Halloween Edition: a new Halloween theme with pumpkin-glow dialogs and its own ghost popup sound, plus a Halloween startup subject • One-click updates: download & install updates straight from the popup • v1.6.1: Multi-select tagging • v1.6.0: Visual Refresh, scrolling fixed everywhere, no startup theme flash",
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),
@@ -2316,7 +2380,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # Version
         tk.Label(
             content_frame,
-            text=f"Version {APP_VERSION}",
+            text=(f"Version {APP_VERSION} · {APP_EDITION}"
+                  if APP_EDITION else f"Version {APP_VERSION}"),
             font=("Segoe UI", 10, "italic"),
             bg=pal["panel"],
             fg=pal.get("muted", "#888")

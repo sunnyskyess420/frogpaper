@@ -927,6 +927,52 @@ THEMES = {
         "mist_alpha":   0,
     },
 
+    # ── Halloween — jack-o'-lantern night ───────────────────────────────────
+    "halloween": {
+        "bg":          "#140d1c",   # haunted night purple-black
+        "panel":       "#1d1329",   # dark spellbook purple
+        "panel2":      "#2a1d38",   # candlelit panel
+        "surface":     "#332444",   # raised surface
+        "text":        "#f3e9d9",   # bone white
+        "muted":       "#b09cc6",   # dusty lavender (AA on panel2)
+        "entrybg":     "#1a1024",   # near-black input field
+        "entryfg":     "#f3e9d9",
+        "tabbg":       "#221631",   # tab bar
+        "tabsel":      "#8a4412",   # lit jack-o'-lantern tab
+        "accent":      "#ff8c1a",   # pumpkin orange
+        "progress":    "#d97218",   # candle flame progress
+        "actions":     ["#7a3d0e","#974e12","#b45f15","#d17218","#ee8a1c","#ffa42e"],
+        "button_fg":   "#f3e9d9",
+        "primary_button_fg": "#1a0f05",  # charred text on pumpkin fill
+        "button_hover":"#3a2a4c",   # neutral purple lift
+        "accent_hover":"#ffa042",   # brighter pumpkin on hover
+        "accent_soft": "#ffb066",   # soft pumpkin for text/icons
+        "scrollbar_bg":"#1d1329",
+        "scrollbar_fg":"#d06a1e",
+        "selected_bg": "#6e3410",
+        "selected_fg": "#ffe8cf",
+        "border_color":"#4a3060",
+        "border_strong":"#5f4278",
+        "separator":   "#2a1d38",
+        "elevated":    "#2d1f3d",   # popup / toast surface
+        "elevated_hi": "#3a2a4c",   # row hover inside popups
+        "preview_matte":"#0c0712",  # dark matte behind preview images
+        "success_color":"#7fd98a",  # slime green
+        "error_color": "#ff7a70",   # pumpkin-red
+        "warning_color":"#ffc857",  # candy corn
+        "tag_fg":      "#ffb066",
+        "heading_font_size": 11, "label_font_weight": "bold",
+        # Special effects — pumpkin glow & ghost fog
+        "glow_color":   "#ff8c1a",   # pumpkin glow border on rounded buttons
+        "glow_intensity": 12,        # glow shadow blur radius
+        "hover_transition": "",      # neutral purple lift (no orange flood)
+        "focus_color":  "#ffb347",   # candle focus indicator
+        "focus_shape":  "oval",      # ghost-eye oval
+        "button_radius": 8,          # rounded like a pumpkin
+        "mist_color":   "#12091c",   # ghost fog overlay in dialogs
+        "mist_alpha":   0.25,        # subtle fog
+    },
+
 }
 
 
@@ -1005,8 +1051,21 @@ THEME_DISPLAY_NAMES = {
     "studioneutral":    "🎨 Studio Neutral — Dark",
     "studioneutral_light": "🎨 Studio Neutral — Light",
 
+    # Seasonal
+    "halloween":        "🎃 Halloween — Spooky",
+
 }
 
 
 
 THEME_INTERNAL_NAMES = {v: k for k, v in THEME_DISPLAY_NAMES.items()}
+
+
+# ── Theme popup sounds ────────────────────────────────────────────────────
+# ThemedDialog plays sounds/frog-croak.mp3 for every popup by default.
+# Themes listed here override that with their own bundled sound file
+# (filename inside the sounds/ folder next to app.py).  A missing file
+# silently falls back to the frog ribbit so popups never go mute.
+THEME_POPUP_SOUNDS = {
+    "halloween": "halloween-ghost-attack.mp3",
+}

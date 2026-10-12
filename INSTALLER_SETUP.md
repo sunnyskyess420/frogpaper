@@ -37,7 +37,7 @@ Then, create the installer:
 build_installer.bat
 ```
 
-This will create `installer_output\FrogPaper-Setup-1.5.0.exe`
+This will create `installer_output\FrogPaper-Setup-1.7.0.exe`
 
 ## Installer Features
 
@@ -63,7 +63,7 @@ The Windows startup functionality has been improved:
 
 ## Testing the Installer
 
-1. Run the installer: `installer_output\FrogPaper-Setup-1.5.0.exe`
+1. Run the installer: `installer_output\FrogPaper-Setup-1.7.0.exe`
 2. Choose installation options (desktop icon, startup, etc.)
 3. After installation, test the "Run on startup" setting in FrogPaper settings
 4. Restart your computer to verify startup functionality
@@ -75,15 +75,43 @@ After building and testing the installer:
 
 1. **Upload the installer** to GitHub releases:
    ```cmd
-   gh release upload v1.5.0 installer_output\FrogPaper-Setup-1.5.0.exe --repo sunnyskyess420/frogpaper
+   gh release upload v1.7.0 installer_output\FrogPaper-Setup-1.7.0.exe --repo sunnyskyess420/frogpaper
    ```
 
 2. **Update your website** download button to point to the installer:
-   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.5.0.exe`
+   - Change the download link from `FrogPaper.exe` to `FrogPaper-Setup-1.7.0.exe`
    - Update the file size and description
    - Add a note about the installer providing automatic startup options
 
 3. **Keep the EXE available** for advanced users who prefer portable installation
+
+## In-App One-Click Updates
+
+The update popup no longer just opens a browser. When a newer release is
+found, clicking **Install Update** makes FrogPaper:
+
+1. Stream the installer `.exe` straight from the GitHub release (with a themed,
+   cancellable progress window).
+2. Ask to close FrogPaper and hand off to the installer.
+3. Launch the installer *after* FrogPaper exits — so it can replace the running
+   `FrogPaper.exe` cleanly without a "file in use" prompt.
+
+If the release has no direct installer asset, or the download fails, FrogPaper
+warns the user and falls back to opening the download page.
+
+### Requirements for one-click updates to work
+
+- **Attach the installer as a release asset named with `Setup`** (e.g.
+  `FrogPaper-Setup-1.7.0.exe`). This matches the same file the website links to.
+  Do **not** zip it — the asset must be the raw `.exe`.
+- **Bump `APP_VERSION` in `app.py`, `AppVersion` in `build_installer.bat`,
+  `OutputBaseFilename`, and the GitHub release tag to the same version.** The
+  automatic popup only appears when the release tag is strictly newer than
+  `APP_VERSION`.
+
+> Note: automatic install is offered only for the packaged EXE. Running from
+> source (`python app.py`) opens the download page instead, since installing the
+> EXE wouldn't update the source tree.
 
 ## Troubleshooting
 

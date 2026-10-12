@@ -46,7 +46,7 @@ These are the settings the Settings tab exposes. Types matter — the schema enf
 | `minimize_to_tray` | bool | `true` | Minimize to system tray instead of the taskbar |
 | `remember_settings` | bool | `false` | When ON, prompt fields (subject, lighting, mood, …) persist across launches; when OFF, everything resets to starter defaults and saved values are wiped |
 | `auto_generate_on_startup` | bool | `false` | Generate a fresh random wallpaper at each launch; while ON, remembered settings are **not** restored on startup |
-| `startup_subject` | str | `""` | Subject used for the startup auto-generation (blank = random subject) |
+| `startup_subject` | str | `"Halloween"` | Subject used for the startup auto-generation (blank = random subject). The Halloween Edition seeds "Halloween"; the next release returns to the blank default |
 | `frog_sneak` | str | `"classic"` | How often a frog sneaks into random images (user-controlled replacement for the hard-coded frog bias in older builds): `off` / `rare` (~5%) / `classic` (~12%) / `party` (~50%) |
 | `auto_backup_enabled` | bool | `true` | Daily cloud backup |
 | `auto_backup_hour` | int | `11` | Hour of day, 0–23 |

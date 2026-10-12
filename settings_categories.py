@@ -688,11 +688,12 @@ class SettingsCategoriesMixin:
         wn_header.pack(fill="x", pady=(16, 8))
 
         changes = [
-            ("Speed", "Gallery views open instantly - thumbnails decode in the background with caching, image sizes are remembered, resizing no longer rebuilds the grid on every pixel"),
-            ("Reliability", "Tag database reads are cached and kept in sync automatically; file problems in the gallery now show friendly error dialogs instead of crashes"),
-            ("Keyboard", "Every button and dropdown is reachable with Tab and activated with Enter or Space, with visible focus rings; Tab can no longer get stuck inside text boxes"),
-            ("Prompt Engine", "Your capitalization is preserved on words that aren't expanded, and thesaurus mapping edits apply immediately without a restart"),
-            ("Docs & Tests", "New CONFIG_GUIDE.md, 296 automated tests, and a GitHub Actions workflow that runs the full suite on Windows with every push"),
+            ("Halloween", "New 🎃 Halloween theme - pumpkin orange on a haunted night, with glowing rounded buttons, candle focus and a soft fog in dialogs (Settings > General > App Theme)"),
+            ("Ghost Sounds", "While the Halloween theme is active, every popup plays a spooky ghost-attack sound instead of the frog ribbit; all other themes are unchanged"),
+            ("Startup Subject", "The Halloween Edition pre-fills the startup subject with \"Halloween\" - change or clear it any time in this card; the next release returns to a blank default"),
+            ("One-Click Updates", "The update popup can download the installer and start it for you, with progress and a cancel button"),
+            ("Multi-Select", "Ctrl+click several images to tag them at once in every view (v1.6.1)"),
+            ("Visual Refresh", "Harmonized colours, surfaces, spacing and type across all themes, plus scrolling that works everywhere (v1.6.0)"),
         ]
         for category, desc in changes:
             row = tk.Frame(frame, bg=pal["bg"])
@@ -707,9 +708,10 @@ class SettingsCategoriesMixin:
                              fg=pal["muted"], bg=pal["bg"], anchor="w")
         pv_header.pack(fill="x", pady=(16, 4))
         history = [
-            ("v1.4.1", "Gallery scroll fix after switching views; crash fixes across color parsing, dialogs, themes and wallpaper module; thread-safe thumbnails"),
-            ("v1.4.0", "Six AI providers, dynamic provider setup UI, universal resolution auto-resize, faster Replicate polling"),
-            ("v1.3.2", "Star pins inside dropdowns, redesigned settings page, safer credential handling, theme rendering repaired"),
+            ("v1.6.1", "Multi-select tagging fixes - tagging targets exactly what you picked, in every view"),
+            ("v1.6.0", "Visual Refresh across all 18 themes; mouse-wheel scrolling fixed everywhere; no startup theme flash; Frog Sneak control"),
+            ("v1.5.0", "Instant gallery views, full keyboard navigation with visible focus rings, friendlier file-error dialogs"),
+            ("v1.4.1", "Gallery scroll fix after switching views; crash fixes across color parsing and dialogs"),
         ]
         for version, desc in history:
             row = tk.Frame(frame, bg=pal["bg"])

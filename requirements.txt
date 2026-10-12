@@ -9,7 +9,7 @@ google-api-python-client>=2.100.0
 google-auth-oauthlib>=1.0.0
 msal>=1.20.0
 dropbox>=11.0.0
-sentence-transformers>=2.2.0,<3.0.0
+sentence-transformers>=5.6.0,<7.0.0
 opencv-python>=4.8.0,<5.0.0
 pystray>=0.19.0,<1.0.0
 sv-ttk>=2.5.0,<3.0.0
@@ -22,8 +22,11 @@ pytest-cov>=4.0.0,<5.0.0
 keyring>=25.0.0,<26.0.0
 sqlalchemy>=2.0.0,<3.0.0
 
+# nltk 3.10.3 is the latest release; GHSA-8mgp-746c-j5xp has no patched version
+# yet. The app only uses the WordNet corpus API (not the affected model-artifact
+# loader), so the practical exposure is low until an upstream fix ships.
 nltk==3.10.3
 opencv-python==4.8.1.78
 pillow==12.3.0
 huggingface-hub==1.16.0
-sentence-transformers==3.1.0
+sentence-transformers==6.1.0

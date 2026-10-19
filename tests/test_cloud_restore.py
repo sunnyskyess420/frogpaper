@@ -279,6 +279,68 @@ class TestExecutor(_RestoreTestBase):
         self.assertEqual(payload["failures"], [])
 
 
+class TestUnreadableFiles(_RestoreTestBase):
+    """Files the provider lists but refuses to serve (403 appNotAuthorizedToFile).
+
+    Live restore of a real Drive backup hit this on 387 of 632 images: the
+    bytes are unreachable, retrying is pointless, and reporting it as a plain
+    failure reads like a flaky network. It must be its own outcome.
+    """
+
+    def _source_with_forbidden_file(self):
+        _write_image(self.backup / "Generated" / "ok.png", b"ok")
+        _write_image(self.backup / "Generated" / "no.png", b"no")
+
+        class PartlyForbidden(cr.LocalFolderSource):
+            def fetch(self, remote, dest):
+                if remote.name == "no.png":
+                    raise cr.RemoteAccessError(
+                        "Google Drive will not serve this file to FrogPaper.")
+                super().fetch(remote, dest)
+
+        return PartlyForbidden(self.backup)
+
+    def test_permission_denied_is_not_counted_as_a_failure(self):
+        source = self._source_with_forbidden_file()
+        plan = cr.build_plan(source.list_files(), self.app)
+        result = self._run(source, plan)
+
+        self.assertEqual(len(result.written), 1)
+        self.assertEqual(result.failures, [])
+        self.assertEqual(len(result.unreadable), 1)
+        self.assertEqual(result.unreadable[0][0].remote.name, "no.png")
+        self.assertFalse(result.ok)
+        self.assertIn("not readable by this app", result.summary())
+        self.assertFalse(
+            (self.app / "wallpapers" / "generated" / "no.png").exists())
+
+    def test_unreadable_files_reach_the_restore_log(self):
+        source = self._source_with_forbidden_file()
+        plan = cr.build_plan(source.list_files(), self.app)
+        result = self._run(source, plan)
+
+        payload = json.loads(result.log_path.read_text(encoding="utf-8"))
+        self.assertEqual(payload["failures"], [])
+        self.assertEqual(len(payload["unreadable"]), 1)
+        self.assertEqual(payload["unreadable"][0]["rel_path"],
+                         "wallpapers/generated/no.png")
+        self.assertIn("not readable by this app", payload["summary"])
+
+    def test_access_denied_classifier(self):
+        for message in (
+            "HttpError 403 ... reason: appNotAuthorizedToFile",
+            "The user has not granted the app 123 read access to the file",
+            "ApiError: insufficient_permissions",
+            "403 accessDenied",
+        ):
+            self.assertTrue(cr.is_access_denied_error(RuntimeError(message)),
+                            msg=message)
+        for message in ("Connection timed out", "429 rate limit exceeded",
+                        "HttpError 500 backendError"):
+            self.assertFalse(cr.is_access_denied_error(RuntimeError(message)),
+                             msg=message)
+
+
 class TestNameValidation(unittest.TestCase):
 
     def test_rejects_traversal_and_reserved_names(self):

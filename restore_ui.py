@@ -369,6 +369,29 @@ class RestorePreviewDialog:
         self.restore_btn.config(state="disabled", text="Done")
         self.open_btn.config(state="normal")
 
+        if result.unreadable:
+            # Grouped by reason: a broken backup usually holds hundreds of
+            # files with the same "this app may not read it" answer, and a
+            # per-file wall of text would bury the explanation.
+            reasons = {}
+            for item, error in result.unreadable:
+                path = item.remote.rel_path if item is not None else "(unknown)"
+                reasons.setdefault(error, []).append(path)
+            self.text.configure(state="normal")
+            self.text.insert(
+                "end",
+                f"\n{len(result.unreadable)} files in this backup cannot be "
+                "read by FrogPaper:\n")
+            for error, paths in reasons.items():
+                self.text.insert("end", f"  {len(paths)} × {error}\n")
+                for path in paths[:5]:
+                    self.text.insert("end", f"      {path}\n")
+                if len(paths) > 5:
+                    self.text.insert(
+                        "end", f"      … and {len(paths) - 5} more\n")
+            self.text.configure(state="disabled")
+            self.text.see("end")
+
         if result.failures:
             self.text.configure(state="normal")
             self.text.insert("end", "\nFailures:\n")

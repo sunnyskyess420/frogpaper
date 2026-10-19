@@ -42,6 +42,25 @@ class CloudCatalogError(cr.RestoreError):
     """The backup folder could not be read from the cloud."""
 
 
+def _short_detail(detail, limit=180):
+    """One-line, length-capped error detail for logs and dialogs."""
+    text = " ".join(str(detail or "").split())
+    return text if len(text) <= limit else text[:limit - 1] + "…"
+
+
+_ACCESS_DENIED_MESSAGE = (
+    "{provider} will not serve this file to FrogPaper. It was uploaded by a "
+    "different FrogPaper install or another app, and the app only has "
+    "permission for files it created itself. Restore it from a synced "
+    "folder with \"From Folder…\", or re-upload it from the install that "
+    "made it."
+)
+
+
+def _access_denied(provider):
+    return cr.RemoteAccessError(_ACCESS_DENIED_MESSAGE.format(provider=provider))
+
+
 # ---------------------------------------------------------------------------
 # normalization
 # ---------------------------------------------------------------------------
@@ -239,8 +258,16 @@ class GoogleDriveBackend:
                 return items
 
     def download(self, file_ref, dest):
-        if not self.provider.download_file(file_ref, dest):
-            raise CloudCatalogError(f"Google Drive download failed: {file_ref}")
+        if self.provider.download_file(file_ref, dest):
+            return
+        # download_file() returns a bool, so the reason it failed lives on the
+        # provider; dropping it turned a permanent 403 into "download failed".
+        detail = getattr(self.provider, "last_download_error", "") or ""
+        if getattr(self.provider, "last_download_reason", None) == "no_access":
+            raise _access_denied("Google Drive")
+        raise CloudCatalogError(
+            f"Google Drive download failed: {file_ref}"
+            + (f" ({_short_detail(detail)})" if detail else ""))
 
 
 # ---------------------------------------------------------------------------
@@ -323,6 +350,10 @@ class OneDriveBackend:
         response = self._http_client().get(
             url, headers=self._headers(), stream=True, timeout=_TIMEOUT)
         try:
+            if response.status_code == 403:
+                # Visible via metadata, unreadable content: widening the token
+                # will not help, so report it as permission, not as an error.
+                raise _access_denied("OneDrive")
             response.raise_for_status()
             with open(dest, "wb") as handle:
                 for chunk in response.iter_content(chunk_size=256 * 1024):
@@ -400,6 +431,8 @@ class DropboxBackend:
         try:
             client.files_download_to_file(str(dest), file_ref)
         except Exception as exc:
+            if cr.is_access_denied_error(exc):
+                raise _access_denied("Dropbox") from exc
             raise CloudCatalogError(
                 f"Dropbox download failed for {file_ref}: {exc}") from exc
 

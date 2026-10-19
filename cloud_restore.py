@@ -73,6 +73,38 @@ class RestoreVerificationError(RestoreError):
     """A downloaded file did not match the advertised size or hash."""
 
 
+class RemoteAccessError(RestoreError):
+    """The backup lists a file this app is authenticated but not allowed to read.
+
+    This is not a transient failure. Google Drive with the ``drive.file`` scope
+    lists every file in ``FrogPaper/`` (via ``drive.metadata.readonly``) but
+    only serves the bytes of files *this* OAuth client created; anything
+    uploaded by an older install or another app answers 403
+    ``appNotAuthorizedToFile``. Retrying never helps, so the run reports these
+    separately from real errors.
+    """
+
+
+# Lower-cased fragments that mean "visible, but no permission to read the
+# bytes" rather than "the request failed". Google: appNotAuthorizedToFile /
+# cannotDownloadFile. Graph: accessDenied. Dropbox: insufficient_permissions.
+_ACCESS_DENIED_MARKERS = (
+    "appnotauthorizedtofile",
+    "has not granted the app",
+    "cannotdownloadfile",
+    "insufficientfilepermissions",
+    "insufficient_permissions",
+    "accessdenied",
+    "no_permission",
+)
+
+
+def is_access_denied_error(error):
+    """Return True when *error* means the app may see a file but never read it."""
+    text = str(error).lower()
+    return any(marker in text for marker in _ACCESS_DENIED_MARKERS)
+
+
 @dataclass(frozen=True)
 class RemoteFile:
     """A single file discovered in a backup source.
@@ -186,15 +218,21 @@ class RestoreResult:
     written: list = field(default_factory=list)
     skipped: list = field(default_factory=list)
     failures: list = field(default_factory=list)
+    # Files the provider would not serve at all (``(item, error)`` tuples).
+    # Kept apart from ``failures`` because retrying cannot fix them and the
+    # user needs a different remedy.
+    unreadable: list = field(default_factory=list)
     cancelled: bool = False
     log_path: Path = None
 
     @property
     def ok(self):
-        return not self.failures and not self.cancelled
+        return not self.failures and not self.unreadable and not self.cancelled
 
     def summary(self):
         text = f"{len(self.written)} restored, {len(self.skipped)} skipped"
+        if self.unreadable:
+            text += f", {len(self.unreadable)} not readable by this app"
         if self.failures:
             text += f", {len(self.failures)} failed"
         if self.cancelled:
@@ -521,6 +559,12 @@ class RestoreExecutor:
                     break
                 try:
                     self._write_item(item, result)
+                except RemoteAccessError as exc:
+                    # Permission, not connectivity: collecting it as a plain
+                    # failure would read like a flaky network.
+                    logger.warning("Restore cannot read %s: %s",
+                                   item.remote.rel_path, exc)
+                    result.unreadable.append((item, str(exc)))
                 except Exception as exc:  # one bad file must not abort the run
                     logger.warning("Restore failed for %s: %s",
                                    item.remote.rel_path, exc)
@@ -594,6 +638,10 @@ class RestoreExecutor:
                 "failures": [
                     {"rel_path": item.remote.rel_path, "error": error}
                     for item, error in result.failures
+                ],
+                "unreadable": [
+                    {"rel_path": item.remote.rel_path, "error": error}
+                    for item, error in result.unreadable
                 ],
             }
             tmp = path.with_name(path.name + ".tmp")

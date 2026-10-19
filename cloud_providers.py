@@ -73,6 +73,12 @@ class GoogleDriveProvider:
         self.authenticated = False
         self._folder_id_cache = None  # Cache FrogPaper folder ID for the session
         self._subfolder_cache = {}    # Cache subfolder IDs: {"Generated": "id1", ...}
+        # Why the last download_file() call failed. download_file() has always
+        # returned a bool, which hid the reason (notably 403 appNotAuthorizedToFile,
+        # a permanent permission problem that looked like a flaky network); the
+        # restore path reads these to classify the failure honestly.
+        self.last_download_error = ""
+        self.last_download_reason = None  # "no_access" | "error" | None
         
     def authenticate(self) -> bool:
         """Authenticate with Google Drive via OAuth."""
@@ -333,6 +339,8 @@ class GoogleDriveProvider:
             logger.error("Google Drive not authenticated")
             return False
         
+        self.last_download_error = ""
+        self.last_download_reason = None
         try:
             request = self.service.files().get_media(fileId=file_id)
             
@@ -347,7 +355,15 @@ class GoogleDriveProvider:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to download from Google Drive: {e}")
+            self.last_download_error = str(e)
+            from cloud_restore import is_access_denied_error
+            self.last_download_reason = (
+                "no_access" if is_access_denied_error(e) else "error")
+            if self.last_download_reason == "no_access":
+                logger.warning(
+                    f"No permission to read Google Drive file {file_id}: {e}")
+            else:
+                logger.error(f"Failed to download from Google Drive: {e}")
             return False
 
 

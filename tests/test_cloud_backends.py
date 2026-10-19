@@ -15,6 +15,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import cloud_catalog as catalog
+import cloud_restore as cr
 
 
 # ---------------------------------------------------------------------------
@@ -96,9 +97,23 @@ class TestGoogleBackend(unittest.TestCase):
 
     def test_download_raises_when_provider_reports_failure(self):
         provider = _FakeDriveProvider([], download_ok=False)
+        provider.last_download_error = "HttpError 500 backendError"
+        provider.last_download_reason = "error"
         backend = catalog.GoogleDriveBackend(provider)
         with tempfile.TemporaryDirectory() as tmp:
-            with self.assertRaises(catalog.CloudCatalogError):
+            with self.assertRaises(catalog.CloudCatalogError) as caught:
+                backend.download("f1", Path(tmp) / "x.png")
+        # The provider's real reason must survive; it used to be dropped.
+        self.assertIn("HttpError 500 backendError", str(caught.exception))
+
+    def test_permission_denied_becomes_remote_access_error(self):
+        provider = _FakeDriveProvider([], download_ok=False)
+        provider.last_download_error = (
+            "HttpError 403 ... reason: appNotAuthorizedToFile")
+        provider.last_download_reason = "no_access"
+        backend = catalog.GoogleDriveBackend(provider)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(cr.RemoteAccessError):
                 backend.download("f1", Path(tmp) / "x.png")
 
     def test_unauthenticated_provider_is_rejected(self):
@@ -303,6 +318,29 @@ class TestDropboxBackend(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             with self.assertRaises(catalog.CloudCatalogError):
                 _TestDropboxBackend(provider).download("/x/a.png", Path(tmp) / "a.png")
+
+
+class TestAccessDeniedAcrossProviders(unittest.TestCase):
+    """A 403 means "never readable", not "try again"."""
+
+    def test_onedrive_403_is_remote_access_error(self):
+        http = _FakeHttp([_FakeResponse(status_code=403)])
+        backend = catalog.OneDriveBackend(_FakeOneDriveProvider(), http=http)
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(cr.RemoteAccessError):
+                backend.download("item-1", Path(tmp) / "a.png")
+
+    def test_dropbox_permission_error_is_remote_access_error(self):
+        class Forbidden(_FakeDropboxClient):
+            def files_download_to_file(self, dest, ref):
+                raise RuntimeError("ApiError: insufficient_permissions")
+
+        provider = _FakeDropboxProvider([])
+        provider.client = Forbidden([])
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(cr.RemoteAccessError):
+                _TestDropboxBackend(provider).download(
+                    "/x/a.png", Path(tmp) / "a.png")
 
 
 if __name__ == "__main__":

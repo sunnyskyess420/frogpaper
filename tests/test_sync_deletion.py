@@ -17,9 +17,10 @@ import sync_manager as sm
 class FakeProvider:
     authenticated = True
 
-    def __init__(self, size=None, upload_result="remote-id"):
+    def __init__(self, size=None, upload_result="remote-id", reason=None):
         self.size = size
         self.upload_result = upload_result
+        self.last_upload_reason = reason
         self.delete_calls = []
         self.upload_calls = []
 
@@ -143,6 +144,68 @@ class TestRemoteDeletion(unittest.TestCase):
         entry = self.manager.sync_metadata["files"][self.key]
         self.assertEqual(entry["remote"],
                          {"google_drive": "g-2", "dropbox": "old-id"})
+
+
+class TestUploadFailureAccounting(unittest.TestCase):
+    """A failed upload must never be reported as a synced change.
+
+    The modified-files loop used to increment ``modified`` regardless of what
+    ``_upload_file`` returned, so a cloud copy that refused the write still
+    looked backed up. Real Drive accounts hit exactly this for files created by
+    a different OAuth client (403 appNotAuthorizedToFile).
+    """
+
+    def setUp(self):
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        self.root = Path(tmp.name)
+
+        self._saved_base = sm.BASE_DIR
+        self._saved_meta = sm.SYNC_METADATA_FILE
+        sm.BASE_DIR = self.root
+        sm.SYNC_METADATA_FILE = self.root / "sync_metadata.json"
+        self.addCleanup(self._restore_paths)
+
+        self.path = self.root / "wallpapers" / "generated" / "frog.png"
+        self.path.parent.mkdir(parents=True)
+        self.path.write_bytes(b"12345")
+
+    def _restore_paths(self):
+        sm.BASE_DIR = self._saved_base
+        sm.SYNC_METADATA_FILE = self._saved_meta
+
+    def _manager(self, provider):
+        manager = sm.SyncManager(app=None)
+        manager.providers = {"google_drive": provider}
+        manager._detect_changes = lambda: ([], [self.path], [])
+        manager._update_sync_metadata = lambda: None
+        manager._save_sync_metadata = lambda: None
+        manager._upload_backup_manifest = lambda results: None
+        manager._is_favorite = lambda path: False
+        return manager
+
+    def test_failed_modification_counts_as_error_not_change(self):
+        results = self._manager(
+            FakeProvider(upload_result=None, reason="error")).perform_sync()
+
+        self.assertEqual(results["modified"], 0)
+        self.assertEqual(results["errors"], 1)
+        self.assertEqual(results["unwritable"], 0)
+
+    def test_permission_refusal_gets_its_own_tally(self):
+        results = self._manager(
+            FakeProvider(upload_result=None, reason="no_access")).perform_sync()
+
+        self.assertEqual(results["modified"], 0)
+        self.assertEqual(results["errors"], 1)
+        self.assertEqual(results["unwritable"], 1)
+
+    def test_successful_upload_still_counts_as_modified(self):
+        results = self._manager(FakeProvider()).perform_sync()
+
+        self.assertEqual(results["modified"], 1)
+        self.assertEqual(results["errors"], 0)
+        self.assertEqual(results["unwritable"], 0)
 
 
 if __name__ == "__main__":

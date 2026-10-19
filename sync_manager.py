@@ -249,6 +249,10 @@ class SyncManager:
             "deleted": 0,
             "conflicts": 0,
             "errors": 0,
+            # Files already in the cloud that this install is not allowed to
+            # overwrite (uploaded by a different OAuth client). Counted apart
+            # from errors because retrying can never fix them.
+            "unwritable": 0,
             "status": "completed"
         }
         
@@ -297,7 +301,7 @@ class SyncManager:
                         self._save_sync_metadata()  # persist after each file
                     else:
                         logger.warning(f"Upload failed for {file_path}, not counting as added")
-                        results["errors"] += 1
+                        self._count_upload_failure(results, file_path)
                 except Exception as e:
                     logger.error(f"Failed to upload {file_path}: {e}")
                     results["errors"] += 1
@@ -314,9 +318,16 @@ class SyncManager:
                         continue
                     
                     uploaded = self._upload_file(file_path)
-                    results["modified"] += 1
-                    self._update_single_file_metadata(file_path, uploaded)
-                    self._save_sync_metadata()  # persist after each file
+                    if uploaded:
+                        results["modified"] += 1
+                        self._update_single_file_metadata(file_path, uploaded)
+                        self._save_sync_metadata()  # persist after each file
+                    else:
+                        # A failed update must never be reported as a synced
+                        # change: the cloud copy is still the old bytes.
+                        logger.warning(
+                            f"Upload failed for {file_path}, not counting as modified")
+                        self._count_upload_failure(results, file_path)
                 except Exception as e:
                     logger.error(f"Failed to upload modified {file_path}: {e}")
                     results["errors"] += 1
@@ -386,6 +397,21 @@ class SyncManager:
         except Exception:
             return ''
 
+    def _count_upload_failure(self, results, file_path):
+        """Record an upload that did not happen, distinguishing permission.
+
+        ``_upload_file`` sets ``self._last_unwritable`` when every provider that
+        failed did so because the remote copy belongs to another client. Those
+        files need a human decision, not a retry, so they get their own tally
+        instead of inflating the generic error count.
+        """
+        results["errors"] += 1
+        if getattr(self, "_last_unwritable", False):
+            results["unwritable"] += 1
+            logger.warning(
+                f"{file_path} exists in the cloud but belongs to another "
+                "FrogPaper install; it cannot be overwritten by this one")
+
     def _upload_file(self, file_path: Path) -> Dict[str, str]:
         """Upload a file to all connected cloud providers.
 
@@ -403,6 +429,9 @@ class SyncManager:
         logger.info(f"Available providers: {list(self.providers.keys())}, subfolder: {subfolder or '(root)'}")
         
         uploaded = {}
+        self._last_unwritable = False  # never inherit the previous file's verdict
+        unwritable = False
+        failed = 0
         for provider_name, provider in self.providers.items():
             try:
                 logger.info(f"Uploading to {provider_name}...")
@@ -412,12 +441,18 @@ class SyncManager:
                     uploaded[provider_name] = result
                     logger.info(f"Synced {file_path.name} to {provider_name}")
                 else:
+                    failed += 1
+                    unwritable = unwritable or (
+                        getattr(provider, "last_upload_reason", None) == "no_access")
                     logger.warning(f"Upload to {provider_name} returned None")
             except Exception as e:
                 logger.error(f"Failed to upload to {provider_name}: {e}")
                 import traceback
                 logger.error(f"Upload error traceback: {traceback.format_exc()}")
 
+        # Only a file that is unwritable on every failing provider gets the
+        # special tally; a mixed result means a retry may still help.
+        self._last_unwritable = bool(failed) and unwritable and not uploaded
         return uploaded
     
     def _upload_backup_manifest(self, results):

@@ -365,5 +365,90 @@ class TestChecksums(_Base):
             cr.compute_digest(path, "crc32")
 
 
+class _ProbeSource:
+    """Just enough of a source to exercise probe_backup."""
+
+    def __init__(self, forbidden=(), broken=()):
+        self.forbidden = set(forbidden)
+        self.broken = set(broken)
+        self.fetched = []
+
+    def fetch(self, record, dest):
+        self.fetched.append(record.name)
+        if record.name in self.forbidden:
+            raise cr.RemoteAccessError(
+                "Google Drive will not serve this file to FrogPaper.")
+        if record.name in self.broken:
+            raise RuntimeError("connection reset")
+        Path(dest).write_bytes(b"payload")
+
+
+def _probe_records(count, subfolders=("generated",)):
+    return [
+        cr.RemoteFile("fake_cloud", f"id{index}", f"img{index}.png",
+                      subfolders[index % len(subfolders)], 7, 0.0)
+        for index in range(count)
+    ]
+
+
+class TestBackupProbe(unittest.TestCase):
+    """A listing is not a backup: the probe must read real bytes.
+
+    Live Drive listed 632 files and served only 245 of them, so any health
+    check that trusts the listing would have called that backup healthy.
+    """
+
+    def test_readable_sample_reports_success(self):
+        source = _ProbeSource()
+        result = catalog.probe_backup(source, _probe_records(4), limit=4)
+
+        self.assertEqual(result.checked, 4)
+        self.assertEqual(result.readable, 4)
+        self.assertEqual(result.unreadable, [])
+        self.assertIn("4 of 4", result.summary())
+
+    def test_permission_refusal_is_reported_as_unreadable(self):
+        source = _ProbeSource(forbidden={"img1.png"})
+        result = catalog.probe_backup(source, _probe_records(4), limit=4)
+
+        self.assertEqual(result.readable, 3)
+        self.assertEqual(len(result.unreadable), 1)
+        self.assertEqual(result.unreadable[0][0].name, "img1.png")
+        self.assertIn("cannot be read by this app", result.summary())
+
+    def test_network_error_is_not_called_unreadable(self):
+        source = _ProbeSource(broken={"img2.png"})
+        result = catalog.probe_backup(source, _probe_records(4), limit=4)
+
+        self.assertEqual(result.unreadable, [])
+        self.assertEqual(len(result.errors), 1)
+        self.assertIn("could not be checked", result.summary())
+
+    def test_sample_is_capped_and_spread_across_subfolders(self):
+        source = _ProbeSource()
+        records = _probe_records(400, subfolders=("generated", "manual"))
+        result = catalog.probe_backup(source, records, limit=6)
+
+        self.assertEqual(result.checked, 6)
+        self.assertEqual(len(source.fetched), 6)
+
+        sampled = catalog.sample_records(records, limit=4)
+        self.assertEqual(len(sampled), 4)
+        self.assertEqual(
+            {record.subfolder for record in sampled}, {"generated", "manual"})
+
+    def test_cancel_stops_before_reading_everything(self):
+        import threading
+
+        cancel = threading.Event()
+        cancel.set()
+        source = _ProbeSource()
+        result = catalog.probe_backup(
+            source, _probe_records(10), limit=6, cancel=cancel)
+
+        self.assertEqual(result.checked, 0)
+        self.assertEqual(source.fetched, [])
+
+
 if __name__ == "__main__":
     unittest.main()

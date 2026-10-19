@@ -381,6 +381,14 @@ class FrogPaperAppCloudMixin:
             self._dialog.error("Sync Failed", f"Sync encountered {results.get('errors', 0)} errors. Check logs for details.")
         else:
             summary = f"Added: {results.get('added', 0)}, Modified: {results.get('modified', 0)}, Deleted: {results.get('deleted', 0)}"
+            unwritable = results.get("unwritable", 0)
+            if unwritable:
+                summary += (
+                    f"\n\n{unwritable} files are already in the cloud but were "
+                    "uploaded by a different FrogPaper install, so this one "
+                    "cannot overwrite them. They are safe where they are; to "
+                    "make them restorable, restore them from a synced folder "
+                    "or leave them as they are.")
             self.sync_status_var.set("Sync complete")
             if hasattr(self, '_sync_status_lbl'):
                 self._sync_status_lbl.config(text=f"Done — {results.get('added', 0)} up")
@@ -804,6 +812,98 @@ class FrogPaperAppCloudMixin:
         self._restore_dialog_open = True
         self._set_restore_status("Scanning cloud backup…")
         run_background(self._scan_cloud_restore, providers)
+
+    def _check_cloud_backup(self):
+        """Download a few images from the backup and throw them away.
+
+        A listing is not proof of a backup: Drive lists files this app may not
+        read, so the only honest check is to fetch real bytes. Nothing is
+        written to the collection and nothing is restored.
+        """
+        if getattr(self, "_restore_dialog_open", False):
+            self._dialog.info("Backup check", "A restore window is already open.")
+            return
+
+        try:
+            if not getattr(self, "sync_manager", None):
+                from sync_manager import SyncManager
+
+                self.sync_manager = SyncManager(self)
+            self._set_restore_status("Checking cloud accounts…")
+            self.root.update_idletasks()
+            providers = self.sync_manager.pre_authenticate(main_root=self.root)
+        except Exception as exc:
+            logger.error("Backup check authentication failed: %s", exc)
+            self._set_restore_status("Backup check unavailable")
+            self._dialog.error(
+                "Backup check",
+                f"Could not connect to your cloud accounts.\n\n{exc}")
+            return
+
+        if not providers:
+            self._set_restore_status("No cloud connection")
+            self._dialog.warning(
+                "Backup check",
+                "No cloud accounts are connected.\n\n"
+                "Connect one under Cloud Providers first.")
+            return
+
+        self._restore_dialog_open = True
+        self._set_restore_status("Checking backup…")
+        run_background(self._probe_cloud_backup, providers)
+
+    def _probe_cloud_backup(self, providers):
+        """Background: list the backup, then read a sample back."""
+        try:
+            from cloud_catalog import make_cloud_sources, probe_backup
+
+            sources = make_cloud_sources(providers)
+            records = sources.list_files()
+            result = probe_backup(sources, records)
+        except Exception as exc:
+            logger.error("Backup check failed: %s", exc)
+            schedule_ui_update(self._on_restore_scan_failed, str(exc))
+            return
+
+        schedule_ui_update(self._on_probe_finished, result, len(records))
+
+    def _on_probe_finished(self, result, total):
+        self._restore_dialog_open = False
+        self._set_restore_status(result.summary())
+
+        if not result.checked:
+            self._dialog.info("Backup check", "No images were found in your cloud backup.")
+            return
+
+        if result.unreadable:
+            examples = "\n".join(
+                f"  • {record.rel_path}"
+                for record, _reason in result.unreadable[:3])
+            self._dialog.warning(
+                "Backup check",
+                f"{len(result.unreadable)} of {result.checked} sampled images "
+                "cannot be read by FrogPaper.\n\n"
+                f"{result.unreadable[0][1]}\n\n"
+                f"{examples}\n\n"
+                "Part of this backup therefore cannot be restored. The usual "
+                "cause is a backup written by an older FrogPaper install: the "
+                "cloud lists those files, but will not let this install read "
+                "them.")
+            return
+
+        if result.errors:
+            self._dialog.warning(
+                "Backup check",
+                f"{len(result.errors)} of {result.checked} sampled images could "
+                "not be checked because of a network or provider error.\n\n"
+                f"{result.errors[0][1]}\n\n"
+                "That is not proof of a bad backup — try again later.")
+            return
+
+        self._dialog.info(
+            "Backup check",
+            f"All {result.checked} sampled images downloaded and verified.\n\n"
+            f"This backup reports {total} images and looks restorable.")
 
     def _scan_cloud_restore(self, providers):
         """Background: catalog every connected provider into one record list."""

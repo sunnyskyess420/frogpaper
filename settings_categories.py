@@ -572,6 +572,8 @@ class SettingsCategoriesMixin:
                    command=app._restore_from_cloud).pack(side="left")
         ttk.Button(restore_row, text="From Folder…",
                    command=app._restore_from_folder).pack(side="left", padx=(8, 0))
+        ttk.Button(restore_row, text="Check backup…",
+                   command=app._check_cloud_backup).pack(side="left", padx=(8, 0))
 
         app.restore_status_var = tk.StringVar(value="No restore run yet")
         tk.Label(restore_row, textvariable=app.restore_status_var,
@@ -580,7 +582,9 @@ class SettingsCategoriesMixin:
 
         tk.Label(restore_body,
                  text="You will see a preview first. Nothing on disk is overwritten "
-                      "unless you choose “Overwrite” in that preview.",
+                      "unless you choose “Overwrite” in that preview. “Check "
+                      "backup” downloads a few images and throws them away to prove "
+                      "the backup can really be restored.",
                  font=("Segoe UI", 9), fg=pal["muted"], bg=pal["card_bg"],
                  anchor="w", justify="left", wraplength=600).pack(fill="x", pady=(4, 0))
 

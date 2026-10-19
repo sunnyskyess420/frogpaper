@@ -21,6 +21,7 @@ moves or deletes remote files.
 import logging
 import os
 import tempfile
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
@@ -525,6 +526,69 @@ def make_cloud_source(provider_name, provider):
     except KeyError:
         raise CloudCatalogError(f"Unknown cloud provider: {provider_name}")
     return CloudRestoreSource(backend_class(provider))
+
+
+@dataclass
+class ProbeResult:
+    """Outcome of reading a sample of the backup back out of the cloud."""
+
+    checked: int = 0
+    readable: int = 0
+    unreadable: list = field(default_factory=list)  # (record, message)
+    errors: list = field(default_factory=list)      # (record, message)
+
+    def summary(self):
+        if not self.checked:
+            return "Nothing to check"
+        text = f"{self.readable} of {self.checked} sampled images readable"
+        if self.unreadable:
+            text += f", {len(self.unreadable)} cannot be read by this app"
+        if self.errors:
+            text += f", {len(self.errors)} could not be checked"
+        return text
+
+
+def sample_records(records, limit=6):
+    """Pick an evenly spread sample, so every subfolder gets a chance."""
+    ordered = sorted(records, key=lambda r: (r.subfolder, r.name.lower()))
+    if len(ordered) <= limit:
+        return ordered
+    step = len(ordered) / float(limit)
+    return [ordered[int(index * step)] for index in range(limit)]
+
+
+def probe_backup(source, records, limit=6, cancel=None):
+    """Download a sample of *records* and throw it away.
+
+    A listing is not a backup: Google Drive happily lists files whose bytes
+    this app is not allowed to read (403 ``appNotAuthorizedToFile`` for copies
+    uploaded by another client). The only honest test is to fetch real bytes,
+    which is what this does -- one file at a time, into a temp directory that
+    is deleted afterwards.
+    """
+    result = ProbeResult()
+    with tempfile.TemporaryDirectory() as tmp:
+        for index, record in enumerate(sample_records(records, limit)):
+            if cancel is not None and cancel.is_set():
+                break
+            result.checked += 1
+            suffix = Path(record.name).suffix or ".img"
+            dest = Path(tmp) / f"probe-{index}{suffix}"
+            try:
+                source.fetch(record, dest)
+                result.readable += 1
+            except cr.RemoteAccessError as exc:
+                result.unreadable.append((record, str(exc)))
+            except Exception as exc:  # network flake: worth retrying later
+                logger.warning("Backup probe could not read %s: %s",
+                               record.rel_path, exc)
+                result.errors.append((record, str(exc)))
+            finally:
+                try:
+                    dest.unlink()
+                except OSError:
+                    pass
+    return result
 
 
 def make_cloud_sources(providers):

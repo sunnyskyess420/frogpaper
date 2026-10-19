@@ -79,6 +79,11 @@ class GoogleDriveProvider:
         # restore path reads these to classify the failure honestly.
         self.last_download_error = ""
         self.last_download_reason = None  # "no_access" | "error" | None
+        # Same idea for uploads: a file already in FrogPaper/ that another
+        # OAuth client created cannot be updated, and saying only "upload
+        # failed" hides that it will fail identically on every future sync.
+        self.last_upload_error = ""
+        self.last_upload_reason = None  # "no_access" | "error" | None
         
     def authenticate(self) -> bool:
         """Authenticate with Google Drive via OAuth."""
@@ -244,6 +249,8 @@ class GoogleDriveProvider:
         If a file with the same name already exists in the folder, it will be
         updated in-place instead of creating a duplicate.
         """
+        self.last_upload_error = ""
+        self.last_upload_reason = None
         if not self.authenticated or not self.service:
             logger.error("Google Drive not authenticated")
             return None
@@ -309,7 +316,16 @@ class GoogleDriveProvider:
             return result.get('id')
 
         except Exception as e:
-            logger.error(f"Failed to upload to Google Drive: {e}")
+            self.last_upload_error = str(e)
+            from cloud_restore import is_access_denied_error
+            self.last_upload_reason = (
+                "no_access" if is_access_denied_error(e) else "error")
+            if self.last_upload_reason == "no_access":
+                logger.warning(
+                    f"Cannot update {file_path.name} in Google Drive: it was "
+                    f"created by another client. {e}")
+            else:
+                logger.error(f"Failed to upload to Google Drive: {e}")
             return None
     
     def list_files(self, folder_id: Optional[str] = None) -> List[Dict]:

@@ -24,6 +24,19 @@ STYLED_DIR = WALLPAPERS_DIR / "styled"
 SYNC_METADATA_FILE = BASE_DIR / "sync_metadata.json"
 
 
+def _list_cloud_files(provider_name, provider) -> Dict[Tuple[str, str], str]:
+    """Return ``{(subfolder, name): file_id}`` for one provider's backup.
+
+    Thin wrapper so the rest of the module never imports ``cloud_catalog`` at
+    load time and so tests can replace it without a network stack.
+    """
+    from cloud_catalog import make_cloud_source
+
+    source = make_cloud_source(provider_name, provider)
+    return {(record.subfolder, record.name): record.file_id
+            for record in source.list_files()}
+
+
 class SyncManager:
     """Manages cloud sync with delta detection and conflict resolution."""
     
@@ -149,6 +162,67 @@ class SyncManager:
         except Exception:
             return False
     
+    def _reconcile_remote_ids(self) -> int:
+        """Make the recorded remote ids agree with the live backup folder.
+
+        Uploads are skipped when a file's hash is unchanged, so the recorded
+        remote id is the only link between a local image and its cloud copy.
+        Those ids go stale when the backup folder is replaced -- a rename, a
+        reinstall, or a re-upload from another install -- and a stale id is
+        worse than none: the file looks backed up, is skipped on every later
+        sync, and a restore fails with 403 because the old copy belongs to a
+        different OAuth client. So each connected provider's current tree is
+        the authority: ids that still describe a file with that name are kept
+        (or corrected to the copy that is really there), and ids with no file
+        behind them are dropped so the next upload re-creates the copy.
+
+        Returns the number of ids changed. A provider that cannot be listed is
+        left alone: a transient listing failure must not trigger a full
+        re-upload of the whole library.
+        """
+        if not self.providers:
+            return 0
+
+        changed = 0
+        for provider_name, provider in self.providers.items():
+            try:
+                index = _list_cloud_files(provider_name, provider)
+            except Exception as exc:
+                logger.warning(
+                    "Could not list %s to verify backup ids (%s); keeping them",
+                    provider_name, exc)
+                continue
+
+            for file_key, entry in self.sync_metadata.get("files", {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                remote = entry.get("remote") or {}
+                if provider_name not in remote:
+                    continue
+
+                path = Path(file_key)
+                subfolder = self._get_cloud_subfolder(path).lower()
+                live_id = index.get((subfolder, path.name))
+                if live_id is None:
+                    logger.info(
+                        "Dropping %s id for %s: it is no longer in the backup "
+                        "folder, so it will be uploaded again",
+                        provider_name, file_key)
+                    del remote[provider_name]
+                    changed += 1
+                elif remote[provider_name] != live_id:
+                    logger.info(
+                        "Repointing %s id for %s at the copy inside the backup "
+                        "folder", provider_name, file_key)
+                    remote[provider_name] = live_id
+                    changed += 1
+
+        if changed:
+            self._save_sync_metadata()
+            logger.info("Reconciled %d recorded cloud id(s) with the backup",
+                        changed)
+        return changed
+
     def _detect_changes(self) -> Tuple[List[Path], List[Path], List[Path]]:
         """Detect added, modified, and deleted files since last sync.
         
@@ -162,6 +236,10 @@ class SyncManager:
         sync_dirs = self._get_sync_scope()
         logger.info(f"Sync directories: {sync_dirs}")
         current_files = set()
+        # Only a remote copy recorded for a currently connected provider means
+        # "already backed up"; an id for a provider that is not connected this
+        # run would otherwise hide a missing upload forever.
+        connected = set(self.providers or {})
         
         # Scan current files
         for directory in sync_dirs:
@@ -178,12 +256,19 @@ class SyncManager:
                     
                     logger.info(f"Found file: {file_key}")
                     
-                    if file_key not in self.sync_metadata["files"]:
+                    entry = self.sync_metadata["files"].get(file_key)
+                    if entry is None:
                         added.append(file_path)
                         logger.info(f"Added file detected: {file_key}")
-                    elif self.sync_metadata["files"][file_key]["hash"] != current_hash:
+                    elif entry["hash"] != current_hash:
                         modified.append(file_path)
                         logger.info(f"Modified file detected: {file_key}")
+                    elif connected and not (set(entry.get("remote") or {})
+                                            & connected):
+                        # Same bytes, but the cloud copy it was matched to is
+                        # gone (or never existed), so it must be uploaded.
+                        added.append(file_path)
+                        logger.info(f"Not in the cloud folder, re-uploading: {file_key}")
         
         logger.info(f"Total files found: {len(current_files)}, Added: {len(added)}, Modified: {len(modified)}")
         
@@ -276,6 +361,11 @@ class SyncManager:
             
             logger.info(f"Cloud providers initialized: {list(self.providers.keys())}")
             
+            # Drop recorded ids that no longer exist in the cloud folder before
+            # comparing hashes, or a replaced backup tree looks complete.
+            self.sync_status = "Verifying backup..."
+            self._reconcile_remote_ids()
+
             # Detect changes
             self.sync_status = "Detecting changes..."
             logger.info("Detecting file changes...")

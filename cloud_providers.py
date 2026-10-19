@@ -73,6 +73,17 @@ class GoogleDriveProvider:
         self.authenticated = False
         self._folder_id_cache = None  # Cache FrogPaper folder ID for the session
         self._subfolder_cache = {}    # Cache subfolder IDs: {"Generated": "id1", ...}
+        # Why the last download_file() call failed. download_file() has always
+        # returned a bool, which hid the reason (notably 403 appNotAuthorizedToFile,
+        # a permanent permission problem that looked like a flaky network); the
+        # restore path reads these to classify the failure honestly.
+        self.last_download_error = ""
+        self.last_download_reason = None  # "no_access" | "error" | None
+        # Same idea for uploads: a file already in FrogPaper/ that another
+        # OAuth client created cannot be updated, and saying only "upload
+        # failed" hides that it will fail identically on every future sync.
+        self.last_upload_error = ""
+        self.last_upload_reason = None  # "no_access" | "error" | None
         
     def authenticate(self) -> bool:
         """Authenticate with Google Drive via OAuth."""
@@ -238,6 +249,8 @@ class GoogleDriveProvider:
         If a file with the same name already exists in the folder, it will be
         updated in-place instead of creating a duplicate.
         """
+        self.last_upload_error = ""
+        self.last_upload_reason = None
         if not self.authenticated or not self.service:
             logger.error("Google Drive not authenticated")
             return None
@@ -303,7 +316,16 @@ class GoogleDriveProvider:
             return result.get('id')
 
         except Exception as e:
-            logger.error(f"Failed to upload to Google Drive: {e}")
+            self.last_upload_error = str(e)
+            from cloud_restore import is_access_denied_error
+            self.last_upload_reason = (
+                "no_access" if is_access_denied_error(e) else "error")
+            if self.last_upload_reason == "no_access":
+                logger.warning(
+                    f"Cannot update {file_path.name} in Google Drive: it was "
+                    f"created by another client. {e}")
+            else:
+                logger.error(f"Failed to upload to Google Drive: {e}")
             return None
     
     def list_files(self, folder_id: Optional[str] = None) -> List[Dict]:
@@ -333,6 +355,8 @@ class GoogleDriveProvider:
             logger.error("Google Drive not authenticated")
             return False
         
+        self.last_download_error = ""
+        self.last_download_reason = None
         try:
             request = self.service.files().get_media(fileId=file_id)
             
@@ -347,7 +371,40 @@ class GoogleDriveProvider:
             return True
             
         except Exception as e:
-            logger.error(f"Failed to download from Google Drive: {e}")
+            self.last_download_error = str(e)
+            from cloud_restore import is_access_denied_error
+            self.last_download_reason = (
+                "no_access" if is_access_denied_error(e) else "error")
+            if self.last_download_reason == "no_access":
+                logger.warning(
+                    f"No permission to read Google Drive file {file_id}: {e}")
+            else:
+                logger.error(f"Failed to download from Google Drive: {e}")
+            return False
+
+
+    def get_file_size(self, file_ref: str):
+        """Return the remote object's size, or None if it cannot be read."""
+        if not self.authenticated or not self.service:
+            return None
+        try:
+            meta = self.service.files().get(
+                fileId=file_ref, fields="size").execute()
+            return int(meta.get("size", 0))
+        except Exception as e:
+            logger.warning(f"Could not stat Google Drive file {file_ref}: {e}")
+            return None
+
+    def delete_file(self, file_ref: str) -> bool:
+        """Delete one file from Google Drive."""
+        if not self.authenticated or not self.service:
+            return False
+        try:
+            self.service.files().delete(fileId=file_ref).execute()
+            logger.info(f"Deleted Google Drive file {file_ref}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete Google Drive file {file_ref}: {e}")
             return False
 
 
@@ -638,6 +695,46 @@ class OneDriveProvider:
                 
         except Exception as e:
             logger.error(f"Failed to download from OneDrive: {e}")
+            return False
+
+
+    def get_file_size(self, file_ref: str):
+        """Return the remote item's size, or None if it cannot be read."""
+        if not self.authenticated or not self.client:
+            return None
+        try:
+            import requests
+            response = requests.get(
+                f"https://graph.microsoft.com/v1.0/me/drive/items/{file_ref}?$select=size",
+                headers={"Authorization": f"Bearer {self.client}"},
+                timeout=(10, 60),
+            )
+            if response.status_code == 200:
+                return int(response.json().get("size", 0))
+            logger.warning(f"Could not stat OneDrive item {file_ref}: {response.status_code}")
+            return None
+        except Exception as e:
+            logger.warning(f"Could not stat OneDrive item {file_ref}: {e}")
+            return None
+
+    def delete_file(self, file_ref: str) -> bool:
+        """Delete one item from OneDrive."""
+        if not self.authenticated or not self.client:
+            return False
+        try:
+            import requests
+            response = requests.delete(
+                f"https://graph.microsoft.com/v1.0/me/drive/items/{file_ref}",
+                headers={"Authorization": f"Bearer {self.client}"},
+                timeout=(10, 60),
+            )
+            if response.status_code in (200, 204):
+                logger.info(f"Deleted OneDrive item {file_ref}")
+                return True
+            logger.warning(f"Failed to delete OneDrive item {file_ref}: {response.status_code}")
+            return False
+        except Exception as e:
+            logger.warning(f"Failed to delete OneDrive item {file_ref}: {e}")
             return False
 
 
@@ -947,6 +1044,34 @@ class DropboxProvider:
                 
         except Exception as e:
             logger.error(f"Failed to download from Dropbox: {e}")
+            return False
+
+
+    def get_file_size(self, file_ref: str):
+        """Return the remote file's size, or None if it cannot be read."""
+        if not self.authenticated or not self.client:
+            return None
+        try:
+            return int(self.client.files_get_metadata(file_ref).size)
+        except Exception as e:
+            logger.warning(f"Could not stat Dropbox file {file_ref}: {e}")
+            return None
+
+    def delete_file(self, file_ref: str) -> bool:
+        """Delete one file from Dropbox (accepts a path or an id)."""
+        if not self.authenticated or not self.client:
+            return False
+        try:
+            try:
+                self.client.files_delete_v2(file_ref)
+            except Exception:
+                # Ids need resolving to a path before deletion.
+                metadata = self.client.files_get_metadata(file_ref)
+                self.client.files_delete_v2(metadata.path_lower)
+            logger.info(f"Deleted Dropbox file {file_ref}")
+            return True
+        except Exception as e:
+            logger.warning(f"Failed to delete Dropbox file {file_ref}: {e}")
             return False
 
 

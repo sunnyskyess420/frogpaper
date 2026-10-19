@@ -8,7 +8,7 @@ import hashlib
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Tuple
 
 from utils import get_app_dir, load_config
 
@@ -22,6 +22,19 @@ FAVORITES_DIR = WALLPAPERS_DIR / "favorites"
 STYLED_DIR = WALLPAPERS_DIR / "styled"
 
 SYNC_METADATA_FILE = BASE_DIR / "sync_metadata.json"
+
+
+def _list_cloud_files(provider_name, provider) -> Dict[Tuple[str, str], str]:
+    """Return ``{(subfolder, name): file_id}`` for one provider's backup.
+
+    Thin wrapper so the rest of the module never imports ``cloud_catalog`` at
+    load time and so tests can replace it without a network stack.
+    """
+    from cloud_catalog import make_cloud_source
+
+    source = make_cloud_source(provider_name, provider)
+    return {(record.subfolder, record.name): record.file_id
+            for record in source.list_files()}
 
 
 class SyncManager:
@@ -149,6 +162,67 @@ class SyncManager:
         except Exception:
             return False
     
+    def _reconcile_remote_ids(self) -> int:
+        """Make the recorded remote ids agree with the live backup folder.
+
+        Uploads are skipped when a file's hash is unchanged, so the recorded
+        remote id is the only link between a local image and its cloud copy.
+        Those ids go stale when the backup folder is replaced -- a rename, a
+        reinstall, or a re-upload from another install -- and a stale id is
+        worse than none: the file looks backed up, is skipped on every later
+        sync, and a restore fails with 403 because the old copy belongs to a
+        different OAuth client. So each connected provider's current tree is
+        the authority: ids that still describe a file with that name are kept
+        (or corrected to the copy that is really there), and ids with no file
+        behind them are dropped so the next upload re-creates the copy.
+
+        Returns the number of ids changed. A provider that cannot be listed is
+        left alone: a transient listing failure must not trigger a full
+        re-upload of the whole library.
+        """
+        if not self.providers:
+            return 0
+
+        changed = 0
+        for provider_name, provider in self.providers.items():
+            try:
+                index = _list_cloud_files(provider_name, provider)
+            except Exception as exc:
+                logger.warning(
+                    "Could not list %s to verify backup ids (%s); keeping them",
+                    provider_name, exc)
+                continue
+
+            for file_key, entry in self.sync_metadata.get("files", {}).items():
+                if not isinstance(entry, dict):
+                    continue
+                remote = entry.get("remote") or {}
+                if provider_name not in remote:
+                    continue
+
+                path = Path(file_key)
+                subfolder = self._get_cloud_subfolder(path).lower()
+                live_id = index.get((subfolder, path.name))
+                if live_id is None:
+                    logger.info(
+                        "Dropping %s id for %s: it is no longer in the backup "
+                        "folder, so it will be uploaded again",
+                        provider_name, file_key)
+                    del remote[provider_name]
+                    changed += 1
+                elif remote[provider_name] != live_id:
+                    logger.info(
+                        "Repointing %s id for %s at the copy inside the backup "
+                        "folder", provider_name, file_key)
+                    remote[provider_name] = live_id
+                    changed += 1
+
+        if changed:
+            self._save_sync_metadata()
+            logger.info("Reconciled %d recorded cloud id(s) with the backup",
+                        changed)
+        return changed
+
     def _detect_changes(self) -> Tuple[List[Path], List[Path], List[Path]]:
         """Detect added, modified, and deleted files since last sync.
         
@@ -162,6 +236,10 @@ class SyncManager:
         sync_dirs = self._get_sync_scope()
         logger.info(f"Sync directories: {sync_dirs}")
         current_files = set()
+        # Only a remote copy recorded for a currently connected provider means
+        # "already backed up"; an id for a provider that is not connected this
+        # run would otherwise hide a missing upload forever.
+        connected = set(self.providers or {})
         
         # Scan current files
         for directory in sync_dirs:
@@ -178,12 +256,19 @@ class SyncManager:
                     
                     logger.info(f"Found file: {file_key}")
                     
-                    if file_key not in self.sync_metadata["files"]:
+                    entry = self.sync_metadata["files"].get(file_key)
+                    if entry is None:
                         added.append(file_path)
                         logger.info(f"Added file detected: {file_key}")
-                    elif self.sync_metadata["files"][file_key]["hash"] != current_hash:
+                    elif entry["hash"] != current_hash:
                         modified.append(file_path)
                         logger.info(f"Modified file detected: {file_key}")
+                    elif connected and not (set(entry.get("remote") or {})
+                                            & connected):
+                        # Same bytes, but the cloud copy it was matched to is
+                        # gone (or never existed), so it must be uploaded.
+                        added.append(file_path)
+                        logger.info(f"Not in the cloud folder, re-uploading: {file_key}")
         
         logger.info(f"Total files found: {len(current_files)}, Added: {len(added)}, Modified: {len(modified)}")
         
@@ -249,6 +334,10 @@ class SyncManager:
             "deleted": 0,
             "conflicts": 0,
             "errors": 0,
+            # Files already in the cloud that this install is not allowed to
+            # overwrite (uploaded by a different OAuth client). Counted apart
+            # from errors because retrying can never fix them.
+            "unwritable": 0,
             "status": "completed"
         }
         
@@ -272,6 +361,11 @@ class SyncManager:
             
             logger.info(f"Cloud providers initialized: {list(self.providers.keys())}")
             
+            # Drop recorded ids that no longer exist in the cloud folder before
+            # comparing hashes, or a replaced backup tree looks complete.
+            self.sync_status = "Verifying backup..."
+            self._reconcile_remote_ids()
+
             # Detect changes
             self.sync_status = "Detecting changes..."
             logger.info("Detecting file changes...")
@@ -290,14 +384,14 @@ class SyncManager:
             for idx, file_path in enumerate(added):
                 try:
                     self.sync_progress = idx + 1
-                    file_id = self._upload_file(file_path)
-                    if file_id:  # Only count if upload succeeded
+                    uploaded = self._upload_file(file_path)
+                    if uploaded:  # Only count if at least one upload succeeded
                         results["added"] += 1
-                        self._update_single_file_metadata(file_path)
+                        self._update_single_file_metadata(file_path, uploaded)
                         self._save_sync_metadata()  # persist after each file
                     else:
                         logger.warning(f"Upload failed for {file_path}, not counting as added")
-                        results["errors"] += 1
+                        self._count_upload_failure(results, file_path)
                 except Exception as e:
                     logger.error(f"Failed to upload {file_path}: {e}")
                     results["errors"] += 1
@@ -313,10 +407,17 @@ class SyncManager:
                         logger.info(f"Skipping favorite modification: {file_path.name}")
                         continue
                     
-                    self._upload_file(file_path)
-                    results["modified"] += 1
-                    self._update_single_file_metadata(file_path)
-                    self._save_sync_metadata()  # persist after each file
+                    uploaded = self._upload_file(file_path)
+                    if uploaded:
+                        results["modified"] += 1
+                        self._update_single_file_metadata(file_path, uploaded)
+                        self._save_sync_metadata()  # persist after each file
+                    else:
+                        # A failed update must never be reported as a synced
+                        # change: the cloud copy is still the old bytes.
+                        logger.warning(
+                            f"Upload failed for {file_path}, not counting as modified")
+                        self._count_upload_failure(results, file_path)
                 except Exception as e:
                     logger.error(f"Failed to upload modified {file_path}: {e}")
                     results["errors"] += 1
@@ -342,6 +443,11 @@ class SyncManager:
             self._update_sync_metadata()
             self.sync_metadata["last_sync"] = datetime.now().isoformat()
             self._save_sync_metadata()
+
+            # Portable metadata (tags / prompt params / safe config) so a
+            # restore can rebuild the library, not just the image files.
+            self.sync_status = "Backing up metadata..."
+            self._upload_backup_manifest(results)
             
             # Update last backup timestamp in UI
             if hasattr(self.app, 'last_backup_var'):
@@ -381,11 +487,27 @@ class SyncManager:
         except Exception:
             return ''
 
-    def _upload_file(self, file_path: Path) -> Optional[str]:
+    def _count_upload_failure(self, results, file_path):
+        """Record an upload that did not happen, distinguishing permission.
+
+        ``_upload_file`` sets ``self._last_unwritable`` when every provider that
+        failed did so because the remote copy belongs to another client. Those
+        files need a human decision, not a retry, so they get their own tally
+        instead of inflating the generic error count.
+        """
+        results["errors"] += 1
+        if getattr(self, "_last_unwritable", False):
+            results["unwritable"] += 1
+            logger.warning(
+                f"{file_path} exists in the cloud but belongs to another "
+                "FrogPaper install; it cannot be overwritten by this one")
+
+    def _upload_file(self, file_path: Path) -> Dict[str, str]:
         """Upload a file to all connected cloud providers.
-        
+
         Determines the correct cloud subfolder based on the file's local
-        directory and passes it to each provider.
+        directory and passes it to each provider. Returns ``{provider: id}``
+        so the id can be recorded and the remote copy deleted later.
         """
         logger.info(f"Attempting to upload: {file_path}")
         
@@ -396,39 +518,120 @@ class SyncManager:
         subfolder = self._get_cloud_subfolder(file_path)
         logger.info(f"Available providers: {list(self.providers.keys())}, subfolder: {subfolder or '(root)'}")
         
-        file_id = None
+        uploaded = {}
+        self._last_unwritable = False  # never inherit the previous file's verdict
+        unwritable = False
+        failed = 0
         for provider_name, provider in self.providers.items():
             try:
                 logger.info(f"Uploading to {provider_name}...")
                 logger.info(f"Provider authenticated: {provider.authenticated}")
                 result = provider.upload_file(file_path, subfolder=subfolder)
                 if result:
-                    file_id = result
+                    uploaded[provider_name] = result
                     logger.info(f"Synced {file_path.name} to {provider_name}")
                 else:
+                    failed += 1
+                    unwritable = unwritable or (
+                        getattr(provider, "last_upload_reason", None) == "no_access")
                     logger.warning(f"Upload to {provider_name} returned None")
             except Exception as e:
                 logger.error(f"Failed to upload to {provider_name}: {e}")
                 import traceback
                 logger.error(f"Upload error traceback: {traceback.format_exc()}")
-        
-        return file_id
+
+        # Only a file that is unwritable on every failing provider gets the
+        # special tally; a mixed result means a retry may still help.
+        self._last_unwritable = bool(failed) and unwritable and not uploaded
+        return uploaded
     
+    def _upload_backup_manifest(self, results):
+        """Write backup-manifest.json and push it to every provider.
+
+        Non-fatal by design: a manifest problem must never fail a sync that
+        already moved the images. Reuses the hashes ``_update_sync_metadata``
+        just computed, so this costs no extra disk reads.
+        """
+        try:
+            import backup_manifest
+
+            hashes = {}
+            for file_key, entry in self.sync_metadata.get("files", {}).items():
+                digest = entry.get("hash") if isinstance(entry, dict) else None
+                if digest:
+                    hashes[file_key.replace("\\", "/")] = digest
+
+            path, manifest = backup_manifest.write_manifest(
+                BASE_DIR, hashes=hashes)
+        except Exception as e:
+            logger.warning(f"Could not write backup manifest: {e}")
+            results["manifest_error"] = str(e)
+            return
+
+        uploaded = 0
+        for provider_name, provider in (self.providers or {}).items():
+            try:
+                if provider.upload_file(path, subfolder=""):
+                    uploaded += 1
+                    logger.info(f"Uploaded backup manifest to {provider_name}")
+            except Exception as e:
+                logger.warning(f"Manifest upload to {provider_name} failed: {e}")
+
+        results["manifest_images"] = len(manifest["images"])
+        results["manifest_uploaded"] = uploaded
+
     def _delete_remote_file(self, file_path: Path):
-        """Delete file from all connected cloud providers."""
-        # For now, this is a placeholder - actual deletion would require tracking remote file IDs
-        # In a full implementation, we'd maintain a mapping of local files to remote IDs
-        logger.info(f"Delete remote file called for {file_path.name} (placeholder)")
-        pass
+        """Delete the remote copies of a locally deleted file.
+
+        Deletes only when a remote id was recorded *and* the remote size still
+        matches what we uploaded -- a file edited by hand in the cloud is left
+        alone rather than silently destroyed.
+        """
+        try:
+            file_key = str(file_path.relative_to(BASE_DIR))
+        except ValueError:
+            logger.warning(
+                f"{file_path} is outside the app directory; skipping remote delete")
+            return
+
+        entry = (self.sync_metadata.get("files") or {}).get(file_key) or {}
+        remote = entry.get("remote") or {}
+        if not remote:
+            logger.info(
+                f"No remote id recorded for {file_key}; leaving the cloud copy")
+            return
+
+        expected_size = entry.get("size")
+        for provider_name, file_ref in remote.items():
+            provider = (self.providers or {}).get(provider_name)
+            if provider is None or not getattr(provider, "authenticated", False):
+                logger.info(f"Skipping remote delete on {provider_name}: not connected")
+                continue
+            try:
+                actual_size = provider.get_file_size(file_ref)
+                if (expected_size is not None and actual_size is not None
+                        and int(actual_size) != int(expected_size)):
+                    logger.info(
+                        f"{file_key} changed on {provider_name}; not deleting")
+                    continue
+                if provider.delete_file(file_ref):
+                    logger.info(f"Deleted {file_key} from {provider_name}")
+            except Exception as e:
+                logger.warning(
+                    f"Remote delete failed for {file_key} on {provider_name}: {e}")
     
-    def _update_single_file_metadata(self, file_path: Path):
+    def _update_single_file_metadata(self, file_path: Path, remote=None):
         """Update metadata for a single file (called after each successful upload)."""
         file_key = str(file_path.relative_to(BASE_DIR))
         file_hash = self._compute_file_hash(file_path)
+        previous = self.sync_metadata["files"].get(file_key) or {}
+        merged_remote = dict(previous.get("remote") or {})
+        merged_remote.update(remote or {})
         self.sync_metadata["files"][file_key] = {
             "hash": file_hash,
             "modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
-            "size": file_path.stat().st_size
+            "size": file_path.stat().st_size,
+            "remote": merged_remote,
         }
 
     def _update_sync_metadata(self):
@@ -441,11 +644,15 @@ class SyncManager:
                     file_key = str(file_path.relative_to(BASE_DIR))
                     file_hash = self._compute_file_hash(file_path)
                     
-                    self.sync_metadata["files"][file_key] = {
+                    existing = self.sync_metadata["files"].get(file_key) or {}
+                    entry = {
                         "hash": file_hash,
                         "modified": datetime.fromtimestamp(file_path.stat().st_mtime).isoformat(),
-                        "size": file_path.stat().st_size
+                        "size": file_path.stat().st_size,
                     }
+                    if existing.get("remote"):
+                        entry["remote"] = existing["remote"]
+                    self.sync_metadata["files"][file_key] = entry
     
     def get_sync_status(self) -> Dict:
         """Get current sync status for UI display."""

@@ -197,6 +197,7 @@ CONFIG_SCHEMA = {
     "completed_tutorials": list,
     "dropbox_app_key": str, "dropbox_app_secret": str,
     "oauth_tokens": dict,
+    "restore_conflict_policy": str, "restore_nudge_dismissed": bool,
     "dimensions": str, "model_id": str, "provider": str,
     "slideshow_enabled": bool, "slideshow_interval": int,
     "slideshow_source": str, "minimize_to_tray": bool,

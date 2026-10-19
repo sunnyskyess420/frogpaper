@@ -28,6 +28,12 @@ logs/*
 # Gallery metadata (contains absolute local file paths)
 gallery_tags.json
 
+# Sync/restore runtime state (machine-local, contains paths)
+sync_metadata.json
+backup-manifest.json
+restore_log_*.json
+*.part
+
 # Database files (contain user data)
 frogpaper.db
 frogpaper.db-shm

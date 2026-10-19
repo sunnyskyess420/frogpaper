@@ -267,13 +267,10 @@ class FrogPaperAppCloudMixin:
             if self.sync_manager is None:
                 raise Exception("SyncManager initialization failed")
             
-            # Clear sync metadata to force fresh sync
-            try:
-                self.sync_manager.sync_metadata = {"files": {}, "last_sync": None}
-                self.sync_manager._save_sync_metadata()
-                logger.info("Sync metadata cleared for fresh sync")
-            except Exception as e:
-                logger.warning(f"Failed to clear sync metadata: {e}")
+            # The metadata index is intentionally preserved now: it carries the
+            # recorded remote ids that remote deletion needs, and the hash
+            # comparison already uploads whatever actually changed.
+            logger.info("Keeping sync metadata index (remote ids preserved)")
             
             # Pre-authenticate all providers on the MAIN thread so OAuth
             # dialogs (Dropbox) work correctly — they cannot run in a background
@@ -384,6 +381,14 @@ class FrogPaperAppCloudMixin:
             self._dialog.error("Sync Failed", f"Sync encountered {results.get('errors', 0)} errors. Check logs for details.")
         else:
             summary = f"Added: {results.get('added', 0)}, Modified: {results.get('modified', 0)}, Deleted: {results.get('deleted', 0)}"
+            unwritable = results.get("unwritable", 0)
+            if unwritable:
+                summary += (
+                    f"\n\n{unwritable} files are already in the cloud but were "
+                    "uploaded by a different FrogPaper install, so this one "
+                    "cannot overwrite them. They are safe where they are; to "
+                    "make them restorable, restore them from a synced folder "
+                    "or leave them as they are.")
             self.sync_status_var.set("Sync complete")
             if hasattr(self, '_sync_status_lbl'):
                 self._sync_status_lbl.config(text=f"Done — {results.get('added', 0)} up")
@@ -750,3 +755,301 @@ class FrogPaperAppCloudMixin:
             logger.error(f"[Startup] Failed to change startup setting: {e}")
             self.run_on_startup_var.set(self.run_on_startup_enabled)
             self.status_var.set(f"Failed to change startup setting. Try running as administrator.")
+
+    # ── Restore from folder (safety backup) ──────────────────────────────
+
+    def _restore_from_folder(self):
+        """Let the user pick a backup folder and scan it in the background."""
+        if getattr(self, "_restore_dialog_open", False):
+            self._dialog.info("Restore", "A restore window is already open.")
+            return
+
+        from tkinter import filedialog
+
+        folder = filedialog.askdirectory(
+            parent=self.root,
+            title="Choose a FrogPaper backup folder",
+            mustexist=True,
+        )
+        if not folder:
+            return
+
+        self._restore_dialog_open = True
+        self._set_restore_status("Scanning backup folder…")
+        run_background(self._scan_restore_folder, folder)
+
+    def _restore_from_cloud(self):
+        """Authenticate on the main thread, then scan every connected provider."""
+        if getattr(self, "_restore_dialog_open", False):
+            self._dialog.info("Restore", "A restore window is already open.")
+            return
+
+        try:
+            if not getattr(self, "sync_manager", None):
+                from sync_manager import SyncManager
+
+                self.sync_manager = SyncManager(self)
+            self._set_restore_status("Checking cloud accounts…")
+            self.root.update_idletasks()
+            providers = self.sync_manager.pre_authenticate(main_root=self.root)
+        except Exception as exc:
+            logger.error("Cloud restore authentication failed: %s", exc)
+            self._set_restore_status("Cloud restore unavailable")
+            self._dialog.error(
+                "Restore",
+                f"Could not connect to your cloud accounts.\n\n{exc}")
+            return
+
+        if not providers:
+            self._set_restore_status("No cloud connection")
+            self._dialog.warning(
+                "Restore",
+                "No cloud accounts are connected.\n\n"
+                "Connect one under Cloud Providers, or use "
+                "\"Restore from Folder…\" with a synced folder.")
+            return
+
+        self._restore_dialog_open = True
+        self._set_restore_status("Scanning cloud backup…")
+        run_background(self._scan_cloud_restore, providers)
+
+    def _check_cloud_backup(self):
+        """Download a few images from the backup and throw them away.
+
+        A listing is not proof of a backup: Drive lists files this app may not
+        read, so the only honest check is to fetch real bytes. Nothing is
+        written to the collection and nothing is restored.
+        """
+        if getattr(self, "_restore_dialog_open", False):
+            self._dialog.info("Backup check", "A restore window is already open.")
+            return
+
+        try:
+            if not getattr(self, "sync_manager", None):
+                from sync_manager import SyncManager
+
+                self.sync_manager = SyncManager(self)
+            self._set_restore_status("Checking cloud accounts…")
+            self.root.update_idletasks()
+            providers = self.sync_manager.pre_authenticate(main_root=self.root)
+        except Exception as exc:
+            logger.error("Backup check authentication failed: %s", exc)
+            self._set_restore_status("Backup check unavailable")
+            self._dialog.error(
+                "Backup check",
+                f"Could not connect to your cloud accounts.\n\n{exc}")
+            return
+
+        if not providers:
+            self._set_restore_status("No cloud connection")
+            self._dialog.warning(
+                "Backup check",
+                "No cloud accounts are connected.\n\n"
+                "Connect one under Cloud Providers first.")
+            return
+
+        self._restore_dialog_open = True
+        self._set_restore_status("Checking backup…")
+        run_background(self._probe_cloud_backup, providers)
+
+    def _probe_cloud_backup(self, providers):
+        """Background: list the backup, then read a sample back."""
+        try:
+            from cloud_catalog import make_cloud_sources, probe_backup
+
+            sources = make_cloud_sources(providers)
+            records = sources.list_files()
+            result = probe_backup(sources, records)
+        except Exception as exc:
+            logger.error("Backup check failed: %s", exc)
+            schedule_ui_update(self._on_restore_scan_failed, str(exc))
+            return
+
+        schedule_ui_update(self._on_probe_finished, result, len(records))
+
+    def _on_probe_finished(self, result, total):
+        self._restore_dialog_open = False
+        self._set_restore_status(result.summary())
+
+        if not result.checked:
+            self._dialog.info("Backup check", "No images were found in your cloud backup.")
+            return
+
+        if result.unreadable:
+            examples = "\n".join(
+                f"  • {record.rel_path}"
+                for record, _reason in result.unreadable[:3])
+            self._dialog.warning(
+                "Backup check",
+                f"{len(result.unreadable)} of {result.checked} sampled images "
+                "cannot be read by FrogPaper.\n\n"
+                f"{result.unreadable[0][1]}\n\n"
+                f"{examples}\n\n"
+                "Part of this backup therefore cannot be restored. The usual "
+                "cause is a backup written by an older FrogPaper install: the "
+                "cloud lists those files, but will not let this install read "
+                "them.")
+            return
+
+        if result.errors:
+            self._dialog.warning(
+                "Backup check",
+                f"{len(result.errors)} of {result.checked} sampled images could "
+                "not be checked because of a network or provider error.\n\n"
+                f"{result.errors[0][1]}\n\n"
+                "That is not proof of a bad backup — try again later.")
+            return
+
+        self._dialog.info(
+            "Backup check",
+            f"All {result.checked} sampled images downloaded and verified.\n\n"
+            f"This backup reports {total} images and looks restorable.")
+
+    def _scan_cloud_restore(self, providers):
+        """Background: catalog every connected provider into one record list."""
+        try:
+            from cloud_catalog import make_cloud_sources
+
+            sources = make_cloud_sources(providers)
+            records = sources.list_files()
+            manifest = sources.fetch_manifest()
+        except Exception as exc:
+            logger.error("Cloud restore scan failed: %s", exc)
+            schedule_ui_update(self._on_restore_scan_failed, str(exc))
+            return
+
+        if not records:
+            schedule_ui_update(self._on_restore_scan_empty, "your cloud backup")
+            return
+
+        schedule_ui_update(self._show_restore_preview, sources, records, manifest)
+
+    def _set_restore_status(self, text):
+        """Update the settings label and the status bar, if they exist."""
+        var = getattr(self, "restore_status_var", None)
+        if var is not None:
+            var.set(text)
+        try:
+            self.status_var.set(text)
+        except Exception:
+            pass
+
+    def _scan_restore_folder(self, folder):
+        """Background: list the chosen folder (hashing can take a while)."""
+        try:
+            from cloud_restore import LocalFolderSource
+
+            source = LocalFolderSource(folder)
+            records = source.list_files()
+        except Exception as exc:
+            logger.error("Restore scan failed: %s", exc)
+            schedule_ui_update(self._on_restore_scan_failed, str(exc))
+            return
+
+        if not records:
+            schedule_ui_update(self._on_restore_scan_empty, folder)
+            return
+
+        schedule_ui_update(self._show_restore_preview, source, records)
+
+    def _on_restore_scan_failed(self, message):
+        self._restore_dialog_open = False
+        self._set_restore_status("Restore scan failed")
+        self._dialog.error("Restore", f"Could not read that folder.\n\n{message}")
+
+    def _on_restore_scan_empty(self, folder):
+        self._restore_dialog_open = False
+        self._set_restore_status("No images found")
+        self._dialog.info(
+            "Restore",
+            "No images were found in that folder.\n\n"
+            "Choose a folder containing Generated / Manual / Favorites / Styled "
+            "subfolders, or a folder of images.\n\n"
+            f"{folder}",
+        )
+
+    def _show_restore_preview(self, source, records, manifest=None):
+        try:
+            from pathlib import Path
+
+            from utils import get_app_dir
+            from restore_ui import RestorePreviewDialog
+
+            RestorePreviewDialog(
+                self, source, records, Path(get_app_dir()),
+                on_finished=self._on_restore_finished,
+                on_closed=self._on_restore_closed,
+                manifest=manifest,
+            )
+        except Exception as exc:
+            logger.exception("Could not open restore dialog")
+            self._restore_dialog_open = False
+            self._set_restore_status("Restore unavailable")
+            self._dialog.error(
+                "Restore", f"Could not open the restore window.\n\n{exc}")
+
+    def _on_restore_finished(self, result):
+        self._restore_dialog_open = False
+        self._set_restore_status(result.summary())
+        if result.written:
+            self._hide_restore_nudge()
+        refresh = getattr(self, "load_gallery", None)
+        if callable(refresh):
+            try:
+                refresh()
+            except Exception as exc:
+                logger.warning("Gallery refresh after restore failed: %s", exc)
+
+    def _on_restore_closed(self):
+        self._restore_dialog_open = False
+
+    # ── Empty-gallery restore nudge ──────────────────────────────────────
+
+    def _maybe_show_restore_nudge(self):
+        """Offer a restore when the collection is empty.
+
+        A fresh install after a disk failure is exactly when a user needs this
+        and exactly when they have no idea the Settings card exists, so the
+        nudge lives in the gallery itself. Costs nothing when there are images.
+        """
+        nudge = getattr(self, "_restore_nudge", None)
+        if nudge is None:
+            return
+        try:
+            from utils import load_config
+
+            if load_config().get("restore_nudge_dismissed"):
+                return
+
+            try:
+                from set_wallpaper import GENERATED_DIR, collect_wallpapers
+
+                images = collect_wallpapers([self.MANUAL_DIR, GENERATED_DIR]) or []
+            except Exception as exc:
+                logger.debug("Could not check the collection: %s", exc)
+                return
+
+            if images:
+                return
+
+            nudge.grid(row=1, column=0, sticky="ew", pady=(0, 6))
+            logger.info("Empty gallery: offering restore")
+        except Exception as exc:
+            logger.debug("Restore nudge skipped: %s", exc)
+
+    def _hide_restore_nudge(self):
+        nudge = getattr(self, "_restore_nudge", None)
+        if nudge is not None:
+            nudge.grid_remove()
+
+    def _dismiss_restore_nudge(self):
+        """Hide the nudge for good (persisted so it never nags again)."""
+        self._hide_restore_nudge()
+        try:
+            from utils import load_config, save_config
+
+            config = load_config()
+            config["restore_nudge_dismissed"] = True
+            save_config(config)
+        except Exception as exc:
+            logger.warning("Could not remember the nudge dismissal: %s", exc)

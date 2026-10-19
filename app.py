@@ -1628,7 +1628,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # ═══════════════════════ RIGHT PANEL (GALLERY) ══════════════════════
         right = ttk.Frame(self.main, padding=(8, 8))
         right.grid(row=0, column=2, sticky="nsew")
-        right.rowconfigure(1, weight=1)
+        right.rowconfigure(2, weight=1)
         right.columnconfigure(0, weight=1)
         self._right_panel = right
 
@@ -1652,10 +1652,26 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # Initial pack (non-portrait order: Open Folder | Tutorials)
         self._repack_header_buttons(is_portrait=False)
 
+        # Restore nudge — hidden until _maybe_show_restore_nudge decides the
+        # collection is empty, so it costs no space in the normal case.
+        self._restore_nudge = ttk.Frame(right, padding=(10, 8))
+        ttk.Label(self._restore_nudge,
+                  text="Your gallery is empty — restore a backup?",
+                  font=self.bold_font).pack(side="left")
+        ttk.Button(self._restore_nudge, text="Restore from Cloud…",
+                   command=self._restore_from_cloud).pack(side="left", padx=(12, 0))
+        ttk.Button(self._restore_nudge, text="From Folder…",
+                   command=self._restore_from_folder).pack(side="left", padx=(6, 0))
+        ttk.Button(self._restore_nudge, text="Dismiss",
+                   command=self._dismiss_restore_nudge).pack(side="right")
+
         # Gallery content — delegate to existing builder
         gallery_content = ttk.Frame(right, padding=(0, 0))
-        gallery_content.grid(row=1, column=0, sticky="nsew")
+        gallery_content.grid(row=2, column=0, sticky="nsew")
         self._build_gallery_tab(gallery_content)
+
+        # Offer a restore once the first paint has settled.
+        self.root.after(1500, self._maybe_show_restore_nudge)
 
         # ═══════════════════════ BOTTOM STATUS BAR ══════════════════════════
         bottom = ttk.Frame(self.main, style="Surface.TFrame")

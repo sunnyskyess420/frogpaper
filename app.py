@@ -5,11 +5,21 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.7.3"
+APP_VERSION = "1.7.4"
 
 # Halloween Edition branding (v1.7.x only). Clear this string in the next
 # release to drop the edition label - the theme and sounds stay.
 APP_EDITION = "Halloween Edition"
+
+# Shown in the About window (tray right-click -> About FrogPaper). Newest
+# first, last three releases: adding a release means editing this one list,
+# not hunting for a stale sentence in the dialog code.
+RELEASE_HIGHLIGHTS = (
+    "v1.7.3: Restore no longer duplicates your gallery",
+    "v1.7.2: Backups you can actually restore",
+    "v1.7.1: New circular sidebar logo",
+)
+
 
 # Halloween Edition default startup subject (v1.7.x only). Fresh installs seed
 # it from config.template.json; the next release restores the blank "" default.
@@ -2390,7 +2400,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # New features
         tk.Label(
             content_frame,
-            text="🎃 v1.7.0 Halloween Edition: a new Halloween theme with pumpkin-glow dialogs and its own ghost popup sound, plus a Halloween startup subject • One-click updates: download & install updates straight from the popup • v1.6.1: Multi-select tagging • v1.6.0: Visual Refresh, scrolling fixed everywhere, no startup theme flash",
+            text="  |  ".join(RELEASE_HIGHLIGHTS),
             font=("Segoe UI", 9),
             bg=pal["panel"],
             fg=pal.get("accent", pal["progress"]),

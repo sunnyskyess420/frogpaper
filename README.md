@@ -315,6 +315,17 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.7.4 - About Window Refresh
+
+**Fixes:**
+- The About window (tray right-click -> About FrogPaper) no longer advertises v1.7.0. It now lists the last three releases, and the version line underneath is always the build you are running.
+- No functional changes; this is a wording release.
+
+**Under the Hood:**
+- `RELEASE_HIGHLIGHTS` in `app.py` replaces the hardcoded paragraph, so future releases update one tuple instead of a sentence buried in the dialog.
+
+---
+
 ### v1.7.3 - No More Duplicate Restores
 
 **Cloud Restore:**

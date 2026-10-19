@@ -348,6 +348,45 @@ def _same_content(target, remote):
         return False
 
 
+def _gallery_index(wallpapers):
+    """Map file size to the gallery images already on disk.
+
+    Restoring a backup that stored the same picture under both ``Generated``
+    and ``Manual`` used to write a second local copy, so the gallery showed
+    every image twice. Size is only a cheap pre-filter; candidates are hashed
+    with the backup's own algorithm before anything is skipped.
+    """
+    index = {}
+    for folder in ("generated", "manual"):
+        directory = wallpapers / folder
+        if not directory.is_dir():
+            continue
+        for path in directory.rglob("*"):
+            try:
+                if path.is_file() and path.suffix.lower() in IMAGE_EXTENSIONS:
+                    index.setdefault(path.stat().st_size, []).append(path)
+            except OSError:
+                continue
+    return index
+
+
+def _find_identical_image(remote, index, cache):
+    """Return an existing gallery image with the same content, if any."""
+    algo, value = remote.digest
+    if not value or not remote.size:
+        return None
+    for candidate in index.get(remote.size, ()):
+        key = (str(candidate), algo)
+        if key not in cache:
+            try:
+                cache[key] = compute_digest(candidate, algo)
+            except (OSError, RestoreError):
+                cache[key] = None
+        if cache[key] == value:
+            return candidate
+    return None
+
+
 # ---------------------------------------------------------------------------
 # sources
 # ---------------------------------------------------------------------------
@@ -447,6 +486,8 @@ def build_plan(records, app_dir, conflict_policy="keep_both", overwrite=False,
 
     used_keys = set()
     items = []
+    gallery_index = _gallery_index(wallpapers)
+    digest_cache = {}
 
     for remote in sorted(records, key=lambda r: (r.subfolder, r.name)):
         ok, reason = is_safe_image_name(remote.name)
@@ -472,6 +513,14 @@ def build_plan(records, app_dir, conflict_policy="keep_both", overwrite=False,
         used_keys.add(key)
 
         if not target.exists():
+            if subfolder in ("generated", "manual"):
+                twin = _find_identical_image(remote, gallery_index, digest_cache)
+                if twin is not None:
+                    items.append(RestoreItem(
+                        remote, RestoreStatus.IDENTICAL, twin,
+                        f"same image already in {twin.parent.name}/{twin.name}",
+                    ))
+                    continue
             items.append(RestoreItem(remote, RestoreStatus.MISSING, target))
             continue
 

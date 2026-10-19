@@ -101,6 +101,37 @@ class TestPlanner(_RestoreTestBase):
         self.assertEqual(result.written, [])
         self.assertEqual(len(result.skipped), 1)
 
+    def test_same_image_under_another_folder_is_not_restored_twice(self):
+        # A backup that stored one picture under both Manual and Generated
+        # must not produce a second gallery copy on restore.
+        _write_image(self.backup / "Manual" / "dup.png", b"identical-bytes")
+        existing = self.app / "wallpapers" / "generated" / "original.png"
+        existing.parent.mkdir(parents=True)
+        existing.write_bytes(b"identical-bytes")
+
+        source, plan = self._plan()
+        item = plan.items[0]
+        self.assertEqual(item.status, cr.RestoreStatus.IDENTICAL)
+        self.assertEqual(item.target, existing)
+
+        result = self._run(source, plan)
+        self.assertEqual(result.written, [])
+        self.assertFalse(
+            (self.app / "wallpapers" / "manual" / "dup.png").exists())
+
+    def test_favorites_copy_is_still_restored(self):
+        # Favorites is a separate view: an identical image there is wanted.
+        _write_image(self.backup / "Favorites" / "fav.png", b"identical-bytes")
+        existing = self.app / "wallpapers" / "generated" / "original.png"
+        existing.parent.mkdir(parents=True)
+        existing.write_bytes(b"identical-bytes")
+
+        _source, plan = self._plan()
+        item = plan.items[0]
+        self.assertEqual(item.status, cr.RestoreStatus.MISSING)
+        self.assertEqual(
+            item.target, self.app / "wallpapers" / "favorites" / "fav.png")
+
     def test_conflict_keeps_both_by_default(self):
         _write_image(self.backup / "Manual" / "x.png", b"remote-bytes")
         target = self.app / "wallpapers" / "manual" / "x.png"

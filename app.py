@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.7.0"
+APP_VERSION = "1.7.1"
 
 # Halloween Edition branding (v1.7.x only). Clear this string in the next
 # release to drop the edition label - the theme and sounds stay.
@@ -1080,7 +1080,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 pass
         self._bind_sidebar_wheel_recursive = _bind_sidebar_wheel_recursive
 
-        # ── Sidebar logo ──
+        # ── Sidebar logo (circular) ──
         self._sidebar_logo_ref = None  # prevent GC
         try:
             from PIL import Image as _PILImg, ImageTk as _PILTk
@@ -1088,14 +1088,18 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             _logo_path = get_bundle_dir() / 'sidebar_logo.png'
             if _logo_path.exists():
                 _logo_img = _PILImg.open(_logo_path).convert('RGBA')
-                _sidebar_w = 260
-                _ratio = _sidebar_w / _logo_img.width
-                _logo_h = int(_logo_img.height * _ratio)
-                _logo_img = _logo_img.resize((_sidebar_w, _logo_h), _PILImg.LANCZOS)
+                # Circular logo — resize to a square with side breathing room.
+                # Sidebar usable width is ~272px (300 canvas - 14*2 padx);
+                # 200px circle leaves ~36px of breathing room per side, which
+                # reads as balanced. Bump to 220 if more prominent is desired.
+                _logo_size = 200
+                _logo_img = _logo_img.resize((_logo_size, _logo_size), _PILImg.LANCZOS)
                 self._sidebar_logo_ref = _PILTk.PhotoImage(_logo_img)
                 _logo_label = tk.Label(left, image=self._sidebar_logo_ref,
                                        anchor='center')
-                _logo_label.pack(pady=(0, 8))
+                # pady=(top, bottom) — small top breathing room before the
+                # "Generate Prompt" button row, 8px below as before.
+                _logo_label.pack(pady=(6, 8))
                 self._sidebar_logo_label = _logo_label
         except Exception:
             self._sidebar_logo_label = None

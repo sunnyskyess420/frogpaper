@@ -315,6 +315,19 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.7.1 - New Circular Sidebar Logo
+
+**Visual:**
+- Replaced the rectangular sidebar logo with a new circular enamel-pin-style badge featuring the frog mascot, beret, and rainbow paintbrush. The "FrogPaper" wordmark is now arched around the top of the circle, with "AI WALLPAPER STUDIO" on a gold ribbon at the bottom.
+- Sidebar sizing adjusted so the circle has comfortable breathing room on both sides instead of stretching edge-to-edge.
+- The transparent background of the new logo means it automatically picks up each theme's panel color — no per-theme variants needed.
+
+**Under the Hood:**
+- `app.py` `build_ui()` logo resize logic simplified from proportional-rectangle to fixed-square.
+- Bumped `APP_VERSION`, `build_installer.bat` `AppVersion` and `OutputBaseFilename` to 1.7.1.
+
+---
+
 ### v1.7.0 - Halloween Edition
 **New Features:**
 - **🎃 Halloween theme** (Settings > General > App Theme): pumpkin orange on a haunted night - deep purple panels, bone-white text, pumpkin-glow button borders, candle focus indicators, rounded pumpkin buttons, and a ghost-fog overlay in dialogs.

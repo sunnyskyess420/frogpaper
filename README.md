@@ -315,6 +315,20 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.7.2 - Backups you can actually restore
+
+**Cloud Backup:**
+- **Restoring from Google Drive now brings back every wallpaper.** A backup used to skip any image whose recorded cloud copy had been replaced - by a rename, a reinstall, or an upload from an older install - so a restore quietly returned only part of the library.
+- **The app now checks its records against what is really in the folder**, re-uploads anything missing, and repoints entries at the copy that actually exists.
+- **"Check backup..." downloads a sample** to prove the backup is readable before you rely on it.
+
+**Under the Hood:**
+- `sync_manager.py` `_reconcile_remote_ids()` runs before hash comparison: it drops ids with no file behind them, repoints ids at the real copy, and leaves ids alone when a provider cannot be listed.
+- `_detect_changes()` counts a file as backed up only when it has a remote id for a provider connected in that run.
+- Added `tests/test_sync_remote_ids.py` and `tests/test_drive_upload_dedupe.py`.
+
+---
+
 ### v1.7.1 - New Circular Sidebar Logo
 
 **Visual:**

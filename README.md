@@ -315,6 +315,19 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.7.3 - No More Duplicate Restores
+
+**Cloud Restore:**
+- **Restoring no longer duplicates your gallery.** If a backup stored the same picture under both Generated and Manual, restore used to write a second local copy, so every image appeared twice.
+- **The planner now checks content, not just filenames.** Before writing anything, it compares the backup against the images already in your gallery and skips a file whose bytes are already there under another folder.
+- **Favorites and Styled still restore normally** - they are separate views, not duplicates.
+
+**Under the Hood:**
+- `cloud_restore.py` gained `_gallery_index()` and `_find_identical_image()`: a size-based pre-filter, then a hash check using the backup's own algorithm (SHA-256, MD5, SHA-1 or Dropbox content hash).
+- Added tests covering cross-folder de-duplication and confirming Favorites copies are still restored.
+
+---
+
 ### v1.7.2 - Backups you can actually restore
 
 **Cloud Backup:**

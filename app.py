@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.7.2"
+APP_VERSION = "1.7.3"
 
 # Halloween Edition branding (v1.7.x only). Clear this string in the next
 # release to drop the edition label - the theme and sounds stay.

@@ -137,7 +137,7 @@ class TutorialManager:
             },
             {
                 "title": "Cloud Sync",
-                "content": "Connect Google Drive, OneDrive, or Dropbox to sync your wallpaper collection across devices. Set it up in Settings > Cloud Storage. Changes are detected automatically and synced in the background.",
+                "content": "Connect Google Drive, OneDrive, or Dropbox to back up your wallpaper collection. Set it up in Settings > Cloud & Backup. FrogPaper syncs when you press Sync, and automatically at the daily backup time you choose. If you ever lose your files, use Restore from Cloud (or Restore from Folder) to bring the images and their tags back.",
                 "highlight": "settings",
                 "action": "show_settings"
             },

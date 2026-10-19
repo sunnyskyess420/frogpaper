@@ -557,6 +557,33 @@ class SettingsCategoriesMixin:
                                font=("Segoe UI", 9), fg=pal["muted"], bg=pal["card_bg"])
         helper_label.pack(fill="x", pady=8)
 
+        # Restore & Recovery card — pull wallpapers back from a backup folder.
+        restore_card = SettingCard(
+            frame, "Restore & Recovery",
+            "Bring wallpapers back from a backup folder: a Google Drive or Dropbox "
+            "sync folder, an external drive, or an old FrogPaper install.",
+            pal, pal.get("accent", COLOR_ACCENT))
+        restore_body = restore_card.get_content()
+
+        restore_row = tk.Frame(restore_body, bg=pal["card_bg"])
+        restore_row.pack(fill="x", pady=8)
+
+        ttk.Button(restore_row, text="Restore from Cloud…",
+                   command=app._restore_from_cloud).pack(side="left")
+        ttk.Button(restore_row, text="From Folder…",
+                   command=app._restore_from_folder).pack(side="left", padx=(8, 0))
+
+        app.restore_status_var = tk.StringVar(value="No restore run yet")
+        tk.Label(restore_row, textvariable=app.restore_status_var,
+                 font=("Segoe UI", 9), fg=pal["muted"], bg=pal["card_bg"],
+                 anchor="w").pack(side="left", padx=8)
+
+        tk.Label(restore_body,
+                 text="You will see a preview first. Nothing on disk is overwritten "
+                      "unless you choose “Overwrite” in that preview.",
+                 font=("Segoe UI", 9), fg=pal["muted"], bg=pal["card_bg"],
+                 anchor="w", justify="left", wraplength=600).pack(fill="x", pady=(4, 0))
+
     def _build_advanced_category(self, parent, pal):
         """Build Advanced settings category."""
         app = self.app

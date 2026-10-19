@@ -136,7 +136,7 @@ Opened via the Settings button, **Ctrl+S**, or tray menu. Opens in a resizable w
 | **Appearance** | Wallpaper output format (PNG/JPEG/WebP), JPEG quality |
 | **Startup** | Run on Windows startup, auto-generate on launch + startup subject, system tray behavior |
 | **Slideshow** | Slideshow enable + interval slider (1–60 min), fullscreen auto-pause, source & order, skip duplicates |
-| **Cloud & Backup** | Google Drive / OneDrive / Dropbox connection cards — each with credential fields and a built-in "How to get your credentials" guide that is **expanded by default** with **clickable website links** (opens in your browser); auto-backup schedule |
+| **Cloud & Backup** | Google Drive / OneDrive / Dropbox connection cards — each with credential fields and a built-in "How to get your credentials" guide that is **expanded by default** with **clickable website links** (opens in your browser); auto-backup schedule; **Restore from Cloud / Restore from Folder** with a dry-run preview, conflict policies and tag import |
 | **Advanced** | Generation behavior (Smart Negatives, Keep subject exact), keyword expansion mappings, **Favorite Dropdown Items** manager, morning auto-wallpaper scheduler |
 | **Help** | Built-in tutorials (Quick Start, Feature Tour, Interactive Practice, Model Setup) and help resources |
 

@@ -263,12 +263,25 @@ def _graph_item(item):
 
 
 class OneDriveBackend:
-    """Graph backend over the bearer token the app already holds."""
+    """Graph backend over the bearer token the app already holds.
+
+    ``http`` may be supplied to inject an HTTP client; it defaults to the
+    ``requests`` module. The seam exists so the backend can be tested without
+    requiring ``requests`` (it is absent from the lean CI test install).
+    """
 
     name = "onedrive"
 
-    def __init__(self, provider):
+    def __init__(self, provider, http=None):
         self.provider = provider
+        self._http = http
+
+    def _http_client(self):
+        if self._http is not None:
+            return self._http
+        import requests
+
+        return requests
 
     def _headers(self):
         token = getattr(self.provider, "client", None)
@@ -277,9 +290,8 @@ class OneDriveBackend:
         return {"Authorization": f"Bearer {token}"}
 
     def _get_json(self, url):
-        import requests
-
-        response = requests.get(url, headers=self._headers(), timeout=_TIMEOUT)
+        response = self._http_client().get(
+            url, headers=self._headers(), timeout=_TIMEOUT)
         if response.status_code == 404:
             return None
         response.raise_for_status()
@@ -307,11 +319,9 @@ class OneDriveBackend:
         return items
 
     def download(self, file_ref, dest):
-        import requests
-
         url = f"{GRAPH_BASE}/me/drive/items/{file_ref}/content"
-        response = requests.get(url, headers=self._headers(), stream=True,
-                                timeout=_TIMEOUT)
+        response = self._http_client().get(
+            url, headers=self._headers(), stream=True, timeout=_TIMEOUT)
         try:
             response.raise_for_status()
             with open(dest, "wb") as handle:

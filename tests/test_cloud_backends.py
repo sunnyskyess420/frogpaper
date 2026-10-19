@@ -11,7 +11,6 @@ import tempfile
 import types
 import unittest
 from pathlib import Path
-from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -143,6 +142,18 @@ class _FakeOneDriveProvider:
         self.downloaded = []
 
 
+class _FakeHttp:
+    """Stands in for the requests module so these tests need not import it."""
+
+    def __init__(self, responses):
+        self._responses = list(responses)
+        self.calls = []
+
+    def get(self, url, **kwargs):
+        self.calls.append((url, kwargs))
+        return self._responses.pop(0)
+
+
 class TestOneDriveBackend(unittest.TestCase):
 
     def test_resolve_root_picks_the_folder(self):
@@ -150,10 +161,11 @@ class TestOneDriveBackend(unittest.TestCase):
             {"id": "other", "name": "Docs", "folder": {}},
             {"id": "root-9", "name": "FrogPaper", "folder": {}},
         ]}
-        with mock.patch("requests.get",
-                        return_value=_FakeResponse(payload=payload)):
-            backend = catalog.OneDriveBackend(_FakeOneDriveProvider())
-            self.assertEqual(backend.resolve_root(), "root-9")
+        http = _FakeHttp([_FakeResponse(payload=payload)])
+        backend = catalog.OneDriveBackend(_FakeOneDriveProvider(), http=http)
+
+        self.assertEqual(backend.resolve_root(), "root-9")
+        self.assertIn("/me/drive/root/children", http.calls[0][0])
 
     def test_list_children_follows_next_link(self):
         first = {"value": [{
@@ -163,35 +175,32 @@ class TestOneDriveBackend(unittest.TestCase):
         }], "@odata.nextLink": "https://graph/next"}
         second = {"value": [{"id": "d1", "name": "Generated", "folder": {}}]}
 
-        responses = [_FakeResponse(payload=first), _FakeResponse(payload=second)]
+        http = _FakeHttp([_FakeResponse(payload=first),
+                          _FakeResponse(payload=second)])
+        backend = catalog.OneDriveBackend(_FakeOneDriveProvider(), http=http)
+        items = backend.list_children("root-9")
 
-        def fake_get(url, **kwargs):
-            return responses.pop(0)
-
-        with mock.patch("requests.get", side_effect=fake_get):
-            items = catalog.OneDriveBackend(_FakeOneDriveProvider()).list_children("root-9")
-
+        self.assertEqual(http.calls[1][0], "https://graph/next")
         self.assertEqual([item["kind"] for item in items], ["file", "folder"])
         self.assertEqual(items[0]["checksum_algo"], "sha1")
         self.assertEqual(items[0]["checksum"], "deadbeef")
         self.assertEqual(items[0]["size"], 10)
 
     def test_download_streams_to_disk(self):
-        provider = _FakeOneDriveProvider()
-        with mock.patch("requests.get",
-                        return_value=_FakeResponse(content=b"image-bytes")):
-            with tempfile.TemporaryDirectory() as tmp:
-                dest = Path(tmp) / "a.png"
-                catalog.OneDriveBackend(provider).download("f1", dest)
-                self.assertEqual(dest.read_bytes(), b"image-bytes")
+        http = _FakeHttp([_FakeResponse(content=b"image-bytes")])
+        backend = catalog.OneDriveBackend(_FakeOneDriveProvider(), http=http)
+        with tempfile.TemporaryDirectory() as tmp:
+            dest = Path(tmp) / "a.png"
+            backend.download("f1", dest)
+            self.assertEqual(dest.read_bytes(), b"image-bytes")
+        self.assertTrue(http.calls[0][1]["stream"])
 
     def test_download_raises_on_http_error(self):
-        with mock.patch("requests.get",
-                        return_value=_FakeResponse(status_code=500)):
-            with tempfile.TemporaryDirectory() as tmp:
-                with self.assertRaises(RuntimeError):
-                    catalog.OneDriveBackend(_FakeOneDriveProvider()).download(
-                        "f1", Path(tmp) / "a.png")
+        backend = catalog.OneDriveBackend(
+            _FakeOneDriveProvider(), http=_FakeHttp([_FakeResponse(status_code=500)]))
+        with tempfile.TemporaryDirectory() as tmp:
+            with self.assertRaises(RuntimeError):
+                backend.download("f1", Path(tmp) / "a.png")
 
 
 # ---------------------------------------------------------------------------

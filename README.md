@@ -315,6 +315,19 @@ AppData/FrogPaper/
 
 ## Changelog
 
+### v1.7.5 - Style Filters and Text Overlay Restored
+
+**Fixes:**
+- Applying a style (Comic Book, Watercolor, and the rest) failed with "Could not apply style" because the bundled OpenCV was built for NumPy 1.x while the app shipped NumPy 2.x. The build now uses a NumPy 2-compatible OpenCV.
+- Text overlay failed with "The image file may be corrupted" for the same root cause: the module imported OpenCV and PIL in one block, so OpenCV's failure also disabled PIL. The two are probed separately now, and text overlay works even if OpenCV is unavailable.
+- Neither dialog blames your image file any more when the real problem is a missing library.
+
+**Under the Hood:**
+- `style_transfer.py`: separate `CV2_AVAILABLE` / `PIL_AVAILABLE` probes; `STYLE_TRANSFER_AVAILABLE` requires both for filters, while text overlay only needs PIL.
+- Build environment: opencv-python 4.8.1.78 -> 4.14.0.94 (NumPy 2 compatible). Verified by applying `comic_book` and a text overlay to a test image before building.
+
+---
+
 ### v1.7.4 - About Window Refresh
 
 **Fixes:**

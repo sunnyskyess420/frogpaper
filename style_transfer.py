@@ -5,15 +5,28 @@ Provides local artistic style filters for post-processing generated images.
 No API calls required - all processing happens locally using OpenCV and PIL.
 """
 
+# The two probes are deliberately separate. A broken OpenCV install must not
+# disable text overlay: that path only needs PIL, and used to fail with a
+# misleading "image may be corrupted" dialog because ``Image`` was set to None
+# by cv2's ImportError.
 try:
     import cv2
     import numpy as np
-    from PIL import Image, ImageFilter, ImageEnhance, ImageOps  # noqa: F401  (availability probe)
-    STYLE_TRANSFER_AVAILABLE = True
+    CV2_AVAILABLE = True
 except ImportError:
-    STYLE_TRANSFER_AVAILABLE = False
-    # Minimal stubs so the module can still be imported
+    cv2 = None
+    np = None
+    CV2_AVAILABLE = False
+
+try:
+    from PIL import Image, ImageFilter, ImageEnhance, ImageOps  # noqa: F401
+    PIL_AVAILABLE = True
+except ImportError:
     Image = None
+    PIL_AVAILABLE = False
+
+# Artistic filters need both; plain text overlay only needs PIL.
+STYLE_TRANSFER_AVAILABLE = CV2_AVAILABLE and PIL_AVAILABLE
 
 from pathlib import Path
 from typing import Optional

@@ -2,7 +2,7 @@
 
 
 🎨 Meet Pip, the Chief Curator
-Pip is the official mascot of FROGPAPER. While he might look like he’s about to paint a masterpiece with his trusty brush and beret, his real job is making sure your phone screen looks amazing without selling your data. Pip believes in open-source, privacy, and the perfect pixel. Say hi to him in the issues tab! 🐸
+Pip is the official mascot of FROGPAPER. While he might look like he’s about to paint a masterpiece with his trusty brush and beret, his real job is making sure your phone and computer screen looks amazing without selling your data. Pip believes in open-source, privacy, and the perfect pixel. Say hi to him in the issues tab! 🐸
 
 # FrogPaper
 

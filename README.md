@@ -6,15 +6,23 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 # FrogPaper
 
-> *A cozy AI wallpaper studio that lives on your desktop.*
+> *A cozy AI wallpaper studio for your desktop and your phone.*
 
-**FrogPaper** is a Windows desktop application for generating, curating, and rotating AI-powered wallpapers. Built with Python and Tkinter, it connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, HuggingFace, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — from structured prompt building with negative prompt presets, to a visual gallery with tagging and style filters, slideshow automation, text overlays, and direct Windows wallpaper integration.
+**FrogPaper** is a two-app wallpaper studio.
 
-No browser. No server. Just a desktop app and your imagination.
+- **FrogPaper Desktop — v1.7.5** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
+
+No browser. No account. Just the apps and your imagination.
+
+| App | Current version | Platform | Stack |
+|---|---|---|---|
+| **FrogPaper Desktop** | 1.7.5 | Windows 10 / 11 | Python 3.10+, Tkinter |
+| **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
 
-## Quick Start
+## Quick Start — Desktop
 
 **1. Install & Launch**
 ```bash
@@ -29,7 +37,7 @@ Open **Settings** (top of sidebar) and pick a provider under **Generation**:
 - **Prodia** — Pro account required. API key from app.prodia.com.
 - **Replicate** — Pay-per-image (~$0.003/img for FLUX.schnell). API token from replicate.com.
 - **Fal.ai** — Pay-per-use, fast inference. API key from fal.ai.
-- **HuggingFace Inference** — Requires a token from huggingface.co.
+- **Hugging Face Inference** — Requires a token from huggingface.co.
 
 ```bash
 # Optional: set HuggingFace token via environment variable
@@ -48,18 +56,29 @@ setx HUGGINGFACE_TOKEN hf_your_token_here
 
 ---
 
-## What FrogPaper Does
+## Quick Start — Android
+
+1. Download `FrogPaper-release-signed.apk` from the [latest FrogPaper Mobile release](https://github.com/sunnyskyess420/frogpaper-mobile/releases/latest).
+2. Android 7.0 or newer. Allow installs from your browser or file manager when Android asks ("Install unknown apps").
+3. Install over an existing FrogPaper install — it uses the same release key (`CN=FrogPaper`), so there is no need to uninstall first.
+4. Type a prompt (two words is enough) and tap **Generate**. Optional: open **Build** to assemble a prompt from dropdowns, or add your own Gemini / Hugging Face / Replicate key in **Settings**.
+
+> Generating needs a reachable FrogPaper backend; the app ships pointing at the public one. Your own API keys stay on the phone.
+
+---
+
+## What FrogPaper Does — Desktop
 
 FrogPaper is a complete wallpaper creation and management studio in a single window:
 
 1. **Build Prompts** — Use the sidebar dropdowns and negative prompt builder to craft prompts
-2. **Generate Images** — Send prompts to AI models via Pollinations, Cloudflare, or HuggingFace
-3. **Curate Collection** — Browse gallery, favorite images, apply 19 artistic filters, add text overlays, tag and organize
+2. **Generate Images** — Send prompts to any of the 6 configured providers
+3. **Curate Collection** — Browse gallery, favorite images, apply 25 artistic filters, add text overlays, tag and organize
 4. **Set & Rotate** — Apply wallpapers instantly or let the slideshow rotate automatically with fullscreen-pause detection
 
 ---
 
-## Key Features
+## Key Features — Desktop
 
 | Feature | Description |
 |---|---|
@@ -67,12 +86,12 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Sidebar Controls** | 6 structured dropdowns + negative prompt builder, all action buttons at the top |
 | **Pinned Favorites (★)** | Every dropdown item has a star button — pinned choices rise to a "★ FAVORITES" section at the top of each list; manage them all under Settings > Advanced > Favorite Dropdown Items |
 | **Negative Prompt Builder** | Preset checkboxes with term counts, custom terms, live preview, smart negatives |
-| **3 AI Providers** | Pollinations.ai (free), Cloudflare Workers AI (free tier), HuggingFace Inference |
-| **Multiple Models** | FLUX.1-Krea-dev, FLUX Realism, FLUX Anime, FLUX 3D, Turbo, SDXL, SD 3.5 Large, custom |
+| **6 AI Providers** | Pollinations.ai (free), Cloudflare Workers AI (free tier), Hugging Face Inference, Prodia, Replicate, Fal.ai |
+| **26 Model Presets** | FLUX.1-schnell, FLUX.1-dev, FLUX.dev, FLUX.pro, SDXL 1.0, SDXL Lightning, Animagine XL 3.1, DreamShaper 8, Playground v2.5, plus custom model IDs |
 | **Gallery** | 7 views (Gallery, Favorites, Styled, Manual, 16:9, Portrait, Square) with sorting and filtering |
 | **Portrait Export** | Bulk export portrait (9:16) images to any destination including SD cards and USB drives |
-| **Style Transfer** | 19 local artistic filters: Oil Painting, Cyberpunk Neon, Gouache, Vaporwave, and more |
-| **Text Overlay** | Add text to any image with font selection, sizing, color, outline, shadow, and 7 positions |
+| **Style Transfer** | 25 local artistic filters: Oil Painting, Cyberpunk Neon, Gouache, Vaporwave, and more |
+| **Text Overlay** | Add text to any image with font selection, sizing, color, outline, shadow, 5 quick-position presets and click/drag placement |
 | **Tag System** | Tag images, filter gallery by tag, manage tags across all views |
 | **Slideshow** | Auto-rotate wallpapers on timer (1–60 min) with fullscreen auto-pause and duplicate skipping |
 | **Favorites** | Bookmark wallpapers with dedicated slideshow source |
@@ -80,11 +99,28 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Recipe Library** | Save, load, import, export reusable prompt configurations |
 | **19 App Themes** | Full theme system with dark, light, and specialty color schemes |
 | **Windows Integration** | Native wallpaper setting, system tray with full controls, minimize-to-tray, startup tasks |
-| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate) |
+| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate), Ctrl+Alt+N (next wallpaper) |
 
 ---
 
-## App Layout
+## Android App (v1.12.0)
+
+FrogPaper Mobile is a separate Android app, not a port of the desktop UI.
+
+- **Bottom tabs** — Home, Generate, Gallery and Settings are one tap apart. Build, Detail, Slideshow and Prompt history open on top, and Back returns to the tab you came from.
+- **Generate** — type a prompt, pick one of 7 size presets, set a seed, or roll **Surprise me** (20 curated ideas). A cancel button shows the elapsed time.
+- **Build** — assemble a prompt from 10 modes, 16 subjects, 23 styles, 19 lighting options, 19 moods and 10 atmospheres, a free-text setting, recipes with rollable slots and quick negative presets.
+- **Engines** — Pollinations (free, no key), Google Gemini, Hugging Face and Replicate. The last three use your own keys, stored on the phone. A locked engine opens the key sheet instead of failing silently.
+- **Gallery** — runs from the phone by default. Search by name or prompt, sort, filter favourites, star images, multi-select, and open a full-screen viewer with swipe, pinch-zoom and double-tap. Long-press for set / star / save / share / delete, with a 5-second undo on delete.
+- **Detail** — a "Made with" row names the engine that produced the image, read from the filename.
+- **Rotation** — `Off` / `Every time I open` / `Once a day`, with `Surprise me`, `My favourites` or `Random from my gallery` as the source. A failed run backs off for 2 hours and names the real retry time.
+- **Update prompt** — Home shows a one-time notice when a newer release exists, with "Get update" and "Later".
+
+Android requirements: Android 7.0+ (API 24), roughly 80 MB of storage.
+
+---
+
+## Desktop App Layout
 
 ### Left Panel — Sidebar
 
@@ -102,7 +138,7 @@ Every dropdown item carries a ☆ star button on its row. Click the star to **pi
 - **Subject** — What to generate (frog, dragon, owl, cat, 100+ options)
 - **Mode** — Artistic style: Stylized, Realistic, Cinematic, Anime, Dark Fantasy, Painterly, Pixel Art, Minimalist, Product Photo, Surreal
 - **Lighting** — Light source (neon, volumetric, monitor glow, blacklight, bloom, etc.)
-- **Color Palette** — Two side-by-side dropdowns: Color Family (70+ colors) + Color Variation (40+ modifiers)
+- **Color Palette** — Two side-by-side dropdowns: Color Family (63 colors) + Color Variation (47 modifiers)
 - **Setting** — Environment/location (120+ options)
 - **Atmosphere** — Mood (mist, fog, particles, etc.)
 
@@ -127,7 +163,7 @@ Every dropdown item carries a ☆ star button on its row. Click the star to **pi
 - **Header** — "My Collection" title with Open Folder and Refresh Gallery buttons
 - **Action buttons** — Set as Wallpaper, Save to Favorites, Apply Style, Add Text, Delete, Export Portraits
 - **View selector** — 7 radio-button views: Gallery, Favorites, Styled, Manual, 16:9, Portrait, Square
-- **Sort dropdown** — Date Newest/Oldest, Name A-Z/Z-A, Size Largest, Resolution Largest
+- **Sort dropdown** — Date Newest/Oldest, Name A-Z/Z-A, Size Largest/Smallest, Resolution Largest/Smallest
 - **Tag filter** — dropdown to filter all views by tag
 - **Thumbnail grid** — lazy-rendered cards with fade-in animation; double-click to set as wallpaper
 
@@ -148,7 +184,9 @@ Opened via the Settings button, **Ctrl+S**, or tray menu. Opens in a resizable w
 
 ---
 
-## AI Providers & Models
+## AI Providers & Models (Desktop)
+
+All six providers are selectable under **Settings > Generation**, each with its own key field and setup guide.
 
 ### Pollinations.ai (Free — No Key)
 
@@ -159,31 +197,67 @@ Opened via the Settings button, **Ctrl+S**, or tray menu. Opens in a resizable w
 | FLUX Anime | Anime-optimized |
 | FLUX 3D | 3D-render style |
 | FLUX CablyAI | Enhanced quality |
-| Turbo | Fast generation |
+| Turbo (Fast) | Fast generation |
 
 ### Cloudflare Workers AI (Free Tier)
 
 | Model | Notes |
 |---|---|
-| FLUX.1-schnell | Fast generation, free tier |
+| FLUX.1-schnell (Fast - Free) | Fast generation, free tier |
 
-Requires Account ID and API Token from Cloudflare dashboard.
+Requires Account ID and API Token from the Cloudflare dashboard.
 
-### HuggingFace Inference
+### Hugging Face Inference
 
-| Model | Hugging Face ID | Notes |
-|---|---|---|
-| FLUX.1-schnell | `black-forest-labs/FLUX.1-schnell` | Fast, free-credit model |
-| FLUX.1-dev | `black-forest-labs/FLUX.1-dev` | High quality; requires Pro |
-| FLUX.1-Krea-dev | `black-forest-labs/FLUX.1-Krea-dev` | High quality; recommended |
-| SD 3.5 Large | `stabilityai/stable-diffusion-3.5-large` | Requires Pro |
-| Custom | *any HF model ID* | Experimental |
+| Model | Notes |
+|---|---|
+| FLUX.1-schnell (Fast - Free) | Fast, free-credit model |
+| FLUX.1-dev (Higher Quality - Free Credits) | High quality |
+| Custom... | Any Hugging Face model ID |
 
-> Some models require accepting terms on huggingface.co before API access.
+Requires a token from huggingface.co. Some models require accepting terms on the model page before API access.
+
+### Prodia (Pro Account)
+
+| Model | Notes |
+|---|---|
+| FLUX.schnell (Fast - Free) | Fast generation |
+| FLUX.dev (Higher Quality) | Higher quality |
+| FLUX.1-fill (Inpainting) | Inpainting |
+| SDXL 1.0 | Stable Diffusion XL |
+| SDXL Lightning (Fast) | Fast SDXL |
+| Animagine XL 3.1 (Anime) | Anime-optimized |
+| DreamShaper 8 | Stylized SD |
+
+Pro account required; API key from app.prodia.com.
+
+### Replicate (Pay-Per-Image)
+
+| Model | Notes |
+|---|---|
+| FLUX.schnell (Fast - $0.003/img) | Fast and cheap |
+| FLUX.dev (Quality - $0.025/img) | Higher quality |
+| FLUX.pro (Best - $0.04/img) | Best quality |
+| SDXL 1.0 | Stable Diffusion XL |
+| SDXL Lightning (Fast) | Fast SDXL |
+
+API token from replicate.com.
+
+### Fal.ai (Fast Inference)
+
+| Model | Notes |
+|---|---|
+| FLUX.schnell (Fast) | Fastest inference |
+| FLUX.dev (Quality) | Higher quality |
+| FLUX.pro (Best) | Best quality |
+| SDXL 1.0 | Stable Diffusion XL |
+| Playground v2.5 | Playground model |
+
+API key from fal.ai.
 
 ---
 
-## Prompt Modes
+## Prompt Modes (Desktop)
 
 | Mode | Aesthetic |
 |---|---|
@@ -200,16 +274,16 @@ Requires Account ID and API Token from Cloudflare dashboard.
 
 ---
 
-## System Tray
+## System Tray (Desktop)
 
 Right-clicking the tray icon gives full app control without opening the window:
 
 | Menu Item | Action |
 |---|---|
 | **Open FrogPaper** | Restore main window (double-click default) |
-| **Open Gallery** | Restore and jump to Gallery tab |
-| **Generate Image** | Restore window and generate a new image |
+| **Open Folder** | Open the wallpapers folder in Explorer |
 | **Settings** | Open Settings dialog |
+| **Tutorials** | Open the built-in tutorials |
 | **Next Wallpaper** | Advance to next wallpaper in history |
 | **Previous Wallpaper** | Go back in wallpaper history |
 | **Random Wallpaper** | Set a random image from your gallery instantly |
@@ -220,7 +294,7 @@ Right-clicking the tray icon gives full app control without opening the window:
 
 ---
 
-## Keyboard Shortcuts
+## Keyboard Shortcuts (Desktop)
 
 | Shortcut | Action |
 |---|---|
@@ -228,7 +302,7 @@ Right-clicking the tray icon gives full app control without opening the window:
 | `Ctrl+S` | Open Settings |
 | `Ctrl+N` | Generate image |
 | `Ctrl+Alt+N` | Advance slideshow (global hotkey, requires `keyboard` package) |
-| `Escape` | Close settings dialog |
+| `Escape` | Close Settings; otherwise show the shortcut hint toast |
 
 ---
 
@@ -236,90 +310,150 @@ Right-clicking the tray icon gives full app control without opening the window:
 
 ```text
 FrogPaper/
-├── app.py                  # Main application (UI, layout, events)
-├── main.py                 # Entry point
-├── settings_tab.py         # Settings window (modal dialog)
-├── prompt_tab.py           # Prompt Builder, Quick Build, Recipe Library, Templates
-├── gallery_tab.py          # Gallery panel, style transfer, text overlay, tags
-├── tray_manager.py         # System tray icon and menu
-├── slideshow.py            # Auto-rotation timer and logic
-├── session_manager.py      # Session save/load (SQLite + JSON fallback)
-├── wallpaper_generator.py  # AI provider integration (Pollinations, Cloudflare, HuggingFace)
-├── theme_mixer.py          # Theme/prompt generation engine
-├── prompt_builder.py       # Prompt assembly from components
-├── prompt_refiner.py       # Prompt optimization
-├── prompt_validator.py     # Prompt audit and variable validation
-├── keyword_expander.py     # Keyword expansion (NLTK + sentence-transformers)
-├── negative_manager.py     # Negative prompt presets, smart negatives, style defaults
-├── style_transfer.py       # 19 local artistic filters (OpenCV)
-├── template_system.py      # Recipe/template data models
-├── gallery_manager.py      # Gallery metadata, tags, folder management
-├── database.py             # SQLAlchemy ORM for sessions, favorites, tags
-├── icons.py                # Toolbar icon rendering
-├── preset_manager.py       # Preset bundle management
-├── history_manager.py      # Prompt and wallpaper history tracking
-├── utils.py                # Shared utilities; get_app_dir() for EXE-safe paths
-├── set_wallpaper.py        # Windows wallpaper API (Win32)
-├── convert_icon.py         # Icon conversion utilities
-├── export_prompt_pack.py   # Prompt pack export
-├── export_frogpaper_for_ai.py  # AI-friendly export
-├── daily_runner.py         # Headless daily generation
-├── setup_scheduler.py      # Task Scheduler integration
+├── app.py                      # Main window, layout, events (~2,700 lines)
+├── main.py                     # Entry point
+├── app_paths.py                # Filesystem layout constants (BASE_DIR, logs, wallpaper dirs)
+├── app_prompt_data.py          # Dropdown option banks, modes, provider/model tables
+├── app_themes.py               # 19 theme palettes
+├── app_theme_engine.py         # apply_theme() and themed-widget generation
+├── app_generation_mixin.py     # Generate / regenerate pipeline
+├── app_cloud_mixin.py          # Cloud sync, backup and startup-registry methods
+├── app_system_mixin.py         # Tray, wallpaper and system integration
+├── app_delegates_mixin.py      # Delegate helpers for tabs and dialogs
+├── app_runtime.py              # Runtime bootstrap helpers
 │
-├── requirements.txt        # Python dependencies
-├── keywords.json           # Thematic keyword bank
-├── negative_presets.json   # Negative prompt presets
-├── presets.json            # Saved preset bundles
-├── recipes.json            # Recipe library
-├── templates.json          # Prompt template definitions
-├── prompt_library.json     # Saved prompt library
-├── gallery_tags.json       # Gallery tag definitions
+├── prompt_tab.py               # Prompt Builder, Quick Build, Recipe Library, Templates
+├── gallery_tab.py              # Gallery views, style transfer, text overlay, tags
+├── settings_tab.py             # Settings window shell with sidebar navigation
+├── settings_categories.py      # Builders for the 8 settings categories
+├── settings_components.py      # Reusable settings UI primitives
+├── settings_providers.py       # Provider selection and API-key fields
+├── settings_persistence.py     # Save / load settings
+├── settings_slideshow.py       # Slideshow settings card
+├── settings_ux_data.py         # Provider and cloud setup guides
 │
-├── run_frogpaper.bat       # Windows launcher
-├── build_frogpaper_exe.bat # PyInstaller EXE build script
-├── FrogPaper.spec          # PyInstaller spec file
-├── build_installer.bat     # Installer build script
-├── rotate_wallpaper.bat    # Random rotation script
-├── run_daily_runner.bat    # Daily generation launcher
-├── ci.yml                  # CI configuration
-├── conftest.py             # Pytest configuration
-├── test_prompt_builder.py  # Prompt builder tests
-├── test_keyword_expander.py # Keyword expander tests
-├── test_wallpaper_generator.py # Generator tests
-└── sounds/                 # App sound effects
+├── tray_manager.py             # System tray icon and menu
+├── slideshow.py                # Auto-rotation timer and logic
+├── session_manager.py          # Session save/load (SQLite + JSON fallback)
+├── database.py                 # SQLAlchemy ORM for sessions, favorites, tags
+├── history_manager.py          # Prompt and wallpaper history
+│
+├── wallpaper_generator.py      # 6 AI provider backends
+├── prompt_builder.py           # Prompt assembly from components
+├── prompt_refiner.py           # Prompt optimization
+├── prompt_validator.py         # Prompt audit and variable validation
+├── prompt_library.py           # Saved prompt library
+├── keyword_expander.py         # Keyword expansion (NLTK + sentence-transformers)
+├── negative_manager.py         # Negative presets, smart negatives, style defaults
+├── theme_mixer.py              # Theme/prompt generation engine
+├── style_transfer.py           # 25 local artistic filters (OpenCV + Pillow)
+│
+├── gallery_manager.py          # Gallery metadata, tags, folder management
+├── template_system.py          # Recipe/template data models
+├── preset_manager.py           # Preset bundle management
+│
+├── cloud_providers.py          # Google Drive / OneDrive / Dropbox OAuth + API
+├── cloud_catalog.py            # Read-only view of the cloud backup tree
+├── cloud_restore.py            # Restore planner (de-duplication, conflicts)
+├── restore_ui.py               # Restore preview / confirmation dialog
+├── backup_manifest.py          # Portable backup metadata
+├── sync_manager.py             # Delta sync engine
+├── file_watcher.py             # watchdog file monitoring
+├── update_checker.py           # GitHub release check + installer download
+│
+├── icons.py                    # Toolbar icon rendering
+├── rounded_widgets.py          # Themed rounded-corner widget images
+├── ui_effects.py               # Gradients, rounded corners, visual polish
+├── sv_ttk_fix.py               # Recolors sv_ttk sprite images per theme
+├── pinned_dropdowns.py         # Dropdown widget with pinned favourites
+├── tutorial_manager.py         # Built-in tutorials
+├── thread_manager.py           # Background thread/queue management
+├── theme.py                    # Shared visual constants
+├── utils.py                    # Shared utilities; get_app_dir() for EXE-safe paths
+├── set_wallpaper.py            # Windows wallpaper API (Win32)
+│
+├── daily_runner.py             # Headless daily generation
+├── setup_scheduler.py          # Task Scheduler integration
+├── prebuild_check.py           # Secret scan run before PyInstaller
+│
+├── requirements.txt
+├── config.template.json        # Clean first-run defaults
+├── keywords.json               # Thematic keyword bank
+├── negative_presets.json       # Negative prompt presets
+├── presets.json                # Saved preset bundles
+├── recipes.json                # Recipe library
+├── templates.json              # Prompt template definitions
+├── prompt_library.json         # Saved prompt library
+├── custom_negatives.json       # User-added negative terms
+├── user_thesaurus.json         # User keyword mappings
+│
+├── run_frogpaper.bat
+├── build_frogpaper_exe.bat
+├── build_installer.bat
+├── FrogPaper.spec
+├── rotate_wallpaper.bat
+├── run_daily_runner.bat
+│
+├── .github/workflows/tests.yml # CI: full pytest suite on a Windows runner
+├── tests/                      # 28 pytest modules (incl. test_prompt_builder.py,
+│                               #   test_keyword_expander.py, cloud / restore / UI tests)
+└── sounds/                     # App sound effects
 ```
 
 ### Data Location
 
-User data is stored in `AppData/FrogPaper/` (resolved via `utils.get_app_dir()`):
+User data lives **beside the app**, not in `AppData`. `utils.get_app_dir()` returns the folder containing `app.py` when running from source, or the folder containing `FrogPaper.exe` when frozen:
 
 ```text
-AppData/FrogPaper/
+FrogPaper/                    # or the folder holding FrogPaper.exe
 ├── wallpapers/
-│   ├── generated/          # AI-generated wallpapers
-│   ├── manual/             # Imported images
-│   ├── styled/             # Style-filtered outputs
-│   └── favorites/          # Bookmarked images
+│   ├── generated/            # AI-generated wallpapers
+│   ├── manual/               # Imported images
+│   ├── styled/               # Style-filtered outputs
+│   └── favorites/            # Bookmarked images
 ├── logs/
 │   ├── prompts_history.json
 │   ├── favorites.json
 │   ├── presets.json
-│   └── sessions.json      # JSON fallback for sessions
-├── negative_presets.json   # Negative prompt presets
-├── config.json             # All user settings (auto-created) — see CONFIG_GUIDE.md
-├── config.template.json    # Clean first-run defaults seeded to config.json
-├── FrogPaper.db            # SQLite database (sessions, favorites, tags)
-├── keywords.json           # Thematic keyword bank
-├── presets.json            # Saved preset bundles
-├── recipes.json            # Recipe library
-├── templates.json          # Prompt template definitions
-├── prompt_library.json     # Saved prompt library
-└── gallery_tags.json       # Gallery tag definitions
+│   └── sessions.json         # JSON fallback for sessions
+├── recipes/                  # Saved recipes
+├── templates/                # Saved templates
+├── negative_presets.json     # Negative prompt presets
+├── config.json               # All user settings (auto-created) — see CONFIG_GUIDE.md
+├── config.template.json      # Clean first-run defaults seeded to config.json
+├── FrogPaper.db              # SQLite database (sessions, favorites, tags)
+├── keywords.json             # Thematic keyword bank
+├── presets.json              # Saved preset bundles
+├── recipes.json              # Recipe library
+├── templates.json            # Prompt template definitions
+├── prompt_library.json       # Saved prompt library
+└── custom_negatives.json     # User-added negative terms
 ```
 
 ---
 
-## Changelog
+## Android Releases
+
+### v1.12.0 — Bottom tabs and honest rotation
+- Home, Generate, Gallery and Settings are bottom tabs instead of a deep back stack. Build, Detail, Slideshow and Prompt history still open on top.
+- A one-time update prompt on Home, with "Get update" and "Later".
+- The detail screen shows a "Made with" row naming the engine that produced the image, read from the filename.
+- A failed automatic wallpaper names the real retry time, and Settings > Wallpaper keeps a "Last automatic change" record that survives a restart.
+- Locked engines open the key sheet instead of swallowing the tap.
+
+### v1.11.2 — Engine-aware automatic wallpapers
+- "Once a day" / "Every time I open" with "Surprise me" now generate through the engine saved on the Generate screen.
+- No silent Pollinations downgrade: if the saved engine is unavailable the run is skipped and the normal 2-hour cooldown applies.
+
+### v1.11.0 — Halloween Edition
+- Halloween theme: pumpkin orange on a haunted purple night.
+- Full file name on the image screen, palette check via `npm run check:theme`.
+
+Earlier Android releases: see the [frogpaper-mobile releases](https://github.com/sunnyskyess420/frogpaper-mobile/releases).
+
+---
+
+## Desktop Changelog
 
 ### v1.7.5 - Style Filters and Text Overlay Restored
 
@@ -580,18 +714,29 @@ AppData/FrogPaper/
 
 ## System Requirements
 
+### Desktop (v1.7.5)
+
 | Requirement | Minimum | Recommended |
 |---|---|---|
 | OS | Windows 10 | Windows 11 |
-| Python | 3.9 | 3.11+ |
+| Python | 3.10 | 3.11+ |
 | RAM | 4 GB | 8 GB |
 | Storage | 500 MB | 2 GB+ |
 | Internet | Required for generation | Stable connection |
-| AI Provider account | Pollinations (none) or Cloudflare/HuggingFace token | — |
+| AI provider account | Pollinations (none), or a key for Cloudflare / Hugging Face / Prodia / Replicate / Fal.ai | — |
+
+### Android (v1.12.0)
+
+| Requirement | Minimum |
+|---|---|
+| OS | Android 7.0 (API 24) |
+| Storage | ~80 MB |
+| Internet | Required for generation |
+| Account | None; optional own Gemini / Hugging Face / Replicate key |
 
 ---
 
-## Installation
+## Installation — Desktop
 
 ### Recommended — Windows Launcher
 
@@ -617,7 +762,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-> **Note:** Python 3.9 or newer is required. Make sure to check **"Add Python to PATH"** during installation.
+> **Note:** Python 3.10 or newer is required (the code uses `X | None` type unions). Make sure to check **"Add Python to PATH"** during installation.
 
 ---
 
@@ -637,11 +782,11 @@ python setup_scheduler.py
 build_frogpaper_exe.bat
 ```
 
-Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the EXE, not inside it. The EXE resolves all paths relative to its own location.
+Produces `dist\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the EXE, not inside it. The EXE resolves all paths relative to its own location.
 
 ---
 
-## Workflow Guide
+## Workflow Guide — Desktop
 
 ### Building Prompts
 
@@ -665,7 +810,7 @@ Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the
 
 **Style Transfer:**
 1. Select an image in Gallery or use **Apply Style** on the center preview
-2. Choose from 19 filters (Oil Painting, Cyberpunk Neon, Gouache, etc.)
+2. Choose from 25 filters (Oil Painting, Cyberpunk Neon, Gouache, etc.)
 3. Styled image saves to `wallpapers/styled/` and appears in the Styled view
 
 **Text Overlay:**
@@ -675,7 +820,7 @@ Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the
 
 ### Slideshow Setup
 
-1. Go to **Settings > Gallery & Slideshow**
+1. Go to **Settings > Slideshow**
 2. Click **Start** to begin the slideshow
 3. Set interval (1–60 minutes) with the slider
 4. Choose source: Generated, Manual, All Images, Favorites, or Styled
@@ -691,7 +836,7 @@ Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the
 
 | Issue | Solution |
 |---|---|
-| **Generation fails** | Check your provider settings. Pollinations.ai needs no key; Cloudflare needs Account ID + Token; HuggingFace needs a valid token. |
+| **Generation fails** | Check your provider settings. Pollinations.ai needs no key; Cloudflare needs Account ID + Token; Hugging Face, Prodia, Replicate and Fal.ai each need their own key. |
 | **403 error (HuggingFace)** | Visit the model page on huggingface.co and accept terms. Some models require Pro. |
 | **First prompt feels slow** | Wait for *"Ready — prompt engine warm."* in the status bar. |
 | **Slideshow not rotating** | Ensure the source folder has images. For Favorites, add at least one image first. |
@@ -699,31 +844,37 @@ Produces `dist\\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the
 | **EXE shows empty gallery** | Ensure `wallpapers/` and subfolders are beside `FrogPaper.exe`. |
 | **System tray icon missing** | Install pystray: `pip install pystray` |
 | **Global hotkey not working** | Install keyboard package: `pip install keyboard` |
-| **App won't start** | Check Python 3.9+, all dependencies installed (`pip install -r requirements.txt`), and a valid provider configured. |
+| **App won't start** | Check Python 3.10+, all dependencies installed (`pip install -r requirements.txt`), and a valid provider configured. |
+| **Android: "Backend offline"** | The FrogPaper backend is unreachable. Check Wi-Fi; locally start `python app.py` in `backend/`. |
+| **Android: an engine is greyed out** | Tap it — the app opens the key sheet and links to the right Settings card. Add your own Gemini / Hugging Face / Replicate key. |
+| **Android: gallery looks empty** | Check Settings > Wallpaper > Gallery source; the default is this phone. Pull older saves in with "Import from my SD folder". |
 
 ---
 
 ## Privacy
 
-All images are stored locally. Only text prompts are sent to the configured AI provider API. No images, filenames, or personal data are transmitted.
+**Desktop:** all images are stored locally beside the app. Only text prompts are sent to the configured AI provider API. No images, filenames, or personal data are transmitted.
+
+**Android:** wallpapers are stored on the phone. Prompts are sent to the FrogPaper backend, which forwards them to the selected engine. API keys you add stay on the device. No account, ads or tracking.
 
 ---
 
 ## Development Notes
 
-- **Entry point:** `app.py` contains the main UI, layout, and event logic (~6400 lines)
+- **Entry point:** `app.py` contains the main UI, layout, and event logic (~2,700 lines)
 - **Tab modules:** `prompt_tab.py` (Quick Build, Recipes, Templates) and `gallery_tab.py` (Gallery, style transfer, text overlay, tags)
-- **Settings:** `settings_tab.py` — modal dialog with 5 sections
+- **Settings:** `settings_tab.py` — resizable window with 8 sidebar categories (General, Generation, Appearance, Startup, Slideshow, Cloud & Backup, Advanced, Help)
 - **Theme generation:** `theme_mixer.py` handles prompt construction; keyword caches pre-warm at startup
-- **Image generation:** `wallpaper_generator.py` supports 3 providers (Pollinations, Cloudflare, HuggingFace)
+- **Image generation:** `wallpaper_generator.py` supports 6 providers (Pollinations, Cloudflare, Hugging Face, Prodia, Replicate, Fal.ai)
 - **Prompt engine:** `prompt_builder.py` assembles final prompts with per-mode negatives and subject-aware anatomy constraints
 - **Negative system:** `negative_manager.py` manages presets, smart negatives, and style-default negatives
-- **Style filters:** `style_transfer.py` uses OpenCV (local processing, no API)
+- **Style filters:** `style_transfer.py` uses OpenCV for the filters and Pillow for text overlay (local processing, no API)
 - **Slideshow:** `slideshow.py` manages auto-rotation with fullscreen detection, duplicate skipping, and countdown reset
 - **Sessions:** `session_manager.py` with SQLite storage via `database.py` and JSON fallback
 - **EXE path resolution:** `utils.get_app_dir()` returns `Path(sys.executable).parent` when frozen, `Path(__file__).parent` otherwise — all modules use this so user data always resolves correctly
 - **Icon rendering:** `icons.py` generates themed toolbar icons programmatically
 - **Tray:** `tray_manager.py` provides full app control from the system tray with a custom-drawn frog icon
+- **Mobile:** `frogpaper-mobile/` is a separate Expo / React Native app with a Flask backend; bottom tabs are Home, Generate, Gallery and Settings
 
 ---
 

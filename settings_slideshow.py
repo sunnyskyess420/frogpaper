@@ -10,6 +10,12 @@ from datetime import datetime
 
 from utils import load_config
 
+from slideshow import (
+    MAX_INTERVAL_MINUTES,
+    format_interval_label,
+    format_remaining,
+)
+
 
 class SettingsSlideshowMixin:
     """Slideshow control methods for SettingsTab."""
@@ -39,19 +45,13 @@ class SettingsSlideshowMixin:
         
         app.slideshow_enabled_var.set(bool(config.get('slideshow_enabled', False)))
         interval_value = str(config.get('slideshow_interval', 60))
-        app.slideshow_interval_var.set(interval_value)
         try:
-            interval_int = int(float(interval_value))
-            interval_int = max(1, min(60, interval_int))
-            if hasattr(app, 'interval_display_var'):
-                app.interval_display_var.set(str(interval_int))
-            if hasattr(app, 'interval_slider'):
-                app.interval_slider.set(interval_int)
-        except (ValueError, AttributeError):
-            if hasattr(app, 'interval_display_var'):
-                app.interval_display_var.set('60')
-            if hasattr(app, 'interval_slider'):
-                app.interval_slider.set(60)
+            interval_int = max(1, min(MAX_INTERVAL_MINUTES, int(float(interval_value))))
+        except (ValueError, TypeError):
+            interval_int = 60
+        app.slideshow_interval_var.set(str(interval_int))
+        if hasattr(app, 'interval_choice_var'):
+            app.interval_choice_var.set(format_interval_label(interval_int))
         source_value = config.get('slideshow_source', 'both')
         if source_value == 'both':
             source_value = 'all'
@@ -151,7 +151,7 @@ class SettingsSlideshowMixin:
                 total = interval_mins * 60
                 remaining = max(0, total - elapsed)
                 mins, secs = divmod(int(remaining), 60)
-                time_str = f"{mins:02d}:{secs:02d}"
+                time_str = format_remaining(remaining)
                 progress_pct = min(100, (elapsed / total) * 100)
                 app.progress.config(mode="determinate", value=progress_pct)
                 app.progress.grid()

@@ -5,17 +5,22 @@ Provides local artistic style filters for post-processing generated images.
 No API calls required - all processing happens locally using OpenCV and PIL.
 """
 
+from __future__ import annotations
+
 # The two probes are deliberately separate. A broken OpenCV install must not
 # disable text overlay: that path only needs PIL, and used to fail with a
 # misleading "image may be corrupted" dialog because ``Image`` was set to None
 # by cv2's ImportError.
 try:
-    import cv2
     import numpy as np
-    CV2_AVAILABLE = True
+except ImportError:
+    np = None
+
+try:
+    import cv2
+    CV2_AVAILABLE = cv2 is not None and np is not None
 except ImportError:
     cv2 = None
-    np = None
     CV2_AVAILABLE = False
 
 try:

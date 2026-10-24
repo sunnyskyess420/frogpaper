@@ -44,14 +44,14 @@ REM Create a comprehensive Inno Setup script
 (
 echo [Setup]
 echo AppName=FrogPaper
-echo AppVersion=1.7.5
+echo AppVersion=1.7.6
 echo AppPublisher=FrogPaper
 echo AppPublisherURL=https://github.com/sunnyskyess420/frogpaper
 echo AppSupportURL=https://github.com/sunnyskyess420/frogpaper/issues
 echo AppUpdatesURL=https://github.com/sunnyskyess420/frogpaper/releases
 echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
-echo OutputBaseFilename=FrogPaper-Setup-1.7.5
+echo OutputBaseFilename=FrogPaper-Setup-1.7.6
 echo Compression=lzma2
 echo SolidCompression=yes
 echo WizardStyle=modern
@@ -108,12 +108,6 @@ echo.
 echo [Run]
 echo Filename: "{app}\FrogPaper.exe"; Description: "Launch FrogPaper"; Flags: nowait postinstall skipifsilent
 echo.
-echo [UninstallDelete]
-echo Type: filesandordirs; Name: "{app}\__pycache__"
-echo Type: filesandordirs; Name: "{app}\wallpapers\manual"
-echo Type: filesandordirs; Name: "{app}\wallpapers\generated"
-echo Type: filesandordirs; Name: "{app}\wallpapers\styled"
-echo Type: filesandordirs; Name: "{app}\wallpapers\favorites"
 ) > frogpaper_installer.iss
 
 REM Compile the installer
@@ -137,7 +131,7 @@ echo ========================================
 echo Installer created successfully!
 echo ========================================
 echo.
-echo Installer location: installer_output\FrogPaper-Setup-1.7.5.exe
+echo Installer location: installer_output\FrogPaper-Setup-1.7.6.exe
 echo.
 echo Press any key to exit...
 pause >nul

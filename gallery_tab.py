@@ -3399,9 +3399,35 @@ class GalleryTab:
 
         # Validate style key exists
 
-        from style_transfer import get_style_transfer
+        try:
 
-        transfer = get_style_transfer()
+            from style_transfer import CV2_AVAILABLE, get_style_transfer
+
+            transfer = get_style_transfer()
+
+        except Exception as exc:
+
+            app.status_var.set(f"Style filters unavailable: {exc}")
+
+            app._dialog.error("Style Filters Unavailable",
+
+                f"FrogPaper could not load its image engine (OpenCV).\n\n{exc}\n\n"
+
+                "OpenCV and NumPy were probably built against different versions.")
+
+            return
+
+        if not CV2_AVAILABLE:
+
+            app.status_var.set("Style filters unavailable: OpenCV did not load")
+
+            app._dialog.error("Style Filters Unavailable",
+
+                "OpenCV could not be loaded, so style filters cannot run.\n\n"
+
+                "Add Text still works.")
+
+            return
 
         if style_key not in transfer.get_style_list():
 

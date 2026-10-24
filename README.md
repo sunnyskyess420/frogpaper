@@ -10,14 +10,14 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 **FrogPaper** is a two-app wallpaper studio.
 
-- **FrogPaper Desktop — v1.7.5** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Desktop — v1.7.6** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
 - **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
 
 No browser. No account. Just the apps and your imagination.
 
 | App | Current version | Platform | Stack |
 |---|---|---|---|
-| **FrogPaper Desktop** | 1.7.5 | Windows 10 / 11 | Python 3.10+, Tkinter |
+| **FrogPaper Desktop** | 1.7.6 | Windows 10 / 11 | Python 3.11+, Tkinter |
 | **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
@@ -455,6 +455,19 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## Desktop Changelog
 
+### v1.7.6 - Security Release (Pillow 13, NLTK 3.10.4)
+
+**Security fixes:**
+- Upgraded Pillow 12.3.0 -> 13.0.0. This resolves the 2026-10 Dependabot advisory wave affecting FrogPaper's image-processing paths (gallery thumbnails, provider downloads, cloud-restored images, style transfer, tray icon), including CVE-2026-96639 (multi-frame loader stale native image storage), CVE-2026-112403 (JPEG decoder heap buffer overflow), CVE-2026-112406 (PDF rewrite infinite loop), and the bundled-libopenjp2 heap overflow reachable from `Image.open().load()`.
+- Upgraded NLTK 3.10.3 -> 3.10.4 (the first NLTK release with no known security issues per the Snyk advisory database). NLTK is excluded from the packaged Windows EXE; this pin matters for source/dev installs and CI.
+- Bumped declared Python minimum from 3.10 to 3.11. Pillow 13 dropped Python 3.10 support; FrogPaper's CI already tested only 3.11/3.12.
+
+**Build process:**
+- `build_frogpaper_exe.bat` now creates a clean `venv` from `requirements.txt` before invoking PyInstaller. This makes the build reproducible from the manifest instead of relying on whatever Python environment happens to be on the developer's machine.
+- Consolidated duplicate entries in `requirements.txt` (Pillow, opencv-python, huggingface-hub, keyring, sqlalchemy, pystray, keyboard). OpenCV stays pinned at 4.8.1.78 deliberately; do not bump it without testing `style_transfer.py` filters and gallery previews on Windows.
+
+---
+
 ### v1.7.5 - Style Filters and Text Overlay Restored
 
 **Fixes:**
@@ -714,12 +727,12 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## System Requirements
 
-### Desktop (v1.7.5)
+### Desktop (v1.7.6)
 
 | Requirement | Minimum | Recommended |
 |---|---|---|
 | OS | Windows 10 | Windows 11 |
-| Python | 3.10 | 3.11+ |
+| Python | 3.11 | 3.12+ |
 | RAM | 4 GB | 8 GB |
 | Storage | 500 MB | 2 GB+ |
 | Internet | Required for generation | Stable connection |
@@ -762,7 +775,7 @@ pip install -r requirements.txt
 python app.py
 ```
 
-> **Note:** Python 3.10 or newer is required (the code uses `X | None` type unions). Make sure to check **"Add Python to PATH"** during installation.
+> **Note:** Python 3.11 or newer is required (the code uses `X | None` type unions, and Pillow 13 dropped Python 3.10 support). Make sure to check **"Add Python to PATH"** during installation.
 
 ---
 
@@ -844,7 +857,7 @@ Produces `dist\FrogPaper.exe`. The `wallpapers/` folder must sit **beside** the 
 | **EXE shows empty gallery** | Ensure `wallpapers/` and subfolders are beside `FrogPaper.exe`. |
 | **System tray icon missing** | Install pystray: `pip install pystray` |
 | **Global hotkey not working** | Install keyboard package: `pip install keyboard` |
-| **App won't start** | Check Python 3.10+, all dependencies installed (`pip install -r requirements.txt`), and a valid provider configured. |
+| **App won't start** | Check Python 3.11+, all dependencies installed (`pip install -r requirements.txt`), and a valid provider configured. |
 | **Android: "Backend offline"** | The FrogPaper backend is unreachable. Check Wi-Fi; locally start `python app.py` in `backend/`. |
 | **Android: an engine is greyed out** | Tap it — the app opens the key sheet and links to the right Settings card. Add your own Gemini / Hugging Face / Replicate key. |
 | **Android: gallery looks empty** | Check Settings > Wallpaper > Gallery source; the default is this phone. Pull older saves in with "Import from my SD folder". |

@@ -68,7 +68,7 @@ sqlalchemy>=2.0.0,<3.0.0
 # historically pulled incompatible numpy 2.x wheels and forced an ABI
 # mismatch with the Pillow/numpy combo shipped in the EXE. Do not bump
 # without testing style_transfer + gallery previews on Windows first.
-opencv-python==4.8.1.78
+opencv-python==4.14.0.94
 
 # sentence-transformers pulls torch (~2-3 GB). It is an optional, dev-only
 # dependency; CI uses a lean install and the packaged EXE excludes it via

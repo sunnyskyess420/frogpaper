@@ -16,6 +16,49 @@ FAVORITESDIR = BASEDIR / 'wallpapers' / 'favorites'
 STYLEDDIR = BASEDIR / 'wallpapers' / 'styled'
 SLIDESHOWSOURCES = ['generated', 'manual', 'all', 'favorites', 'styled']
 
+# Wallpaper rotation intervals offered in Settings > Slideshow, in minutes:
+# short stops for a quick test drive, then the long ones (up to 24 hours).
+SLIDESHOW_INTERVAL_PRESETS = (1, 5, 10, 15, 30, 60, 120, 180, 240, 360, 480, 720, 1440)
+
+# Ceiling applied to values read from a hand-edited config.json (one week).
+MAX_INTERVAL_MINUTES = 7 * 24 * 60
+
+
+def format_interval_label(minutes):
+    """Friendly label for an interval given in minutes.
+
+    45 -> '45 minutes', 60 -> '1 hour', 90 -> '1 hour 30 min', 1440 -> '24 hours'.
+    """
+    try:
+        total = max(1, int(round(float(minutes))))
+    except (TypeError, ValueError):
+        total = 60
+    hours, mins = divmod(total, 60)
+    if hours and mins:
+        return f"{hours} hour{'s' if hours != 1 else ''} {mins} min"
+    if hours:
+        return f"{hours} hour{'s' if hours != 1 else ''}"
+    return f"{total} minute{'s' if total != 1 else ''}"
+
+
+def format_remaining(seconds):
+    """Compact countdown text.
+
+    Under an hour: '08:15'. Over an hour: '23h 04m'. Past two days: '3d 02h'.
+    A 24-hour interval stays '24h 00m' so it matches the picker's label.
+    """
+    secs = max(0, int(seconds))
+    if secs < 3600:
+        mins, rem = divmod(secs, 60)
+        return f"{mins:02d}:{rem:02d}"
+    hours, rem = divmod(secs, 3600)
+    minutes = rem // 60
+    if hours >= 48:
+        days, hours = divmod(hours, 24)
+        return f"{days}d {hours:02d}h"
+    return f"{hours}h {minutes:02d}m"
+
+
 class SlideshowManager:
     def __init__(self, app_root, status_var):
         self.root = app_root
@@ -285,7 +328,7 @@ class SlideshowManager:
             if self.last_run:
                 elapsed = (datetime.now() - self.last_run).total_seconds()
                 remaining_seconds = max(0, int(interval_minutes * 60) - int(elapsed))
-                next_text = f'next in {remaining_seconds // 60}m:{remaining_seconds % 60:02d}s'
+                next_text = f'next in {format_remaining(remaining_seconds)}'
             else:
                 next_text = 'starting...'
             

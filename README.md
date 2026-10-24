@@ -457,6 +457,10 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ### v1.7.6 - Security Release (Pillow 13, NLTK 3.10.4)
 
+**New features:**
+- Slideshow intervals now go beyond the old 1-60 minute limit: 1, 5, 10, 15 or 30 minutes, or 1, 2, 3, 4, 6, 8, 12 or 24 hours. Long waits show as `24h 00m` in the status bar.
+
+
 **Security fixes:**
 - Upgraded Pillow 12.3.0 -> 13.0.0. This resolves the 2026-10 Dependabot advisory wave affecting FrogPaper's image-processing paths (gallery thumbnails, provider downloads, cloud-restored images, style transfer, tray icon), including CVE-2026-96639 (multi-frame loader stale native image storage), CVE-2026-112403 (JPEG decoder heap buffer overflow), CVE-2026-112406 (PDF rewrite infinite loop), and the bundled-libopenjp2 heap overflow reachable from `Image.open().load()`.
 - Upgraded NLTK 3.10.3 -> 3.10.4 (the first NLTK release with no known security issues per the Snyk advisory database). NLTK is excluded from the packaged Windows EXE; this pin matters for source/dev installs and CI.

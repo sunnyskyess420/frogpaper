@@ -9,10 +9,16 @@
 FrogPaper Desktop v1.7.6 is a focused security release that upgrades Pillow
 from 12.3.0 to 13.0.0 and NLTK from 3.10.3 to 3.10.4. These two pins resolve
 the 2026-10 Dependabot advisory wave affecting FrogPaper's image-processing
-and natural-language-toolkit surfaces. No user-facing features change in this
-release; the only behavior change is that the Windows EXE build process is
+and natural-language-toolkit surfaces. One user-facing feature is included in this
+release; the Windows EXE build process is
 now reproducible from `requirements.txt` instead of relying on the developer's
 ambient Python environment.
+
+## New in this release
+
+### Slideshow intervals up to 24 hours
+
+The Settings > Slideshow interval picker replaces the old 1-60 minute slider with a preset list: 1, 5, 10, 15 and 30 minutes, then 1, 2, 3, 4, 6, 8, 12 and 24 hours. Intervals are still stored as minutes in `config.json`, so existing settings carry over unchanged, and a hand-edited value that is not on the list is kept and shown. The status line and progress overlay now render long waits as `24h 00m` instead of a raw minute count.
 
 ## Security advisories closed
 

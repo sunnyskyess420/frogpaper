@@ -651,6 +651,15 @@ def start_update_install(app, release_info: dict) -> None:
     """
     url = release_info.get("download_url", "")
     tag = release_info.get("tag_name", "latest")
+        # In-app download + install is deliberately disabled.  The old hand-off
+    # (a helper batch waiting for FrogPaper's PID, then starting the setup)
+    # could stall behind a running app, so the install never appeared to
+    # happen: users saw a console window and nothing else.  Updates now open
+    # the release page and the user runs the setup themselves.
+    page = release_info.get("html_url") or url or DOWNLOADS_URL
+    logger.info("Auto-install disabled - opening the release page: %s", page)
+    open_in_browser(page)
+    return
 
     if not getattr(sys, "frozen", False):
         # Running from source — installing the EXE wouldn't update this tree.
@@ -705,7 +714,7 @@ def show_update_notification(app, release_info: dict):
     """Display a themed update notification using the app's dialog system.
 
     Offers three actions:
-      - "Install Update"      → download the installer from GitHub and run it
+      - "Install Update"      → open the release page and download it manually
       - "Skip This Version"   → suppress popup for this exact version
       - "Not Now"             → dismiss for this launch only
 
@@ -719,8 +728,8 @@ def show_update_notification(app, release_info: dict):
         msg = (
             f"A new version of FrogPaper is available!\n\n"
             f"{name}\n\n"
-            "Click 'Install Update' and FrogPaper will download and set it up "
-            "for you automatically."
+            "Click 'Install Update' to open the download page in your browser, "
+            "then run the setup file. Your settings are kept."
         )
 
         # Use the dialog's underlying _show() so we can supply three buttons.

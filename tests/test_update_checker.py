@@ -20,7 +20,7 @@ import threading
 import unittest
 import urllib.error
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
@@ -390,41 +390,18 @@ class TestStartUpdateInstall(unittest.TestCase):
         mock_open.assert_called_once_with(release["html_url"])
         mock_dl.assert_not_called()
 
-    def test_frozen_run_downloads_then_confirms(self):
+    def test_frozen_run_opens_release_page_without_downloading(self):
         app = _AppStub()
         release = _release_info()
-        installer = Path("C:/tmp/FrogPaper-Setup-2.0.exe")
-        progress = MagicMock()
-        progress.cancel_event = threading.Event()
-
         with patch.object(uc.sys, "frozen", True, create=True), \
-                patch.object(uc, "UpdateProgressWindow", return_value=progress), \
-                patch.object(uc, "download_installer", return_value=installer) as mock_dl, \
-                patch.object(uc, "run_background", side_effect=lambda target, **kw: target()), \
-                patch.object(uc, "schedule_ui_update", side_effect=lambda cb, *a, **k: cb(*a, **k)), \
-                patch.object(uc, "_confirm_install") as mock_confirm:
+                patch.object(uc, "open_in_browser") as mock_open, \
+                patch.object(uc, "download_installer") as mock_dl, \
+                patch.object(uc, "run_background") as mock_bg:
             uc.start_update_install(app, release)
-
-        mock_dl.assert_called_once()
-        mock_confirm.assert_called_once_with(app, installer, "v2.0.0")
-        progress.close.assert_called()
-
-    def test_frozen_run_falls_back_to_browser_on_download_error(self):
-        app = _AppStub()
-        release = _release_info()
-        progress = MagicMock()
-        progress.cancel_event = threading.Event()
-
-        with patch.object(uc.sys, "frozen", True, create=True), \
-                patch.object(uc, "UpdateProgressWindow", return_value=progress), \
-                patch.object(uc, "download_installer", side_effect=OSError("boom")), \
-                patch.object(uc, "run_background", side_effect=lambda target, **kw: target()), \
-                patch.object(uc, "schedule_ui_update", side_effect=lambda cb, *a, **k: cb(*a, **k)), \
-                patch.object(uc, "_download_failed") as mock_failed:
-            uc.start_update_install(app, release)
-
-        mock_failed.assert_called_once()
-        progress.close.assert_called()
+        mock_open.assert_called_once_with(release["html_url"])
+        mock_dl.assert_not_called()
+        mock_bg.assert_not_called()
+    
 
     def test_download_failed_warns_and_opens_browser(self):
         app = _AppStub()

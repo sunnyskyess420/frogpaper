@@ -53,6 +53,8 @@ echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
 echo OutputBaseFilename=FrogPaper-Setup-1.7.6
 echo Compression=lzma2
+echo CloseApplications=force
+echo SetupLogging=yes
 echo SolidCompression=yes
 echo WizardStyle=modern
 echo WizardImageFile=FrogPaperLogo.bmp
@@ -75,7 +77,7 @@ echo Name: "quicklaunchicon"; Description: "Create a Quick Launch icon"; GroupDe
 echo Name: "startup"; Description: "Run FrogPaper at Windows startup"; GroupDescription: "Startup options:"
 echo.
 echo [Files]
-echo Source: "dist\FrogPaper.exe"; DestDir: "{app}"; Flags: ignoreversion
+echo Source: "dist\FrogPaper.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
 echo Source: "sounds\*"; DestDir: "{app}\sounds"; Flags: ignoreversion recursesubdirs createallsubdirs
 echo Source: "frogpaper.ico"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "FrogPaperLogo.png"; DestDir: "{app}"; Flags: ignoreversion

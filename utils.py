@@ -6,6 +6,8 @@ import logging
 import tkinter as tk
 from pathlib import Path
 
+from app_data_dir import resolve_app_dir
+
 logger = logging.getLogger(__name__)
 
 
@@ -71,12 +73,12 @@ def place_on_work_area(window: tk.Misc, width: int, height: int) -> tuple[int, i
 
 def get_app_dir() -> Path:
     """Return the directory for user-writable data (wallpapers, config, logs).
-    When frozen by PyInstaller (--onefile), __file__ points into a temp extraction
-    dir that is deleted on exit.  We use sys.executable's parent instead so that
-    all user-facing folders sit next to the EXE."""
-    if getattr(sys, 'frozen', False):
-        return Path(sys.executable).parent
-    return Path(__file__).parent
+
+    Frozen builds use %LOCALAPPDATA%\\FrogPaper; the first frozen launch
+    migrates data that older builds left beside the EXE.  Running from source
+    returns the project folder.
+    """
+    return resolve_app_dir()
 
 
 def get_bundle_dir() -> Path:

@@ -62,12 +62,12 @@ keyring>=25.0.0,<26.0.0
 sqlalchemy>=2.0.0,<3.0.0
 
 # --- Image / ML ---
-# opencv-python is pinned to 4.8.1.78 intentionally. FrogPaper uses a
-# small, stable subset of cv2 (resize, INTER_NEAREST pixelation in
-# style_transfer, a few format conversions). Bumping to 4.10+ has
-# historically pulled incompatible numpy 2.x wheels and forced an ABI
-# mismatch with the Pillow/numpy combo shipped in the EXE. Do not bump
-# without testing style_transfer + gallery previews on Windows first.
+# opencv-python MUST be a NumPy 2 build. 4.8.1.78 is compiled against
+# NumPy 1.x: importing it under NumPy 2.5.4 fails with
+# "numpy.core.multiarray failed to import", which silently killed every
+# style filter in the 1.7.6 build. 4.14.0.94 is the NumPy 2 compatible
+# release; verify with python -c "import cv2; print(cv2.__version__)"
+# after installing, and re-test style_transfer on Windows before changing.
 opencv-python==4.14.0.94
 
 # sentence-transformers pulls torch (~2-3 GB). It is an optional, dev-only

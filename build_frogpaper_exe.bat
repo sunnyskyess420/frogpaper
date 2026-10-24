@@ -67,7 +67,11 @@ echo.
 REM --- Clean up old PyInstaller build artifacts (NOT the venv) ---
 echo Cleaning old build outputs...
 if exist build rmdir /s /q build
-if exist dist rmdir /s /q dist
+REM Never delete dist itself: an older EXE kept user data beside it
+REM (config.json with API keys, wallpapers, logs, frogpaper.db) and
+REM rmdir /s destroyed all of it. Remove only the previous build.
+if exist "dist\FrogPaper.exe" del /q "dist\FrogPaper.exe"
+if exist "dist\_internal" rmdir /s /q "dist\_internal"
 if exist __pycache__ rmdir /s /q __pycache__
 for /d %%i in ("%TEMP%\PyInstaller\*") do rmdir /s /q "%%i" 2>nul
 echo Cleanup complete.

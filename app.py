@@ -1698,6 +1698,22 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self._statusbar_sync_lbl.pack(side="left")
         self._sync_status_lbl = self._statusbar_sync_lbl
 
+        
+        # Website link — opens the frogpaper website for manual update checks.
+        self._website_link = ttk.Label(
+            bottom,
+            text="Link To Website",
+            font=self.small_font,
+            cursor="hand2",
+        )
+        self._website_link.pack(side="left", padx=(8, 0))
+        self._website_link.bind(
+            "<Button-1>",
+            lambda e: __import__("webbrowser").open(
+                "https://sunnyskyess420.github.io/frogpaper-website/"
+            ),
+        )
+
         ttk.Label(bottom, textvariable=self.statusvar).pack(side="right")
 
         # ── Notebook stub (kept so existing code doesn't crash) ─────────────

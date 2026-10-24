@@ -108,12 +108,6 @@ echo.
 echo [Run]
 echo Filename: "{app}\FrogPaper.exe"; Description: "Launch FrogPaper"; Flags: nowait postinstall skipifsilent
 echo.
-echo [UninstallDelete]
-echo Type: filesandordirs; Name: "{app}\__pycache__"
-echo Type: filesandordirs; Name: "{app}\wallpapers\manual"
-echo Type: filesandordirs; Name: "{app}\wallpapers\generated"
-echo Type: filesandordirs; Name: "{app}\wallpapers\styled"
-echo Type: filesandordirs; Name: "{app}\wallpapers\favorites"
 ) > frogpaper_installer.iss
 
 REM Compile the installer

@@ -13,6 +13,12 @@ from tkinter import ttk
 
 from utils import load_config
 
+from slideshow import (
+    MAX_INTERVAL_MINUTES,
+    SLIDESHOW_INTERVAL_PRESETS,
+    format_interval_label,
+)
+
 from settings_components import (
     CloudProviderCard,
     HelpResourceCard,
@@ -372,38 +378,44 @@ class SettingsCategoriesMixin:
         )
         enable_check.pack(fill="x", pady=8, anchor="w")
         
-        # Interval slider
+        # Interval picker: presets from every minute up to once a day.
         interval_frame = tk.Frame(control_card.get_content(), bg=pal["card_bg"])
         interval_frame.pack(fill="x", pady=12)
-        
-        tk.Label(interval_frame, text="Interval:", font=("Segoe UI", 10),
+
+        tk.Label(interval_frame, text="Change wallpaper every:", font=("Segoe UI", 10),
                 fg=pal["text"], bg=pal["card_bg"]).pack(side="left")
-        
-        if not hasattr(app, 'interval_display_var'):
-            app.interval_display_var = tk.StringVar(value='60')
-        interval_display = tk.Label(interval_frame, textvariable=app.interval_display_var,
-                                   font=("Segoe UI", 10, "bold"), fg=pal.get("accent", COLOR_ACCENT),
-                                   bg=pal["card_bg"])
-        interval_display.pack(side="right")
-        
-        def on_interval_change(value):
-            val = int(float(value))
-            app.slideshow_interval_var.set(str(val))
-            app.interval_display_var.set(str(val))
-            self._mark_dirty()
-        
-        app.interval_slider = ttk.Scale(control_card.get_content(), from_=1, to=60, 
-                                       orient='horizontal', command=on_interval_change)
+
         try:
-            initial_val = int(float(app.slideshow_interval_var.get()))
-            app.interval_slider.set(max(1, min(60, initial_val)))
-        except Exception:
-            app.interval_slider.set(60)
-        app.interval_slider.pack(fill="x", pady=8)
-        
+            current_interval = int(float(app.slideshow_interval_var.get()))
+        except (ValueError, TypeError):
+            current_interval = 60
+        current_interval = max(1, min(MAX_INTERVAL_MINUTES, current_interval))
+
+        # label -> minutes. A config.json holding a non-preset value (e.g. 45 from
+        # the old slider) stays selectable instead of silently snapping to 60.
+        interval_choices = {format_interval_label(m): m for m in SLIDESHOW_INTERVAL_PRESETS}
+        if current_interval not in SLIDESHOW_INTERVAL_PRESETS:
+            interval_choices[format_interval_label(current_interval)] = current_interval
+        interval_labels = [format_interval_label(m) for m in sorted(interval_choices.values())]
+
+        app.interval_choice_var = tk.StringVar(value=format_interval_label(current_interval))
+
+        def on_interval_choice(event=None):
+            chosen = interval_choices.get(app.interval_choice_var.get())
+            if chosen is None:
+                return
+            app.slideshow_interval_var.set(str(chosen))
+            self._mark_dirty()
+
+        app.interval_selector = ttk.Combobox(interval_frame, textvariable=app.interval_choice_var,
+                                             values=interval_labels, state='readonly', width=16)
+        app.interval_selector.pack(side="right")
+        app.interval_selector.bind("<<ComboboxSelected>>", on_interval_choice)
+        app.interval_selector.bind("<MouseWheel>", lambda e: "break")
+
         helper_label = tk.Label(
             control_card.get_content(),
-            text="Adjust the slider to set how often wallpapers rotate (1-60 minutes)",
+            text="From every minute up to once a day (24 hours).",
             font=("Segoe UI", 9),
             fg=pal["muted"],
             bg=pal["card_bg"]

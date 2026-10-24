@@ -553,7 +553,7 @@ def spawn_installer_after_exit(installer_path: Path, max_wait_seconds: int = 180
         bat_path.write_text(script, encoding="utf-8")
         subprocess.Popen(
             ["cmd", "/c", str(bat_path)],
-            creationflags=DETACHED_PROCESS | CREATE_NEW_PROCESS_GROUP,
+            creationflags=0x08000000 | CREATE_NEW_PROCESS_GROUP,  # CREATE_NO_WINDOW - no console flash
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,

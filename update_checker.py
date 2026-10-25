@@ -168,27 +168,9 @@ def _clean_markdown(text: str) -> str:
     return text.strip()
 
 
-def check_for_update(current_version: str) -> Optional[dict]:
-    """Return release info dict if an update is available, else None.
-
-    Suppressed (returns None) when:
-      - the GitHub API call fails
-      - the latest tag is not strictly newer than the current version
-      - the user has explicitly skipped the latest tag
-    """
-    data = fetch_latest_release()
-    if data is None:
-        return None
-
+def _release_info_from_data(data: dict) -> dict:
+    """Build the popup/update payload from a GitHub release JSON object."""
     latest_tag = data.get("tag_name", "")
-    if not latest_tag or not is_newer(latest_tag, current_version):
-        logger.debug("App is up-to-date (%s >= %s)", current_version, latest_tag)
-        return None
-
-    # Honor a previously-recorded "Skip this version" choice.
-    if get_skipped_version() == latest_tag:
-        logger.debug("Update to %s skipped by user — suppressing popup", latest_tag)
-        return None
 
     # Find the .exe installer asset
     download_url = DOWNLOADS_URL  # fallback to website
@@ -229,6 +211,46 @@ def check_for_update(current_version: str) -> Optional[dict]:
         "download_url": download_url,
         "download_size": download_size,
     }
+
+
+def check_for_update_status(current_version: str, ignore_skipped: bool = False) -> tuple[str, Optional[dict]]:
+    """Check GitHub and report *why* there is or isn't an update.
+
+    Returns ``(status, release_info)`` where status is one of:
+      - ``"update"``  - a newer release is available
+      - ``"current"`` - the running version is already the latest
+      - ``"skipped"`` - newer release exists, but the user skipped that tag
+      - ``"error"``   - the GitHub API could not be reached
+
+    ``release_info`` is populated for ``"update"`` and ``"skipped"``.
+    Manual checks pass ``ignore_skipped=True`` so the button always shows
+    an available release, even if the startup popup was skipped before.
+    """
+    data = fetch_latest_release()
+    if data is None:
+        return ("error", None)
+
+    latest_tag = data.get("tag_name", "")
+    if not latest_tag or not is_newer(latest_tag, current_version):
+        logger.debug("App is up-to-date (%s >= %s)", current_version, latest_tag)
+        return ("current", None)
+
+    release_info = _release_info_from_data(data)
+    if not ignore_skipped and get_skipped_version() == latest_tag:
+        logger.debug("Update to %s skipped by user - suppressing popup", latest_tag)
+        return ("skipped", release_info)
+
+    return ("update", release_info)
+
+
+def check_for_update(current_version: str) -> Optional[dict]:
+    """Return release info if an update should be shown, else None.
+
+    Startup checks keep the historical behavior: silently do nothing when
+    the API fails, the app is current, or the user skipped this tag.
+    """
+    status, release_info = check_for_update_status(current_version)
+    return release_info if status == "update" else None
 
 
 # ═══════════════════════════════════════════════════════════════════════════

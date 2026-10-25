@@ -446,5 +446,40 @@ class TestDialogButtonMapping(unittest.TestCase):
         self.assertEqual(return_label, "OK")
 
 
+class TestCheckForUpdateStatus(unittest.TestCase):
+
+    def _status(self, release, skipped="", ignore_skipped=False):
+        with patch.object(uc, "fetch_latest_release", return_value=release), \
+                patch.object(uc, "get_skipped_version", return_value=skipped):
+            return uc.check_for_update_status("1.6.1", ignore_skipped=ignore_skipped)
+
+    def test_reports_update_with_release_info(self):
+        status, info = self._status(_release(tag="v9.9.9"))
+        self.assertEqual(status, "update")
+        self.assertEqual(info["tag_name"], "v9.9.9")
+
+    def test_reports_current_version(self):
+        status, info = self._status(_release(tag="v1.6.1"))
+        self.assertEqual(status, "current")
+        self.assertIsNone(info)
+
+    def test_reports_api_error(self):
+        status, info = self._status(None)
+        self.assertEqual(status, "error")
+        self.assertIsNone(info)
+
+    def test_reports_skipped_with_release_info(self):
+        status, info = self._status(_release(tag="v9.9.9"), skipped="v9.9.9")
+        self.assertEqual(status, "skipped")
+        self.assertEqual(info["tag_name"], "v9.9.9")
+
+    def test_manual_check_ignores_skipped_version(self):
+        status, info = self._status(
+            _release(tag="v9.9.9"), skipped="v9.9.9", ignore_skipped=True
+        )
+        self.assertEqual(status, "update")
+        self.assertEqual(info["tag_name"], "v9.9.9")
+
+
 if __name__ == "__main__":
     unittest.main()

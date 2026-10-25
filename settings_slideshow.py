@@ -60,7 +60,7 @@ class SettingsSlideshowMixin:
         app.slideshow_skip_duplicates_var.set(bool(config.get('slideshow_skip_duplicates', True)))
         app.slideshow.load_gallery(app.gallery_images or [])
         self.sync_slideshow_state()
-        self.on_slideshow_toggle()
+        self.on_slideshow_toggle(initial=True)
         app.root.after(200, self.update_slideshow_status)
 
     def sync_slideshow_state(self):
@@ -73,13 +73,20 @@ class SettingsSlideshowMixin:
         app.slideshow.slideshow_source_var = app.slideshow_source_var
         app.slideshow.slideshow_order_var = app.slideshow_order_var
         app.slideshow.slideshow_skip_duplicates_var = app.slideshow_skip_duplicates_var
+        try:
+            app.slideshow.check_interval_changed()
+        except Exception:
+            pass
 
-    def on_slideshow_toggle(self):
+    def on_slideshow_toggle(self, initial=False):
         """Start or stop slideshow based on enabled state."""
         app = self.app
         if not hasattr(app, 'slideshow_enabled_var'):
             return
-        app.slideshow.start() if app.slideshow_enabled_var.get() else app.slideshow.stop()
+        if app.slideshow_enabled_var.get():
+            app.slideshow.start(initial=initial)
+        else:
+            app.slideshow.stop()
         self.update_slideshow_status()
 
     def slideshow_start_click(self):

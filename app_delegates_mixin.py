@@ -793,8 +793,8 @@ class FrogPaperAppDelegatesMixin:
 
 
 
-    def on_slideshow_toggle(self):
-        return self._settings_tab.on_slideshow_toggle()
+    def on_slideshow_toggle(self, initial=False):
+        return self._settings_tab.on_slideshow_toggle(initial=initial)
 
 
 

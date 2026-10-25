@@ -405,6 +405,10 @@ class SettingsCategoriesMixin:
             if chosen is None:
                 return
             app.slideshow_interval_var.set(str(chosen))
+            try:
+                app.slideshow.check_interval_changed()
+            except Exception:
+                pass
             self._mark_dirty()
 
         app.interval_selector = ttk.Combobox(interval_frame, textvariable=app.interval_choice_var,
@@ -702,6 +706,83 @@ class SettingsCategoriesMixin:
             except Exception:
                 pass
 
+    def _manual_update_check(self):
+        """Check GitHub for a newer release without blocking the settings UI."""
+        try:
+            import update_checker
+            from app import APP_VERSION
+        except Exception:
+            return
+
+        if getattr(self, "_manual_update_in_progress", False):
+            return
+        self._manual_update_in_progress = True
+
+        button = getattr(self, "_update_check_btn", None)
+        status_var = getattr(self, "_update_status_var", None)
+        if button is not None:
+            try:
+                button.state(["disabled"])
+            except tk.TclError:
+                button = None
+        if status_var is not None:
+            status_var.set("Checking for updates...")
+
+        app = self.app
+
+        def _worker():
+            status, release = update_checker.check_for_update_status(
+                APP_VERSION, ignore_skipped=True
+            )
+
+            def _finish():
+                self._manual_update_in_progress = False
+                if button is not None:
+                    try:
+                        if button.winfo_exists():
+                            button.state(["!disabled"])
+                    except tk.TclError:
+                        pass
+                if status_var is not None:
+                    status_var.set("")
+
+                if status == "update" and release:
+                    update_checker.show_update_notification(app, release)
+                elif status == "current":
+                    try:
+                        app._dialog.info(
+                            "You're Up to Date",
+                            f"FrogPaper {APP_VERSION} is the latest version.",
+                        )
+                    except Exception:
+                        pass
+                else:
+                    if status_var is not None:
+                        status_var.set("Couldn't check for updates.")
+                    try:
+                        app._dialog.warning(
+                            "Update Check Failed",
+                            "Couldn't reach GitHub to check for updates.\n\n"
+                            "Check your internet connection and try again.",
+                        )
+                    except Exception:
+                        pass
+
+            try:
+                update_checker.schedule_ui_update(_finish)
+            except Exception:
+                _finish()
+
+        try:
+            update_checker.run_background(_worker, name="ManualUpdateCheck")
+        except Exception:
+            self._manual_update_in_progress = False
+            if button is not None:
+                try:
+                    button.state(["!disabled"])
+                except tk.TclError:
+                    pass
+
     def _build_help_category(self, parent, pal):
         """Build Help settings category."""
         app = self.app
@@ -725,6 +806,27 @@ class SettingsCategoriesMixin:
                                font=("Segoe UI", 10), fg=pal["muted"], bg=pal.get("card_bg", pal["bg"]))
         version_info.pack(anchor="w", padx=12, pady=4)
 
+        # Manual update check.  Kept out of the startup path so users can
+        # re-check at any time, including after skipping a version.
+        updates_card = SettingCard(
+            frame, "Updates",
+            "Check whether a newer version of FrogPaper is available.",
+            pal, pal.get("accent", COLOR_ACCENT),
+        )
+        update_row = tk.Frame(updates_card.get_content(), bg=pal["card_bg"])
+        update_row.pack(fill="x", pady=8)
+        self._update_check_btn = ttk.Button(
+            update_row, text="Check for Updates", command=self._manual_update_check
+        )
+        self._update_check_btn.pack(side="left")
+        self._update_status_var = tk.StringVar(value="")
+        self._update_status_label = tk.Label(
+            update_row, textvariable=self._update_status_var,
+            font=("Segoe UI", 9), fg=pal["muted"], bg=pal["card_bg"],
+            anchor="w", justify="left",
+        )
+        self._update_status_label.pack(side="left", padx=12)
+
         # What's New in <current version> - header auto-follows APP_VERSION
         wn_header = tk.Label(frame, text=f"What's New in v{_VER}", font=("Segoe UI", 14, "bold"),
                              fg=pal["text"], bg=pal["bg"], anchor="w")
@@ -734,7 +836,8 @@ class SettingsCategoriesMixin:
             ("Halloween", "New 🎃 Halloween theme - pumpkin orange on a haunted night, with glowing rounded buttons, candle focus and a soft fog in dialogs (Settings > General > App Theme)"),
             ("Ghost Sounds", "While the Halloween theme is active, every popup plays a spooky ghost-attack sound instead of the frog ribbit; all other themes are unchanged"),
             ("Startup Subject", "The Halloween Edition pre-fills the startup subject with \"Halloween\" - change or clear it any time in this card; the next release returns to a blank default"),
-            ("One-Click Updates", "The update popup can download the installer and start it for you, with progress and a cancel button"),
+            ("Check for Updates", "New button in Settings > Help checks GitHub on demand and tells you whether you're current"),
+            ("Manual Updates", "Update popups open the release page in your browser; FrogPaper no longer runs installers by itself"),
             ("Multi-Select", "Ctrl+click several images to tag them at once in every view (v1.6.1)"),
             ("Visual Refresh", "Harmonized colours, surfaces, spacing and type across all themes, plus scrolling that works everywhere (v1.6.0)"),
         ]

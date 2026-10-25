@@ -70,6 +70,7 @@ class SlideshowManager:
         self.last_run = None
         self.last_path = None
         self.all_known_images = []  # Set in load_gallery()
+        self._active_interval_minutes = None
 
     def load_gallery(self, all_images):
         """Call this when gallery refreshes."""
@@ -152,6 +153,16 @@ class SlideshowManager:
             self.status_var.set(f'Slideshow failed: {e}')
             return False
 
+    def _interval_minutes(self):
+        """Read the interval (minutes) from the UI variable, clamped safely."""
+        try:
+            var = getattr(self, 'slideshow_interval_var', None)
+            val = var.get().strip() if var is not None else ""
+            minutes = max(1, int(float(val) if val else 60))
+        except (ValueError, TypeError, AttributeError):
+            minutes = 60
+        return min(MAX_INTERVAL_MINUTES, minutes)
+
     def tick(self):
         """Timer callback."""
         self.after_id = None
@@ -161,17 +172,17 @@ class SlideshowManager:
             return  # Config not loaded yet
         try:
             source = self._active_source()
-
-            try:
-                val = self.slideshow_interval_var.get().strip()
-                minutes = max(1, int(float(val)) if val else 60)
-            except (ValueError, TypeError):
-                minutes = 60
-
-            self.do_change(source, minutes * 60, self.slideshow_order_var.get(), bool(self.slideshow_skip_duplicates_var.get()))
+            minutes = self._interval_minutes()
+            self._active_interval_minutes = minutes
+            self.do_change(
+                source,
+                minutes * 60,
+                self.slideshow_order_var.get(),
+                bool(self.slideshow_skip_duplicates_var.get()),
+            )
             self.schedule_next(minutes * 60 * 1000)  # ms
         except Exception:
-            # Tk widget or variable was destroyed during shutdown — stop silently
+            # Tk widget or variable was destroyed during shutdown - stop silently
             self.running = False
 
     def schedule_next(self, ms):
@@ -180,17 +191,29 @@ class SlideshowManager:
             self.after_id = self.root.after(ms, self.tick)
 
     def start(self, initial=False):
-        """Start slideshow."""
+        """Start the slideshow.
+
+        ``initial=True`` is used at app startup: the first change waits for
+        the full configured interval instead of firing one second after the
+        window opens. Explicit Start still advances promptly.
+        """
         self.stop()
         self.running = True
         if not initial:
             self.status_var.set('Slideshow enabled.')
-        self.schedule_next(1000)  # Start soon
+        minutes = self._interval_minutes()
+        self._active_interval_minutes = minutes
+        if initial:
+            self.last_run = datetime.now()
+            self.schedule_next(minutes * 60 * 1000)
+        else:
+            self.schedule_next(1000)  # Start soon
 
     def stop(self):
         """Stop slideshow."""
         self.running = False
         self.paused = False
+        self._active_interval_minutes = None
         if self.after_id is not None:
             try:
                 self.root.after_cancel(self.after_id)
@@ -272,11 +295,31 @@ class SlideshowManager:
             except Exception:
                 pass
             self.after_id = None
-        try:
-            val = getattr(self, 'slideshow_interval_var', None)
-            minutes = max(1, int(float(val.get().strip()) if val else 60))
-        except (ValueError, TypeError):
-            minutes = 60
+        minutes = self._interval_minutes()
+        self._active_interval_minutes = minutes
+        self.last_run = datetime.now()
+        self.schedule_next(minutes * 60 * 1000)
+
+    def check_interval_changed(self):
+        """Apply a newly selected interval to an already-running slideshow.
+
+        Settings are saved without restarting the timer, so without this the
+        old `after` job keeps its original delay. Changing 60 minutes to 12
+        hours would still fire at the 60-minute mark once, which looks like
+        the new setting was ignored.
+        """
+        if not self.running or self.paused:
+            return
+        minutes = self._interval_minutes()
+        if self._active_interval_minutes == minutes:
+            return
+        if self.after_id is not None:
+            try:
+                self.root.after_cancel(self.after_id)
+            except Exception:
+                pass
+            self.after_id = None
+        self._active_interval_minutes = minutes
         self.last_run = datetime.now()
         self.schedule_next(minutes * 60 * 1000)
 

@@ -17,12 +17,15 @@ Persistence:
 import json
 import logging
 import os
+import socket
+import ssl
 import subprocess
 import sys
 import tempfile
 import threading
 import urllib.request
 import urllib.error
+from datetime import datetime
 from pathlib import Path
 from typing import Optional, Callable
 
@@ -135,8 +138,24 @@ def is_newer(latest: str, current: str) -> bool:
     return parse_version(latest) > parse_version(current)
 
 
-def fetch_latest_release() -> Optional[dict]:
-    """Call GitHub Releases API and return the JSON response, or None on failure."""
+def _format_rate_limit_reset(headers) -> str:
+    """Return the local reset time from GitHub's rate-limit headers."""
+    raw = headers.get("X-RateLimit-Reset") if headers else None
+    if not raw:
+        return ""
+    try:
+        return datetime.fromtimestamp(int(raw)).strftime("%H:%M")
+    except (TypeError, ValueError, OSError, OverflowError):
+        return ""
+
+
+def _fetch_latest_release() -> tuple[Optional[dict], str]:
+    """Call GitHub Releases and return ``(data, error_detail)``.
+
+    ``data`` is None on failure; ``error_detail`` is a user-readable reason
+    suitable for the manual update dialog. The plain fetch_latest_release()
+    wrapper below keeps the old Optional[dict] contract for startup checks.
+    """
     req = urllib.request.Request(
         RELEASES_URL,
         headers={
@@ -146,10 +165,53 @@ def fetch_latest_release() -> Optional[dict]:
     )
     try:
         with urllib.request.urlopen(req, timeout=10) as resp:
-            return json.loads(resp.read().decode("utf-8"))
-    except (urllib.error.URLError, OSError, ValueError, KeyError) as exc:
-        logger.debug("Update check failed: %s", exc)
-        return None
+            return json.loads(resp.read().decode("utf-8")), ""
+    except urllib.error.HTTPError as exc:
+        remaining = (exc.headers.get("X-RateLimit-Remaining") if exc.headers else "") or ""
+        reset = _format_rate_limit_reset(exc.headers)
+        if exc.code == 403 and remaining == "0":
+            detail = "GitHub's unauthenticated API rate limit is exhausted."
+            if reset:
+                detail += f" It resets around {reset} local time."
+            detail += " Try again after the reset."
+        elif exc.code == 429:
+            detail = "GitHub is rate-limiting update checks."
+            if reset:
+                detail += f" Try again after {reset} local time."
+        elif exc.code == 404:
+            detail = "GitHub could not find the FrogPaper release feed (HTTP 404)."
+        elif 500 <= exc.code < 600:
+            detail = f"GitHub's API is having a server problem (HTTP {exc.code}). Try again shortly."
+        else:
+            detail = f"GitHub refused the update request (HTTP {exc.code})."
+        logger.warning("Update check failed: %s", detail)
+        return None, detail
+    except urllib.error.URLError as exc:
+        reason = getattr(exc, "reason", exc)
+        if isinstance(reason, ssl.SSLError):
+            detail = "TLS/certificate error while contacting GitHub."
+        elif isinstance(reason, socket.gaierror):
+            detail = "DNS lookup for api.github.com failed. Check your internet connection."
+        elif isinstance(reason, (TimeoutError, socket.timeout)):
+            detail = "The connection to GitHub timed out."
+        else:
+            detail = f"Network error: {reason}"
+        logger.warning("Update check failed: %s", detail)
+        return None, detail
+    except (TimeoutError, socket.timeout):
+        detail = "The connection to GitHub timed out."
+        logger.warning("Update check failed: %s", detail)
+        return None, detail
+    except (OSError, ValueError, KeyError) as exc:
+        detail = f"Could not read GitHub's response: {exc}"
+        logger.warning("Update check failed: %s", detail)
+        return None, detail
+
+
+def fetch_latest_release() -> Optional[dict]:
+    """Call GitHub Releases API and return the JSON response, or None on failure."""
+    data, _error = _fetch_latest_release()
+    return data
 
 
 def _clean_markdown(text: str) -> str:
@@ -213,34 +275,35 @@ def _release_info_from_data(data: dict) -> dict:
     }
 
 
-def check_for_update_status(current_version: str, ignore_skipped: bool = False) -> tuple[str, Optional[dict]]:
+def check_for_update_status(current_version: str, ignore_skipped: bool = False) -> tuple[str, Optional[dict], str]:
     """Check GitHub and report *why* there is or isn't an update.
 
-    Returns ``(status, release_info)`` where status is one of:
+    Returns ``(status, release_info, detail)`` where status is one of:
       - ``"update"``  - a newer release is available
       - ``"current"`` - the running version is already the latest
       - ``"skipped"`` - newer release exists, but the user skipped that tag
       - ``"error"``   - the GitHub API could not be reached
 
     ``release_info`` is populated for ``"update"`` and ``"skipped"``.
-    Manual checks pass ``ignore_skipped=True`` so the button always shows
-    an available release, even if the startup popup was skipped before.
+    ``detail`` is empty unless status is ``"error"``, where it explains
+    whether the failure was a timeout, DNS/TLS problem, rate limit, or
+    GitHub server error.
     """
-    data = fetch_latest_release()
+    data, error = _fetch_latest_release()
     if data is None:
-        return ("error", None)
+        return ("error", None, error or "GitHub did not return a release.")
 
     latest_tag = data.get("tag_name", "")
     if not latest_tag or not is_newer(latest_tag, current_version):
         logger.debug("App is up-to-date (%s >= %s)", current_version, latest_tag)
-        return ("current", None)
+        return ("current", None, "")
 
     release_info = _release_info_from_data(data)
     if not ignore_skipped and get_skipped_version() == latest_tag:
         logger.debug("Update to %s skipped by user - suppressing popup", latest_tag)
-        return ("skipped", release_info)
+        return ("skipped", release_info, "")
 
-    return ("update", release_info)
+    return ("update", release_info, "")
 
 
 def check_for_update(current_version: str) -> Optional[dict]:
@@ -249,7 +312,7 @@ def check_for_update(current_version: str) -> Optional[dict]:
     Startup checks keep the historical behavior: silently do nothing when
     the API fails, the app is current, or the user skipped this tag.
     """
-    status, release_info = check_for_update_status(current_version)
+    status, release_info, _detail = check_for_update_status(current_version)
     return release_info if status == "update" else None
 
 

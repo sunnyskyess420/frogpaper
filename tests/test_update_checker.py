@@ -14,11 +14,13 @@ config.json / installer files are never touched. No Tk window is created.
 """
 
 import io
+import socket
 import sys
 import tempfile
 import threading
 import unittest
 import urllib.error
+from email.message import Message
 from pathlib import Path
 from unittest.mock import patch
 
@@ -128,7 +130,7 @@ def _release(tag="v9.9.9", assets=None, body="", name=None):
 class TestCheckForUpdateAssetSelection(unittest.TestCase):
 
     def _check(self, release):
-        with patch.object(uc, "fetch_latest_release", return_value=release), \
+        with patch.object(uc, "_fetch_latest_release", return_value=(release, "")), \
                 patch.object(uc, "get_skipped_version", return_value=""):
             return uc.check_for_update("1.6.1")
 
@@ -154,15 +156,15 @@ class TestCheckForUpdateAssetSelection(unittest.TestCase):
         self.assertEqual(result["download_url"], uc.DOWNLOADS_URL)
 
     def test_returns_none_when_not_newer(self):
-        with patch.object(uc, "fetch_latest_release", return_value=_release(tag="v1.6.1")):
+        with patch.object(uc, "_fetch_latest_release", return_value=(_release(tag="v1.6.1"), "")):
             self.assertIsNone(uc.check_for_update("1.6.1"))
 
     def test_returns_none_when_fetch_fails(self):
-        with patch.object(uc, "fetch_latest_release", return_value=None):
+        with patch.object(uc, "_fetch_latest_release", return_value=(None, "mock error")):
             self.assertIsNone(uc.check_for_update("1.6.1"))
 
     def test_returns_none_when_latest_is_skipped(self):
-        with patch.object(uc, "fetch_latest_release", return_value=_release(tag="v9.9.9")), \
+        with patch.object(uc, "_fetch_latest_release", return_value=(_release(tag="v9.9.9"), "")), \
                 patch.object(uc, "get_skipped_version", return_value="v9.9.9"):
             self.assertIsNone(uc.check_for_update("1.6.1"))
 
@@ -449,36 +451,98 @@ class TestDialogButtonMapping(unittest.TestCase):
 class TestCheckForUpdateStatus(unittest.TestCase):
 
     def _status(self, release, skipped="", ignore_skipped=False):
-        with patch.object(uc, "fetch_latest_release", return_value=release), \
+        error = "" if release is not None else "mock error"
+        with patch.object(uc, "_fetch_latest_release", return_value=(release, error)), \
                 patch.object(uc, "get_skipped_version", return_value=skipped):
             return uc.check_for_update_status("1.6.1", ignore_skipped=ignore_skipped)
 
     def test_reports_update_with_release_info(self):
-        status, info = self._status(_release(tag="v9.9.9"))
+        status, info, detail = self._status(_release(tag="v9.9.9"))
         self.assertEqual(status, "update")
         self.assertEqual(info["tag_name"], "v9.9.9")
+        self.assertEqual(detail, "")
 
     def test_reports_current_version(self):
-        status, info = self._status(_release(tag="v1.6.1"))
+        status, info, detail = self._status(_release(tag="v1.6.1"))
         self.assertEqual(status, "current")
         self.assertIsNone(info)
+        self.assertEqual(detail, "")
 
-    def test_reports_api_error(self):
-        status, info = self._status(None)
+    def test_reports_api_error_with_detail(self):
+        status, info, detail = self._status(None)
         self.assertEqual(status, "error")
         self.assertIsNone(info)
+        self.assertEqual(detail, "mock error")
 
     def test_reports_skipped_with_release_info(self):
-        status, info = self._status(_release(tag="v9.9.9"), skipped="v9.9.9")
+        status, info, detail = self._status(_release(tag="v9.9.9"), skipped="v9.9.9")
         self.assertEqual(status, "skipped")
         self.assertEqual(info["tag_name"], "v9.9.9")
+        self.assertEqual(detail, "")
 
     def test_manual_check_ignores_skipped_version(self):
-        status, info = self._status(
+        status, info, detail = self._status(
             _release(tag="v9.9.9"), skipped="v9.9.9", ignore_skipped=True
         )
         self.assertEqual(status, "update")
         self.assertEqual(info["tag_name"], "v9.9.9")
+        self.assertEqual(detail, "")
+
+
+class TestUpdateErrorDetails(unittest.TestCase):
+
+    def _http_error(self, code, headers=None):
+        return urllib.error.HTTPError(
+            "https://api.github.com/repos/x/y/releases/latest",
+            code, "error", headers or Message(), None,
+        )
+
+    def _detail(self, error):
+        with patch.object(uc.urllib.request, "urlopen", side_effect=error):
+            data, detail = uc._fetch_latest_release()
+        self.assertIsNone(data)
+        return detail
+
+    def test_rate_limit_includes_reset_time(self):
+        headers = Message()
+        headers["X-RateLimit-Remaining"] = "0"
+        headers["X-RateLimit-Reset"] = "1792956358"
+        detail = self._detail(self._http_error(403, headers))
+        self.assertIn("rate limit", detail)
+        self.assertIn("resets", detail)
+
+    def test_rate_limit_without_reset_header(self):
+        headers = Message()
+        headers["X-RateLimit-Remaining"] = "0"
+        detail = self._detail(self._http_error(403, headers))
+        self.assertIn("rate limit", detail)
+
+    def test_dns_failure(self):
+        detail = self._detail(urllib.error.URLError(socket.gaierror(-2, "Name or service not known")))
+        self.assertIn("DNS", detail)
+
+    def test_timeout(self):
+        detail = self._detail(urllib.error.URLError(TimeoutError("timed out")))
+        self.assertIn("timed out", detail)
+
+    def test_tls_error(self):
+        detail = self._detail(urllib.error.URLError(uc.ssl.SSLError("certificate verify failed")))
+        self.assertIn("TLS", detail)
+
+    def test_server_error(self):
+        detail = self._detail(self._http_error(503))
+        self.assertIn("server problem", detail)
+
+    def test_not_found(self):
+        detail = self._detail(self._http_error(404))
+        self.assertIn("could not find", detail)
+
+    def test_status_propagates_detail(self):
+        with patch.object(uc, "_fetch_latest_release", return_value=(None, "DNS lookup failed.")):
+            status, info, detail = uc.check_for_update_status("1.7.9")
+        self.assertEqual(status, "error")
+        self.assertIsNone(info)
+        self.assertEqual(detail, "DNS lookup failed.")
 
 
 if __name__ == "__main__":

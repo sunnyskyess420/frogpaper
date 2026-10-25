@@ -731,7 +731,7 @@ class SettingsCategoriesMixin:
         app = self.app
 
         def _worker():
-            status, release = update_checker.check_for_update_status(
+            status, release, detail = update_checker.check_for_update_status(
                 APP_VERSION, ignore_skipped=True
             )
 
@@ -759,14 +759,27 @@ class SettingsCategoriesMixin:
                 else:
                     if status_var is not None:
                         status_var.set("Couldn't check for updates.")
+
+                    release_page = "https://github.com/sunnyskyess420/frogpaper/releases/latest"
+                    message = "Couldn't check for updates."
+                    if detail:
+                        message += "\n\n" + detail
+                    message += (
+                        "\n\nYou can open the release page directly if you want "
+                        "to check manually."
+                    )
                     try:
-                        app._dialog.warning(
-                            "Update Check Failed",
-                            "Couldn't reach GitHub to check for updates.\n\n"
-                            "Check your internet connection and try again.",
+                        choice = app._dialog._show(
+                            "warning", "Update Check Failed", message,
+                            buttons=("Open Release Page", "OK"), primary="OK",
                         )
+                        if choice == "Open Release Page":
+                            update_checker.open_in_browser(release_page)
                     except Exception:
-                        pass
+                        try:
+                            app._dialog.warning("Update Check Failed", message)
+                        except Exception:
+                            pass
 
             try:
                 update_checker.schedule_ui_update(_finish)
@@ -837,6 +850,7 @@ class SettingsCategoriesMixin:
             ("Ghost Sounds", "While the Halloween theme is active, every popup plays a spooky ghost-attack sound instead of the frog ribbit; all other themes are unchanged"),
             ("Startup Subject", "The Halloween Edition pre-fills the startup subject with \"Halloween\" - change or clear it any time in this card; the next release returns to a blank default"),
             ("Live Countdown", "The slideshow countdown now shows seconds, so you can see the timer ticking"),
+            ("Clearer Errors", "If an update check fails, FrogPaper now explains whether it was a timeout, DNS problem, GitHub rate limit, or server error"),
             ("Check for Updates", "New button in Settings > Help checks GitHub on demand and tells you whether you're current"),
             ("Manual Updates", "Update popups open the release page in your browser; FrogPaper no longer runs installers by itself"),
             ("Multi-Select", "Ctrl+click several images to tag them at once in every view (v1.6.1)"),

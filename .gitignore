@@ -87,3 +87,6 @@ desktop.ini
 # Generated Inno Setup script (build_installer.bat creates and removes it)
 frogpaper_installer.iss
 .venv-build/
+
+# Dev verification scripts
+verify_fix_in_exe.py

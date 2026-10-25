@@ -42,21 +42,22 @@ def format_interval_label(minutes):
 
 
 def format_remaining(seconds):
-    """Compact countdown text.
+    """Compact countdown text that visibly ticks every second.
 
-    Under an hour: '08:15'. Over an hour: '23h 04m'. Past two days: '3d 02h'.
-    A 24-hour interval stays '24h 00m' so it matches the picker's label.
+    Under an hour: '08:15'. Over an hour: '23h 04m 09s'.
+    Past two days: '3d 02h 05m 12s'. A 24-hour interval shows
+    '24h 00m 00s' so it still matches the picker's label.
     """
     secs = max(0, int(seconds))
     if secs < 3600:
         mins, rem = divmod(secs, 60)
         return f"{mins:02d}:{rem:02d}"
     hours, rem = divmod(secs, 3600)
-    minutes = rem // 60
+    minutes, secs = divmod(rem, 60)
     if hours >= 48:
         days, hours = divmod(hours, 24)
-        return f"{days}d {hours:02d}h"
-    return f"{hours}h {minutes:02d}m"
+        return f"{days}d {hours:02d}h {minutes:02d}m {secs:02d}s"
+    return f"{hours}h {minutes:02d}m {secs:02d}s"
 
 
 class SlideshowManager:

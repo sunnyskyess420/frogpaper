@@ -836,6 +836,7 @@ class SettingsCategoriesMixin:
             ("Halloween", "New 🎃 Halloween theme - pumpkin orange on a haunted night, with glowing rounded buttons, candle focus and a soft fog in dialogs (Settings > General > App Theme)"),
             ("Ghost Sounds", "While the Halloween theme is active, every popup plays a spooky ghost-attack sound instead of the frog ribbit; all other themes are unchanged"),
             ("Startup Subject", "The Halloween Edition pre-fills the startup subject with \"Halloween\" - change or clear it any time in this card; the next release returns to a blank default"),
+            ("Live Countdown", "The slideshow countdown now shows seconds, so you can see the timer ticking"),
             ("Check for Updates", "New button in Settings > Help checks GitHub on demand and tells you whether you're current"),
             ("Manual Updates", "Update popups open the release page in your browser; FrogPaper no longer runs installers by itself"),
             ("Multi-Select", "Ctrl+click several images to tag them at once in every view (v1.6.1)"),

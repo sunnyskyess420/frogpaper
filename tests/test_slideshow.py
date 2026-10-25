@@ -125,5 +125,27 @@ class TestTemplateDefaults(unittest.TestCase):
         self.assertEqual(data["slideshow_interval"], 60)
 
 
+class TestFormatRemaining(unittest.TestCase):
+
+    def test_under_an_hour(self):
+        self.assertEqual(slideshow.format_remaining(8 * 60 + 15), "08:15")
+        self.assertEqual(slideshow.format_remaining(0), "00:00")
+
+    def test_over_an_hour_includes_seconds(self):
+        self.assertEqual(
+            slideshow.format_remaining(23 * 3600 + 4 * 60 + 9),
+            "23h 04m 09s",
+        )
+
+    def test_24_hours_stays_explicit(self):
+        self.assertEqual(slideshow.format_remaining(24 * 3600), "24h 00m 00s")
+
+    def test_days_include_seconds(self):
+        self.assertEqual(
+            slideshow.format_remaining(3 * 86400 + 2 * 3600 + 5 * 60 + 12),
+            "3d 02h 05m 12s",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

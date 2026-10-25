@@ -10,14 +10,14 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 **FrogPaper** is a two-app wallpaper studio.
 
-- **FrogPaper Desktop — v1.7.8** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Desktop — v1.7.9** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
 - **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
 
 No browser. No account. Just the apps and your imagination.
 
 | App | Current version | Platform | Stack |
 |---|---|---|---|
-| **FrogPaper Desktop** | 1.7.8 | Windows 10 / 11 | Python 3.11+, Tkinter |
+| **FrogPaper Desktop** | 1.7.9 | Windows 10 / 11 | Python 3.11+, Tkinter |
 | **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
@@ -731,7 +731,7 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## System Requirements
 
-### Desktop (v1.7.8)
+### Desktop (v1.7.9)
 
 | Requirement | Minimum | Recommended |
 |---|---|---|

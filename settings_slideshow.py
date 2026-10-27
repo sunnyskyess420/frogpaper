@@ -64,7 +64,11 @@ class SettingsSlideshowMixin:
         app.root.after(200, self.update_slideshow_status)
 
     def sync_slideshow_state(self):
-        """Pass app UI variables to the SlideshowManager instance."""
+        """Pass app UI variables to the SlideshowManager instance.
+
+        Does NOT call check_interval_changed() to avoid unnecessary rescheduling.
+        Interval changes are handled by the interval dropdown's callback.
+        """
         app = self.app
         if not hasattr(app, 'slideshow_source_var'):
             return
@@ -73,10 +77,6 @@ class SettingsSlideshowMixin:
         app.slideshow.slideshow_source_var = app.slideshow_source_var
         app.slideshow.slideshow_order_var = app.slideshow_order_var
         app.slideshow.slideshow_skip_duplicates_var = app.slideshow_skip_duplicates_var
-        try:
-            app.slideshow.check_interval_changed()
-        except Exception:
-            pass
 
     def on_slideshow_toggle(self, initial=False):
         """Start or stop slideshow based on enabled state."""
@@ -143,7 +143,11 @@ class SettingsSlideshowMixin:
         app._dialog.info('Slideshow Sources', '\n'.join(lines))
 
     def update_slideshow_status(self):
-        """Update slideshow status display and progress bar."""
+        """Update slideshow status display and progress bar.
+
+        Exactly one self-scheduling loop started at startup. Cancels previous
+        job before scheduling next to prevent multiple loops.
+        """
         app = self.app
         app.slideshow_status_var.set(app.slideshow.status_text())
         if hasattr(app, 'slideshow_pause_btn'):
@@ -172,5 +176,11 @@ class SettingsSlideshowMixin:
         else:
             app.progress["value"] = 0
             app.progress_overlay_label.config(text="")
-        app.root.after(1000, self.update_slideshow_status)
+        # Schedule next update with single loop - cancel previous if exists
+        if hasattr(self, '_status_update_id') and self._status_update_id:
+            try:
+                app.root.after_cancel(self._status_update_id)
+            except Exception:
+                pass
+        self._status_update_id = app.root.after(1000, self.update_slideshow_status)
 

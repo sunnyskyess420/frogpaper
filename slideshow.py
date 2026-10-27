@@ -2,6 +2,8 @@
 from pathlib import Path
 from datetime import datetime
 import random
+import logging
+import time
 try:
     from set_wallpaper import set_wallpaper, collect_wallpapers
 except ImportError:
@@ -9,6 +11,8 @@ except ImportError:
     collect_wallpapers = lambda: []
 
 from utils import get_app_dir
+
+logger = logging.getLogger(__name__)
 
 BASEDIR = get_app_dir()
 LOGSDIR = BASEDIR / 'logs'
@@ -72,6 +76,8 @@ class SlideshowManager:
         self.last_path = None
         self.all_known_images = []  # Set in load_gallery()
         self._active_interval_minutes = None
+        self._deadline = None  # Monotonic timestamp when next change should occur
+        self._epoch = 0  # Incremented on each timer reschedule to ignore stale callbacks
 
     def load_gallery(self, all_images):
         """Call this when gallery refreshes."""
@@ -164,88 +170,150 @@ class SlideshowManager:
             minutes = 60
         return min(MAX_INTERVAL_MINUTES, minutes)
 
-    def tick(self):
-        """Timer callback."""
+    def tick(self, expected_epoch):
+        """Timer callback with epoch check to ignore stale callbacks."""
+        # Ignore callbacks from cancelled/rescheduled timers
+        if expected_epoch != self._epoch:
+            logger.info(f"slideshow_stale_callback_ignored: expected_epoch={expected_epoch}, current_epoch={self._epoch}")
+            return
+
         self.after_id = None
         if not self.running or self.paused:
+            logger.info("slideshow_tick: skipped (not running or paused)")
             return
         if not hasattr(self, 'slideshow_source_var'):
+            logger.info("slideshow_tick: skipped (config not loaded)")
             return  # Config not loaded yet
+
         try:
             source = self._active_source()
             minutes = self._interval_minutes()
             self._active_interval_minutes = minutes
+            logger.info(f"slideshow_fire: interval={minutes}min, source={source}")
             self.do_change(
                 source,
                 minutes * 60,
                 self.slideshow_order_var.get(),
                 bool(self.slideshow_skip_duplicates_var.get()),
             )
-            self.schedule_next(minutes * 60 * 1000)  # ms
-        except Exception:
+            self._schedule_next(minutes * 60 * 1000, source='tick')
+        except Exception as e:
             # Tk widget or variable was destroyed during shutdown - stop silently
+            logger.error(f"slideshow_tick error: {e}")
             self.running = False
 
+    def _schedule_next(self, delay_ms, source='unknown'):
+        """Schedule next tick, always cancelling any existing job first."""
+        if self.after_id is not None:
+            try:
+                self.root.after_cancel(self.after_id)
+                logger.debug(f"slideshow_reschedule: cancelled after_id={self.after_id}, source={source}")
+            except Exception as e:
+                logger.warning(f"slideshow_reschedule: failed to cancel after_id={self.after_id}: {e}")
+            self.after_id = None
+
+        if self.running and not self.paused:
+            self._epoch += 1
+            epoch = self._epoch
+            self._deadline = time.monotonic() + (delay_ms / 1000)
+            self.after_id = self.root.after(delay_ms, lambda: self.tick(epoch))
+            logger.info(f"slideshow_reschedule: delay={delay_ms}ms, epoch={epoch}, source={source}, after_id={self.after_id}")
+        else:
+            logger.debug(f"slideshow_reschedule: skipped (running={self.running}, paused={self.paused})")
+
     def schedule_next(self, ms):
-        """Schedule next tick."""
-        if self.running:
-            self.after_id = self.root.after(ms, self.tick)
+        """Legacy method - redirects to _schedule_next for compatibility."""
+        self._schedule_next(ms, source='legacy')
 
     def start(self, initial=False):
         """Start the slideshow.
 
-        ``initial=True`` is used at app startup: the first change waits for
-        the full configured interval instead of firing one second after the
-        window opens. Explicit Start still advances promptly.
+        Cancels any existing timer and schedules the full interval from now.
+        Does NOT change the wallpaper immediately - use manual advance for that.
+        ``initial=True`` is used at app startup.
         """
-        self.stop()
+        logger.info(f"slideshow_start: initial={initial}")
+        self.stop()  # Cancel any existing timer first
         self.running = True
+        self.paused = False
         if not initial:
             self.status_var.set('Slideshow enabled.')
         minutes = self._interval_minutes()
         self._active_interval_minutes = minutes
-        if initial:
-            self.last_run = datetime.now()
-            self.schedule_next(minutes * 60 * 1000)
-        else:
-            self.schedule_next(1000)  # Start soon
+        # Always schedule the full interval, never 1000ms
+        delay_ms = minutes * 60 * 1000
+        self._schedule_next(delay_ms, source='start')
+        logger.info(f"slideshow_start: scheduled {minutes}min interval")
 
     def stop(self):
         """Stop slideshow."""
+        logger.info("slideshow_stop")
         self.running = False
         self.paused = False
         self._active_interval_minutes = None
+        self._deadline = None
         if self.after_id is not None:
             try:
                 self.root.after_cancel(self.after_id)
-            except Exception:
-                pass
+                logger.debug(f"slideshow_stop: cancelled after_id={self.after_id}")
+            except Exception as e:
+                logger.warning(f"slideshow_stop: failed to cancel after_id={self.after_id}: {e}")
         self.after_id = None
         self.status_var.set('Slideshow disabled.')
 
     def pause(self):
-        """Pause slideshow without resetting running state."""
+        """Pause slideshow without resetting running state, preserving remaining time."""
         if not self.running:
+            logger.info("slideshow_pause: skipped (not running)")
             return
+        logger.info("slideshow_pause")
         self.paused = True
+        # Save remaining time before cancelling
+        if self._deadline is not None:
+            self._remaining_ms = max(0, int((self._deadline - time.monotonic()) * 1000))
+            logger.info(f"slideshow_pause: saved remaining_ms={self._remaining_ms}")
+        else:
+            self._remaining_ms = 0
         if self.after_id is not None:
             try:
                 self.root.after_cancel(self.after_id)
-            except Exception:
-                pass
+                logger.debug(f"slideshow_pause: cancelled after_id={self.after_id}")
+            except Exception as e:
+                logger.warning(f"slideshow_pause: failed to cancel after_id={self.after_id}: {e}")
         self.after_id = None
         self.status_var.set('Slideshow paused.')
 
     def resume(self):
-        """Resume a paused slideshow."""
+        """Resume a paused slideshow with preserved remaining time."""
         if not self.running or not self.paused:
+            logger.info("slideshow_resume: skipped (not running or not paused)")
             return
+        logger.info(f"slideshow_resume: remaining_ms={getattr(self, '_remaining_ms', 0)}")
         self.paused = False
-        self.schedule_next(1000)
+        remaining_ms = getattr(self, '_remaining_ms', 0)
+        if remaining_ms == 0:
+            # No remaining time, fire once immediately then schedule full interval
+            minutes = self._interval_minutes()
+            source = self._active_source()
+            logger.info(f"slideshow_resume: firing immediately (no remaining time)")
+            try:
+                self.do_change(
+                    source,
+                    minutes * 60,
+                    self.slideshow_order_var.get(),
+                    bool(self.slideshow_skip_duplicates_var.get()),
+                )
+            except Exception as e:
+                logger.error(f"slideshow_resume immediate change error: {e}")
+            delay_ms = minutes * 60 * 1000
+        else:
+            delay_ms = remaining_ms
+        self._schedule_next(delay_ms, source='resume')
         self.status_var.set('Slideshow resumed.')
 
     def prev_wallpaper(self):
         """Set the wallpaper to the previous item in history."""
+        logger.info("slideshow_manual_advance: prev_wallpaper")
         # history[-1] is the current wallpaper; we want [-2]
         if len(self.history) < 2:
             self.status_var.set('Slideshow: No previous wallpaper.')
@@ -257,7 +325,7 @@ class SlideshowManager:
         # Remove the current entry so next tick picks a fresh one
         self.history.pop()
         self.last_path = prev_path
-        self.last_run = datetime.now()
+        # Do NOT update last_run - keeps the existing deadline intact
 
         try:
             if not set_wallpaper:
@@ -266,12 +334,13 @@ class SlideshowManager:
             ok = set_wallpaper(prev_path)
             if ok:
                 self.status_var.set(f'Slideshow: ◄ {prev_path.name}')
-                self.reset_timer()
             else:
                 self.status_var.set('Slideshow: Set failed.')
+            logger.info("slideshow_manual_advance: prev_wallpaper completed (timer not reset)")
             return ok
         except Exception as e:
             self.status_var.set(f'Slideshow failed: {e}')
+            logger.error(f"slideshow_manual_advance error: {e}")
             return False
 
     def _active_source(self):
@@ -287,51 +356,50 @@ class SlideshowManager:
         return label_to_value.get(label, label.lower()) or 'all'
 
     def reset_timer(self):
-        """Restart the interval countdown from now (call after any manual wallpaper change)."""
+        """Restart the interval countdown from now (call after any manual wallpaper change).
+
+        NOTE: This method is now DEPRECATED for manual advances. Manual advances should
+        NOT reset the timer. Use check_interval_changed() instead for intentional rescheduling.
+        """
+        logger.warning("reset_timer called - this is deprecated for manual advances")
         if not self.running or self.paused:
             return
-        if self.after_id is not None:
-            try:
-                self.root.after_cancel(self.after_id)
-            except Exception:
-                pass
-            self.after_id = None
         minutes = self._interval_minutes()
         self._active_interval_minutes = minutes
         self.last_run = datetime.now()
-        self.schedule_next(minutes * 60 * 1000)
+        self._schedule_next(minutes * 60 * 1000, source='reset_timer')
 
     def check_interval_changed(self):
         """Apply a newly selected interval to an already-running slideshow.
 
-        Settings are saved without restarting the timer, so without this the
-        old `after` job keeps its original delay. Changing 60 minutes to 12
-        hours would still fire at the 60-minute mark once, which looks like
-        the new setting was ignored.
+        Only reschedules when the interval value actually changed.
+        A plain Save or opening Settings must not touch the timer.
         """
         if not self.running or self.paused:
             return
         minutes = self._interval_minutes()
         if self._active_interval_minutes == minutes:
-            return
-        if self.after_id is not None:
-            try:
-                self.root.after_cancel(self.after_id)
-            except Exception:
-                pass
-            self.after_id = None
+            return  # No change, do nothing
+        logger.info(f"slideshow_reschedule: interval changed from {self._active_interval_minutes} to {minutes}min")
         self._active_interval_minutes = minutes
         self.last_run = datetime.now()
-        self.schedule_next(minutes * 60 * 1000)
+        self._schedule_next(minutes * 60 * 1000, source='interval_changed')
 
     def next_now(self):
-        """Manual next."""
+        """Manual next - changes wallpaper once without resetting the timer."""
+        logger.info("slideshow_manual_advance: next_now")
         if not self.do_change(source=self._active_source()):
             self.status_var.set('No eligible wallpapers.')
-        self.reset_timer()
+        # Do NOT reset the timer - keep the existing deadline
+        logger.info("slideshow_manual_advance: next_now completed (timer not reset)")
 
     def advance_once(self):
-        """Single advance without rescheduling next tick."""
+        """Single advance without rescheduling next tick.
+
+        Used by tray/keyboard shortcuts. Changes wallpaper once and leaves
+        the pending timer/deadline unchanged. Does not update last_run.
+        """
+        logger.info("slideshow_manual_advance: advance_once")
         candidates = self.candidates(source=self._active_source())
         if not candidates:
             self.status_var.set('Slideshow: No wallpapers found.')
@@ -344,7 +412,7 @@ class SlideshowManager:
         if len(self.history) > 500:
             self.history = self.history[-250:]
         self.last_path = chosen
-        self.last_run = datetime.now()
+        # Do NOT update last_run - keeps the existing deadline intact
 
         try:
             if not set_wallpaper:
@@ -352,9 +420,11 @@ class SlideshowManager:
                 return False
             ok = set_wallpaper(chosen)
             self.status_var.set(f'Slideshow: {chosen.name}' if ok else 'Slideshow: Set failed.')
+            logger.info("slideshow_manual_advance: advance_once completed (timer not reset)")
             return ok
         except Exception as e:
             self.status_var.set(f'Slideshow failed: {e}')
+            logger.error(f"slideshow_manual_advance error: {e}")
             return False
 
     def status_text(self):

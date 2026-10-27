@@ -392,8 +392,7 @@ class TrayManager:
                     chosen = _random.choice(candidates)
                     ok = set_wallpaper(chosen)
                     app.status_var.set(f"Random wallpaper: {chosen.name}" if ok else "Random wallpaper: set failed.")
-                    if ok:
-                        app.slideshow.reset_timer()
+                    # Do NOT reset the timer - manual advance should not affect timer
                 except Exception as e:
                     app.status_var.set(f"Random wallpaper error: {e}")
             schedule_ui_update(_do)
@@ -407,7 +406,10 @@ class TrayManager:
 
     def _tray_stop_slideshow(self, icon=None, item=None):
             app = self.app
-            schedule_ui_update(app.slideshow.stop)
+            def _do():
+                app.slideshow.stop()
+                app.slideshow_enabled_var.set(False)
+            schedule_ui_update(_do)
 
 
     def _tray_toggle_slideshow(self, icon=None, item=None):
@@ -416,6 +418,7 @@ class TrayManager:
         def _do():
             if not app.slideshow.running:
                 app.slideshow.start()
+                app.slideshow_enabled_var.set(True)
             elif app.slideshow.paused:
                 app.slideshow.resume()
             else:

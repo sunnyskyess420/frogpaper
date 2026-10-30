@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.7.10"
+APP_VERSION = "1.7.12"
 
 # Halloween Edition branding (v1.7.x only). Clear this string in the next
 # release to drop the edition label - the theme and sounds stay.
@@ -79,6 +79,33 @@ import concurrent.futures
 
 
 import time
+
+# --- Splash screen (PyInstaller bootloader) ------------------------------
+try:
+    import pyi_splash  # type: ignore[import-not-found]  # exists only inside the frozen build
+except ImportError:
+    pyi_splash = None
+
+_SPLASH_MIN_VISIBLE = 1.2      # seconds; prevents a sub-second flash on warm starts
+_SPLASH_T0 = time.monotonic()
+
+
+def dismiss_splash(root, min_visible=_SPLASH_MIN_VISIBLE):
+    """Close the bootloader splash once the real window has painted."""
+    if pyi_splash is None:
+        return
+
+    def _close():
+        try:
+            if pyi_splash.is_alive():
+                pyi_splash.close()
+        except Exception:
+            logger.debug("splash close failed", exc_info=True)
+
+    root.update_idletasks()
+    remaining = max(0.0, min_visible - (time.monotonic() - _SPLASH_T0))
+    root.after(int(remaining * 1000), _close)
+
 
 import random
 
@@ -847,6 +874,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # complete, so the user never sees a mid-load colour switch.
         self.root.deiconify()
         self.root.state("normal")
+        dismiss_splash(self.root)
+        logger.info("time to visible window: %.2fs", time.monotonic() - _SPLASH_T0)
 
 
 
@@ -2612,15 +2641,24 @@ def main():
 
         mutex = _acquire_single_instance_mutex()
         if mutex is None:
+            try:
+                if pyi_splash is not None and pyi_splash.is_alive():
+                    pyi_splash.close()
+            except Exception:
+                pass
             import tkinter as _tk
             _r = _tk.Tk()
+            _r.attributes("-topmost", True)
             _r.withdraw()
             from tkinter import messagebox as _mb
             _mb.showwarning(
                 "FrogPaper Already Running",
                 "FrogPaper is already open.\n\nCheck your taskbar or system tray."
             )
-            _r.destroy()
+            try:
+                _r.destroy()
+            except _tk.TclError:
+                pass
             return
 
         try:

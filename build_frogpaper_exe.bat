@@ -72,6 +72,7 @@ REM (config.json with API keys, wallpapers, logs, frogpaper.db) and
 REM rmdir /s destroyed all of it. Remove only the previous build.
 if exist "dist\FrogPaper.exe" del /q "dist\FrogPaper.exe"
 if exist "dist\_internal" rmdir /s /q "dist\_internal"
+if exist "dist\FrogPaper" rmdir /s /q "dist\FrogPaper"
 if exist __pycache__ rmdir /s /q __pycache__
 for /d %%i in ("%TEMP%\PyInstaller\*") do rmdir /s /q "%%i" 2>nul
 echo Cleanup complete.
@@ -120,7 +121,7 @@ echo.
 
 REM --- Sanity-check the venv has the security-pinned versions ---
 echo Verifying venv dependency versions match the security pins...
-"%VENV_DIR%\Scripts\python.exe" -c "import sys, pkg_resources; data=[(d.project_name, d.version) for d in pkg_resources.working_set if d.project_name.lower() in ('pillow','nltk','opencv-python','pyinstaller')]; [print(f'{n}=={v}') for n,v in sorted(data)]; pillow_ver=[v for n,v in data if n.lower()=='pillow'][0]; sys.exit(0 if pillow_ver=='13.0.0' else 1)"
+"%VENV_DIR%\Scripts\python.exe" -c "import sys, importlib.metadata; pkgs={d.name.lower(): d.version for d in importlib.metadata.distributions()}; data=[(n, pkgs[n]) for n in ('pillow','nltk','opencv-python','pyinstaller') if n in pkgs]; [print(f'{n}=={v}') for n,v in sorted(data)]; pillow_ver=pkgs.get('pillow',''); sys.exit(0 if pillow_ver=='13.0.0' else 1)"
 if errorlevel 1 (
     echo.
     echo ERROR: Pillow in the build venv is NOT 13.0.0.
@@ -169,10 +170,10 @@ echo ========================================
 echo Build completed successfully!
 echo ========================================
 echo.
-echo Executable location: dist\FrogPaper.exe
+echo Executable location: dist\FrogPaper\FrogPaper.exe
 echo.
 echo VERIFY before shipping (recommended):
-echo   1. Run dist\FrogPaper.exe once and confirm it starts cleanly.
+echo   1. Run dist\FrogPaper\FrogPaper.exe once and confirm it starts cleanly.
 echo   2. Confirm the bundled Pillow version is 13.0.0:
 echo      "%VENV_DIR%\Scripts\python.exe" -c "import sys, pkgutil; print('Pillow', pkgutil.get_loader('PIL').get_filename() if hasattr(pkgutil.get_loader('PIL'), 'get_filename') else 'n/a')"
 echo      Or extract the EXE with pyinstxtractor and inspect the

@@ -118,6 +118,13 @@ class GoogleDriveProvider:
                     logger.warning(f"Failed to load Google Drive credentials: {e}")
             
             # Need new authentication flow
+            if GOOGLE_CLIENT_ID == "YOUR_GOOGLE_CLIENT_ID" or not GOOGLE_CLIENT_ID:
+                raise ValueError(
+                    "Google OAuth credentials not configured. "
+                    "Go to Settings > Cloud Storage and enter your Google Client ID and Client Secret. "
+                    "You'll need to create a project in Google Cloud Console and enable the Google Drive API first."
+                )
+            
             flow = InstalledAppFlow.from_client_config(
                 {
                     "installed": {
@@ -131,7 +138,7 @@ class GoogleDriveProvider:
                 scopes=GOOGLE_SCOPES
             )
             
-            credentials = flow.run_local_server(port=8080)
+            credentials = flow.run_local_server(port=8080, prompt='select_account')
             
             # Save token
             self._save_token(credentials)

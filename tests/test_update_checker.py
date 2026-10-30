@@ -144,9 +144,18 @@ class TestCheckForUpdateAssetSelection(unittest.TestCase):
         self.assertEqual(result["download_url"], url)
         self.assertEqual(result["download_size"], 42424242)
 
-    def test_falls_back_to_website_when_no_setup_asset(self):
+    def test_falls_back_to_first_exe_when_no_setup_asset(self):
+        # Older releases were published as FrogPaper-<version>.exe without
+        # "Setup" in the name; the updater still needs to find them.
         result = self._check(_release(assets=[
             {"name": "FrogPaper-portable.exe", "browser_download_url": "https://x/portable.exe", "size": 10},
+        ]))
+        self.assertEqual(result["download_url"], "https://x/portable.exe")
+        self.assertEqual(result["download_size"], 10)
+
+    def test_falls_back_to_website_when_no_exe_asset(self):
+        result = self._check(_release(assets=[
+            {"name": "source.zip", "browser_download_url": "https://x/source.zip", "size": 20},
         ]))
         self.assertEqual(result["download_url"], uc.DOWNLOADS_URL)
         self.assertEqual(result["download_size"], 0)

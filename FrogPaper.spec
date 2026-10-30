@@ -28,12 +28,22 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+splash = Splash(
+    'splash.png',
+    binaries=a.binaries,
+    datas=a.datas,
+    text_pos=None,
+    text_size=12,
+    minify_script=True,
+    always_on_top=True,
+)
+
 exe = EXE(
     pyz,
     a.scripts,
-    a.binaries,
-    a.datas,
+    splash,
     [],
+    exclude_binaries=True,
     name='FrogPaper',
     debug=False,
     bootloader_ignore_signals=False,
@@ -48,4 +58,15 @@ exe = EXE(
     codesign_identity=None,
     entitlements_file=None,
     icon=['frogpaper.ico'],
+)
+
+coll = COLLECT(
+    exe,
+    a.binaries,
+    a.datas,
+    splash.binaries,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='FrogPaper',
 )

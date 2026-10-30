@@ -59,10 +59,6 @@ DOWNLOADS_URL = "https://sunnyskyess420.github.io/frogpaper-website/#downloads"
 # Field in config.json used to persist the user's "skip this version" choice.
 SKIPPED_VERSION_KEY = "skipped_update_version"
 
-# Release asset filename must contain this hint (and end with .exe) to be
-# treated as the installer for the one-click update flow.
-INSTALLER_ASSET_HINT = "Setup"
-
 # Stream the installer download in ~256 KiB chunks so progress can be reported
 # and a runaway download can be cancelled without freezing the UI.
 DOWNLOAD_CHUNK_SIZE = 256 * 1024
@@ -234,18 +230,18 @@ def _release_info_from_data(data: dict) -> dict:
     """Build the popup/update payload from a GitHub release JSON object."""
     latest_tag = data.get("tag_name", "")
 
-    # Find the .exe installer asset
+    # Find the .exe installer asset - prefer one containing "setup",
+    # falling back to the first .exe asset if none match.
     download_url = DOWNLOADS_URL  # fallback to website
     download_size = 0
-    for asset in data.get("assets", []):
-        name = asset.get("name", "")
-        if name.lower().endswith(".exe") and INSTALLER_ASSET_HINT in name:
-            download_url = asset.get("browser_download_url", download_url)
-            try:
-                download_size = int(asset.get("size") or 0)
-            except (TypeError, ValueError):
-                download_size = 0
-            break
+    exes = [a for a in data.get("assets", []) if a.get("name", "").lower().endswith(".exe")]
+    chosen = next((a for a in exes if "setup" in a["name"].lower()), exes[0] if exes else None)
+    if chosen is not None:
+        download_url = chosen.get("browser_download_url", download_url)
+        try:
+            download_size = int(chosen.get("size") or 0)
+        except (TypeError, ValueError):
+            download_size = 0
 
     # Clean and truncate body for the popup
     body = (data.get("body") or "").strip()
@@ -728,15 +724,15 @@ def _download_failed(app, release_info: dict, error: str) -> None:
 
 
 def start_update_install(app, release_info: dict) -> None:
-    """Download the installer for *release_info* in the background, then run it.
+    """Open the release page so the user can download the installer manually.
 
-    Falls back to opening the download page when the release has no direct
-    installer asset or when FrogPaper is running from source (an EXE install
-    wouldn't update this copy).
+    In-app download/install is deliberately disabled (v1.7.7): the old helper
+    batch could stall behind a running app, so the install never appeared to
+    happen.  Updates open the release page and the user runs the setup file.
     """
     url = release_info.get("download_url", "")
     tag = release_info.get("tag_name", "latest")
-        # In-app download + install is deliberately disabled.  The old hand-off
+    # In-app download + install is deliberately disabled.  The old hand-off
     # (a helper batch waiting for FrogPaper's PID, then starting the setup)
     # could stall behind a running app, so the install never appeared to
     # happen: users saw a console window and nothing else.  Updates now open

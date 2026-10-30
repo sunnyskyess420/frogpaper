@@ -8,7 +8,7 @@ echo ========================================
 echo.
 
 REM Check if the executable exists
-if not exist "dist\FrogPaper.exe" (
+if not exist "dist\FrogPaper\FrogPaper.exe" (
     echo ERROR: FrogPaper.exe not found in dist folder!
     echo Please run build_frogpaper_exe.bat first.
     pause
@@ -44,14 +44,14 @@ REM Create a comprehensive Inno Setup script
 (
 echo [Setup]
 echo AppName=FrogPaper
-echo AppVersion=1.7.10
+echo AppVersion=1.7.12
 echo AppPublisher=FrogPaper
 echo AppPublisherURL=https://github.com/sunnyskyess420/frogpaper
 echo AppSupportURL=https://github.com/sunnyskyess420/frogpaper/issues
 echo AppUpdatesURL=https://github.com/sunnyskyess420/frogpaper/releases
 echo DefaultDirName={userpf}\FrogPaper
 echo DefaultGroupName=FrogPaper
-echo OutputBaseFilename=FrogPaper-Setup-1.7.10
+echo OutputBaseFilename=FrogPaper-Setup-1.7.12
 echo Compression=lzma2
 echo CloseApplications=force
 echo SetupLogging=yes
@@ -77,7 +77,7 @@ echo Name: "quicklaunchicon"; Description: "Create a Quick Launch icon"; GroupDe
 echo Name: "startup"; Description: "Run FrogPaper at Windows startup"; GroupDescription: "Startup options:"
 echo.
 echo [Files]
-echo Source: "dist\FrogPaper.exe"; DestDir: "{app}"; Flags: ignoreversion restartreplace
+echo Source: "dist\FrogPaper\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs restartreplace
 echo Source: "sounds\*"; DestDir: "{app}\sounds"; Flags: ignoreversion recursesubdirs createallsubdirs
 echo Source: "frogpaper.ico"; DestDir: "{app}"; Flags: ignoreversion
 echo Source: "FrogPaperLogo.png"; DestDir: "{app}"; Flags: ignoreversion
@@ -133,7 +133,7 @@ echo ========================================
 echo Installer created successfully!
 echo ========================================
 echo.
-echo Installer location: installer_output\FrogPaper-Setup-1.7.10.exe
+echo Installer location: installer_output\FrogPaper-Setup-1.7.12.exe
 echo.
 echo Press any key to exit...
 pause >nul

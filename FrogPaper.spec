@@ -5,15 +5,15 @@ import os
 # Add current directory to path so modules can be found
 sys.path.insert(0, os.getcwd())
 
-# Collect all local .py modules to ensure they're included
-import glob
-py_files = [(f, '.') for f in glob.glob('*.py') if f != 'app.py']
+# Modules are covered by hiddenimports below.  Do NOT glob *.py into datas:
+# that shipped the whole source tree plus debug scripts (check_dial.py deletes
+# config.json) into {app}\.
 
 a = Analysis(
     ['app.py'],
     pathex=[os.getcwd()],
     binaries=[],
-    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.')] + py_files,
+    datas=[('sounds', 'sounds'), ('frogpaper.ico', '.'), ('FrogPaperLogo.png', '.'), ('FrogPaperLogo.bmp', '.'), ('FrogPaperSmall.bmp', '.'), ('sidebar_logo.png', '.'), ('config.template.json', '.'), ('keywords.json', '.'), ('presets.json', '.'), ('negative_presets.json', '.'), ('recipes.json', '.'), ('prompt_library.json', '.'), ('templates.json', '.'), ('user_thesaurus.json', '.')],
     # SECURITY: 'config.json' is intentionally NOT bundled here. It may contain
     # the developer's real HuggingFace / Google / Dropbox / OneDrive secrets.
     # A clean 'config.template.json' is bundled instead and seeded to

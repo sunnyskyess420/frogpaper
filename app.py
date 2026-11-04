@@ -849,7 +849,9 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # Global Hotkey (Ctrl+Alt+N for next wallpaper)
         if KEYBOARD_AVAILABLE:
             try:
-                keyboard.add_hotkey('ctrl+alt+n', self.advance_slideshow)
+                keyboard.add_hotkey(
+                    'ctrl+alt+n',
+                    lambda: schedule_ui_update(self.advance_slideshow))
             except Exception:
                 pass
 
@@ -1820,6 +1822,14 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 self.root.destroy()
             except Exception:
                 pass
+            # Stop queued work and flush logs before the hard exit: os._exit
+            # skips atexit and buffered writes.
+            try:
+                self.executor.shutdown(wait=False, cancel_futures=True)
+            except Exception:
+                pass
+            import logging as _logging
+            _logging.shutdown()
             import os
             os._exit(0)
 

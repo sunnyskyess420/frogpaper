@@ -66,6 +66,33 @@ def sanitize_filename_part(text: str) -> str:
     text = re.sub(r"[^a-z0-9_]", "", text)
     return text or "unknown"
 
+def save_image_bytes(output_path: Path, data: bytes) -> None:
+    """Write image *data* to *output_path* atomically.
+
+    A failed, truncated or cancelled download must never leave a 0-byte or
+    HTML error body at the final ``.png`` path, where the gallery indexes it.
+    The bytes are written to a ``.part`` sibling and only replace the target
+    once they are complete and plausibly an image.
+    """
+    if not data or len(data) < 1000:
+        raise ImageGenerationError(
+            f"Provider returned a {len(data)}-byte response, not an image.")
+    output_path = Path(output_path)
+    tmp = output_path.with_name(output_path.name + ".part")
+    try:
+        with open(tmp, "wb") as out_file:
+            out_file.write(data)
+            out_file.flush()
+            os.fsync(out_file.fileno())
+        os.replace(tmp, output_path)
+    except Exception:
+        try:
+            tmp.unlink()
+        except OSError:
+            pass
+        raise
+
+
 def get_unique_filename(subject: str, style: str, output_dir: Path) -> str:
     """Compute SUBJECT_STYLE_YYYYMMDD_NUMBER filename."""
     sub = sanitize_filename_part(subject)
@@ -143,8 +170,7 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
                         f"Pollinations.ai returned HTTP {response.status}")
 
                 update_status("Saving generated image...")
-                with open(output_path, "wb") as out_file:
-                    out_file.write(response.read())
+                save_image_bytes(output_path, response.read())
 
                 # Verify the file is actually an image (not an error page)
                 file_size = output_path.stat().st_size
@@ -273,8 +299,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
 
             import base64
             img_bytes = base64.b64decode(image_data)
-            with open(output_path, "wb") as out_file:
-                out_file.write(img_bytes)
+            save_image_bytes(output_path, img_bytes)
 
             return output_path
 
@@ -404,8 +429,7 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
                     raise ImageGenerationError(f"HuggingFace HTTP {response.status}: {err_body}")
 
                 update_status("Saving generated image...")
-                with open(output_path, "wb") as out_file:
-                    out_file.write(response.read())
+                save_image_bytes(output_path, response.read())
 
             # Verify it's a real image
             if output_path.stat().st_size < 1000:
@@ -544,8 +568,7 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Prodia returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            with open(output_path, "wb") as out_file:
-                out_file.write(img_data)
+            save_image_bytes(output_path, img_data)
 
             return output_path
 
@@ -697,8 +720,7 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Replicate returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            with open(output_path, "wb") as out_file:
-                out_file.write(img_data)
+            save_image_bytes(output_path, img_data)
 
             return output_path
 
@@ -863,8 +885,7 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Fal.ai returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            with open(output_path, "wb") as out_file:
-                out_file.write(img_data)
+            save_image_bytes(output_path, img_data)
 
             return output_path
 

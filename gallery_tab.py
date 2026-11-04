@@ -805,9 +805,9 @@ class GalleryTab:
                 # Abort if a newer load cycle has started or view changed entirely
                 if generation != self._ratio_load_gen:
                     return
-                current_view = app.gallery_view_var.get()
-                if current_view != ratio_mode:
-                    return
+                # No Tk variable reads from this worker thread: the
+                # generation counter checked above already invalidates a
+                # stale load, and Tcl is not thread-safe.
 
                 path_str = str(img_path)
                 card_data = app.gallery_cards.get(path_str)
@@ -838,6 +838,7 @@ class GalleryTab:
                         try:
                             _placeholder.destroy()
                             label = tk.Label(_card, image=_thumb, bg=_pal["panel"])
+                            label.image = _thumb  # keep the PhotoImage alive
                             label.grid(row=0, column=0, pady=(4, 4), padx=4)
                             label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
                             label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))
@@ -865,6 +866,7 @@ class GalleryTab:
                             app.thumb_cache[_path_str] = thumb
                             _placeholder.destroy()
                             label = tk.Label(_card, image=thumb, bg=_pal["panel"])
+                            label.image = thumb  # keep the PhotoImage alive
                             label.grid(row=0, column=0, pady=(4, 4), padx=4)
                             label.bind('<Button-1>', lambda e, p=_img_path, idx=_index: app.on_card_click(e, p, idx))
                             label.bind('<Button-3>', lambda e, p=_img_path: app.show_gallery_context_menu(e, p))

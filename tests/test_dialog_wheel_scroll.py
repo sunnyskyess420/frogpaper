@@ -42,6 +42,10 @@ class TestDialogWheelScroll(unittest.TestCase):
         cls._config_tmp = tempfile.TemporaryDirectory()
         cls._orig_config_file = utils_mod.CONFIG_FILE
         utils_mod.CONFIG_FILE = Path(cls._config_tmp.name) / "config.json"
+        # A first-run config would open the modal welcome prompt while this
+        # class pumps the event loop, and wait_window() would hang the suite.
+        utils_mod.CONFIG_FILE.write_text('{"first_run_completed": true}',
+                                         encoding="utf-8")
 
         root.geometry("1280x800+40+40")
         root.update_idletasks()

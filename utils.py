@@ -275,8 +275,13 @@ def _migrate_config(data: dict) -> dict:
     return data
 
 
+_CONFIG_UNREADABLE = False
+
+
 def load_config() -> dict:
+    global _CONFIG_UNREADABLE
     if not CONFIG_FILE.exists():
+        _CONFIG_UNREADABLE = False
         return {}
     try:
         with open(CONFIG_FILE, "r", encoding="utf-8") as f:
@@ -290,7 +295,9 @@ def load_config() -> dict:
             shutil.copy2(CONFIG_FILE, CONFIG_FILE.with_name("config.json.corrupt"))
         except Exception:
             pass
+        _CONFIG_UNREADABLE = True
         return {}
+    _CONFIG_UNREADABLE = False
     data = _validate_config(data)
     data = _migrate_config(data)
     return data
@@ -300,6 +307,12 @@ def save_config(data: dict) -> None:
     try:
         clean_data = dict(data or {})
         clean_data["config_version"] = CONFIG_SCHEMA_VERSION
+        if _CONFIG_UNREADABLE and CONFIG_FILE.exists() and CONFIG_FILE.stat().st_size > 2:
+            # Never overwrite a config we could not read this session: that
+            # replaced the user's keys with the caller's partial dict.
+            logger.error("Refusing to overwrite unreadable config.json")
+            atomic_write_json(CONFIG_FILE.with_name("config.json.new"), clean_data, indent=2)
+            return
         atomic_write_json(CONFIG_FILE, clean_data, indent=2)
     except Exception as e:
         logger.error("Failed to write config: %s", e)

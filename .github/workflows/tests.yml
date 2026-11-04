@@ -13,7 +13,7 @@
 #
 # Place this file at: .github/workflows/tests.yml  (repo root)
 # Then: git add .github/workflows/tests.yml && git push
-# View runs under the repo's "Actions" tab. Expected: "Ran 301 tests ... OK".
+# View runs under the repo's "Actions" tab. Expected: "Ran 515 tests ... OK".
 #
 # Minutes note: each matrix entry is one Windows job (Windows minutes count
 # 2x on private repos). The suite finishes in ~4-5 min per entry. Trim the

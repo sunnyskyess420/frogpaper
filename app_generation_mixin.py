@@ -26,7 +26,7 @@ from app_runtime import (
 from gallery_manager import save_prompt_parameters
 from prompt_builder import build_all_prompts
 from theme_mixer import generate_themes
-from utils import has_huggingface_token, load_json_list, save_json_list
+from utils import load_json_list, save_json_list
 
 if PINNED_DROPDOWNS_AVAILABLE:
     from app_runtime import get_manager
@@ -735,39 +735,6 @@ class FrogPaperAppGenerationMixin:
 
 
 
-    def generate_selected_image(self):
-
-            if not has_huggingface_token():
-
-                self._dialog.error("No API Key", "No HuggingFace token found. Go to Settings and enter your token, or switch to Pollinations.ai (free, no key needed).")
-
-                return
-
-            data = self.selected_prompt()
-
-            if not data:
-
-                self._dialog.info("No preview", "Generate a preview first.")
-
-                return
-
-            self.run_image_generation(
-
-                data.get("prompt", ""), 
-
-                data.get("theme_sentence", "prompt"), 
-
-                data.get("style_mode", self.current_mode()),
-
-                subject=data.get("subject"),
-
-                art_style=data.get("art_style"),
-                ui_values=self.current_prompt_data
-
-            )
-
-
-
     def generate_and_set(self):
             """Set the current image as wallpaper without regenerating."""
             path = self.last_image_path or self.selected_gallery_path
@@ -873,6 +840,9 @@ class FrogPaperAppGenerationMixin:
                 logger.debug("image_progress not found")
 
             self.cancel_event.clear()
+            # A fresh id per run: a worker from an earlier (cancelled) run must
+            # not publish its image into this one after cancel_event is cleared.
+            self._gen_run_id = getattr(self, "_gen_run_id", 0) + 1
 
             # Show the status label
             self.image_generation_status_label.config(text="🔄 Generating image...")
@@ -894,6 +864,7 @@ class FrogPaperAppGenerationMixin:
 
 
     def _generate_image_thread(self, prompt, filename, auto_set_wallpaper, subject, art_style, ui_values=None):
+            run_id = getattr(self, "_gen_run_id", 0)
 
             def status_cb(msg):
 
@@ -944,6 +915,9 @@ class FrogPaperAppGenerationMixin:
                     except Exception as e:
                         logger.error(f"[ERROR] Failed to auto-tag image: {e}")
 
+                if run_id != getattr(self, "_gen_run_id", 0):
+                    logger.info("Discarding image from a superseded run")
+                    return
                 schedule_ui_update(self._on_generation_complete, image_path, auto_set_wallpaper, None)
 
             except Exception as e:
@@ -954,6 +928,8 @@ class FrogPaperAppGenerationMixin:
 
                     return
 
+                if run_id != getattr(self, "_gen_run_id", 0):
+                    return
                 schedule_ui_update(self._on_generation_complete, None, False, str(e))
 
 

@@ -1356,8 +1356,6 @@ class PromptTab:
             img_actions = ttk.Frame(preview_frame)
             img_actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 6))
 
-            app._btn_img_generate = ttk.Button(img_actions, text=" Generate Image",
-                       command=app.generate_selected_image).pack(side="left", padx=(0, 6))
             app._btn_img_wallpaper = ttk.Button(img_actions, text=" Set as Wallpaper",
                        command=app.generate_and_set).pack(side="left", padx=(0, 6))
             app._btn_img_cancel = ttk.Button(img_actions, text=" Cancel",

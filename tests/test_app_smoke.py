@@ -71,6 +71,8 @@ class TestAppStartupSmoke(unittest.TestCase):
         cls._config_tmp = tempfile.TemporaryDirectory()
         cls._orig_config_file = utils_mod.CONFIG_FILE
         utils_mod.CONFIG_FILE = _Path(cls._config_tmp.name) / "config.json"
+        utils_mod.CONFIG_FILE.write_text('{"first_run_completed": true}',
+                                         encoding="utf-8")
 
         try:
             from app import FrogPaperApp

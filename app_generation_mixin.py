@@ -191,17 +191,11 @@ class FrogPaperAppGenerationMixin:
 
         subject_lock = self.get_active_subject_lock()
 
-        logger.debug(f"generate: After getter functions:")
-        logger.info(f"  subject='{subject}'")
-        logger.info(f"  style='{style}'")
-        logger.info(f"  lighting='{lighting}'")
-        logger.info(f"  setting='{setting}'")
-        logger.info(f"  atmosphere='{atmosphere}'")
-        logger.info(f"  mood='{mood}'")
-        logger.info(f"  color='{color}'")
-        logger.info(f"  mode='{mode}'")
-        logger.info(f"  subject_lock={subject_lock}")
-
+        logger.debug(
+            "generate: subject=%r style=%r lighting=%r setting=%r atmosphere=%r "
+            "mood=%r color=%r mode=%r subject_lock=%s",
+            subject, style, lighting, setting, atmosphere, mood, color, mode,
+            subject_lock)
         # Check if audit mode is enabled
         run_audit = False
         if hasattr(self, 'prompt_audit_var'):
@@ -463,18 +457,12 @@ class FrogPaperAppGenerationMixin:
     def _generate_themes_thread(self, subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit=False):
 
         try:
-            logger.debug(f"_generate_themes_thread called with:")
-            logger.info(f"  subject='{subject}'")
-            logger.info(f"  setting='{setting}'")
-            logger.info(f"  style='{style}'")
-            logger.info(f"  lighting='{lighting}'")
-            logger.info(f"  mood='{mood}'")
-            logger.info(f"  color='{color}'")
-            logger.info(f"  atmosphere='{atmosphere}'")
-            logger.info(f"  mode='{mode}'")
-            logger.info(f"  subject_lock={subject_lock}")
-            logger.info(f"  run_audit={run_audit}")
-
+            logger.info(
+                "Generating: subject=%r style=%r lighting=%r setting=%r "
+                "atmosphere=%r mood=%r color=%r mode=%r subject_lock=%s "
+                "run_audit=%s",
+                subject, style, lighting, setting, atmosphere, mood, color, mode,
+                subject_lock, run_audit)
             if self.cancel_event.is_set(): return
 
             # Values are already passed as parameters from sidebar widget reading

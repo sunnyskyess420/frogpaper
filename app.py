@@ -1731,19 +1731,22 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self._sync_status_lbl = self._statusbar_sync_lbl
 
         
-        # Website link — opens the frogpaper website for manual update checks.
-        self._website_link = ttk.Label(
-            bottom,
-            text="Link To Website",
-            font=self.small_font,
-            cursor="hand2",
+        # Footer links. Labels say what they actually open: the project site
+        # is where downloads and release notes live, not a generic "website".
+        def _footer_link(text, url):
+            lbl = ttk.Label(bottom, text=text, font=self.small_font, cursor="hand2")
+            lbl.url = url  # so tests and the tray can read the target back
+            lbl.pack(side="left", padx=(8, 0))
+            lbl.bind("<Button-1>", lambda e, u=url: __import__("webbrowser").open(u))
+            return lbl
+
+        self._website_link = _footer_link(
+            "Downloads & Updates",
+            "https://sunnyskyess420.github.io/frogpaper-website/",
         )
-        self._website_link.pack(side="left", padx=(8, 0))
-        self._website_link.bind(
-            "<Button-1>",
-            lambda e: __import__("webbrowser").open(
-                "https://sunnyskyess420.github.io/frogpaper-website/"
-            ),
+        self._facebook_link = _footer_link(
+            "Facebook Page",
+            "https://www.facebook.com/profile.php?id=61593290983998",
         )
 
         ttk.Label(bottom, textvariable=self.statusvar).pack(side="right")

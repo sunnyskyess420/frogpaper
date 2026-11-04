@@ -114,6 +114,13 @@ class TestAppStartupSmoke(unittest.TestCase):
         self.assertTrue(callable(getattr(self.app, "generate", None)))
         self.assertFalse(hasattr(self.app, "generate_image"))
 
+    def test_footer_links_point_at_the_right_pages(self):
+        """The bar used to say "Link To Website"; it now names both targets."""
+        self.assertIn("github.io", self.app._website_link.url)
+        self.assertIn("facebook.com", self.app._facebook_link.url)
+        self.assertEqual(self.app._website_link.cget("text"), "Downloads & Updates")
+        self.assertEqual(self.app._facebook_link.cget("text"), "Facebook Page")
+
     def test_theme_engine_module_globals_resolvable(self):
         """Direct regression: the B2 split left apply_theme's globals behind."""
         import app_theme_engine as eng

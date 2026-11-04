@@ -481,6 +481,38 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 - Ctrl+N and the tray's Generate item call a method that exists (they used to fail silently).
 - Packaging: the installer no longer ships every root .py file (including a debug script that deletes config.json), and the build script stops deleting the onedir output folder.
 
+### v1.7.12 - Update Check Fix
+- **Check for Updates no longer crashes.** 1.7.11 read the installer URL before assigning it, so a release with an `.exe` asset could raise `UnboundLocalError` and leave the checker dead.
+- **Install Update opens the release page again.** 1.7.11 had accidentally re-enabled the old in-app auto-installer; 1.7.12 restores the v1.7.7 behaviour.
+- **Older asset names work.** Releases without `Setup` in the filename are found correctly.
+- Keeps the splash screen, the onedir build and the 10-minute slideshow fix.
+
+### v1.7.11 - Splash Screen, Faster Startup
+- Splash screen while FrogPaper starts.
+- Onedir Windows build: no per-launch unpack of a ~100 MB single file.
+- The 10-minute slideshow interval no longer fires early.
+- **Heads-up:** this build's update checker is unreliable; use 1.7.12.
+
+### v1.7.10 - Clearer Update Errors
+- Manual **Check for Updates** now says why it failed: timeout, DNS lookup, TLS/certificate, GitHub's rate limit (with the local reset time), a 404/5xx, or another status.
+- The failure dialog gains an **Open Release Page** button.
+- No other changes.
+
+### v1.7.9 - Slideshow Countdown Shows Seconds
+- The countdown ticks visibly - `11h 59m 42s` instead of sitting on `11h 59m` for a minute.
+- The progress bar still fills continuously.
+
+### v1.7.8 - Check for Updates and Slideshow Timers
+- Settings > Help > Updates gains **Check for Updates**, reporting newer / already current / unreachable. Manual checks ignore a previous "Skip This Version".
+- **Install Update** opens the release page; FrogPaper never downloads or runs installers itself.
+- Slideshow: launch no longer changes the wallpaper one second in, changing the interval reschedules the live timer, and fresh installs default to off / 60 minutes.
+
+### v1.7.7 - Update Flow, Installer, Website Link
+- **Install Update** opens the release page; the old helper-batch auto-installer is gone, because it could stall behind a running app and leave a console window with nothing installed.
+- The bottom bar gains the **Link To Website** label (renamed *Downloads & Updates* in 1.8.0).
+- The installer force-closes a running FrogPaper and upgrades in place.
+- The build script no longer deletes `dist\`; user data lives in `%LOCALAPPDATA%\FrogPaper`, with a one-time copy from beside the EXE.
+
 ### v1.7.6 - Security Release (Pillow 13, NLTK 3.10.4)
 
 **New features:**

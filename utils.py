@@ -297,18 +297,24 @@ def _migrate_config(data: dict) -> dict:
 _CONFIG_UNREADABLE = False
 
 
+_CONFIG_ERROR_LOGGED = False
+
+
 def load_config() -> dict:
-    global _CONFIG_UNREADABLE
+    global _CONFIG_UNREADABLE, _CONFIG_ERROR_LOGGED
     if not CONFIG_FILE.exists():
         _CONFIG_UNREADABLE = False
+        _CONFIG_ERROR_LOGGED = False
         return {}
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
     except Exception as e:
         # Broken/corrupt config: back the broken file up so nothing is
         # silently lost, then start clean — the app treats this as fresh.
-        logger.error("Failed to read config (backing it up): %s", e)
+        if not _CONFIG_ERROR_LOGGED:
+            logger.error("Failed to read config (backing it up): %s", e)
+            _CONFIG_ERROR_LOGGED = True
         try:
             import shutil
             shutil.copy2(CONFIG_FILE, CONFIG_FILE.with_name("config.json.corrupt"))
@@ -317,6 +323,7 @@ def load_config() -> dict:
         _CONFIG_UNREADABLE = True
         return {}
     _CONFIG_UNREADABLE = False
+    _CONFIG_ERROR_LOGGED = False
     data = _validate_config(data)
     data = _migrate_config(data)
     return data

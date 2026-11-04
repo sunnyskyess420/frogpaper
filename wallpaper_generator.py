@@ -55,7 +55,7 @@ def load_token() -> str:
     token = os.getenv("HUGGINGFACE_TOKEN", "").strip()
     if not token:
         try:
-            with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+            with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
                 cfg = json.load(f)
             token = (cfg.get("huggingface_token") or "").strip()
         except Exception:
@@ -68,7 +68,7 @@ def _load_cloudflare_config() -> tuple:
     """Load Cloudflare API token and account ID from config.
     Returns (token, account_id)."""
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
             cfg = json.load(f)
         token = (cfg.get("cloudflare_token") or "").strip()
         account_id = (cfg.get("cloudflare_account_id") or "").strip()
@@ -155,7 +155,7 @@ def get_unique_filename(subject: str, style: str, output_dir: Path) -> str:
 def _load_config_value(key: str, default: str = "") -> str:
     """Load a single value from config.json."""
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
             cfg = json.load(f)
         return (cfg.get(key) or "").strip()
     except Exception:
@@ -1007,7 +1007,7 @@ def generate_image(
 
     # Read provider and model from config
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
             config = json.load(f)
     except Exception:
         config = {}

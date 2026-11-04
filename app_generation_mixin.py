@@ -885,7 +885,7 @@ class FrogPaperAppGenerationMixin:
                 # Get live dimensions from the UI dropdown, not stale config
                 live_dims = self.get_current_dimensions() if hasattr(self, 'get_current_dimensions') else None
 
-                image_path = generate_image(prompt, subject=subject, style=art_style, filename=filename, status_callback=status_cb, dimensions=live_dims)
+                image_path = generate_image(prompt, subject=subject, style=art_style, filename=filename, status_callback=status_cb, dimensions=live_dims, cancel_event=self.cancel_event)
 
                 if self.cancel_event.is_set():
 

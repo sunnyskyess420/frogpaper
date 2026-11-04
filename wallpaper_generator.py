@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import time
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -18,6 +17,39 @@ GENERATED_DIR.mkdir(parents=True, exist_ok=True)
 
 class ImageGenerationError(Exception):
     pass
+
+class ImageGenerationCancelled(ImageGenerationError):
+    """The user cancelled the generation; nothing was written."""
+
+
+def _check_cancel(cancel_event) -> None:
+    if cancel_event is not None and cancel_event.is_set():
+        raise ImageGenerationCancelled("Generation cancelled by user.")
+
+
+def _sleep_cancellable(seconds: float, cancel_event) -> None:
+    """Sleep in short slices so Cancel is honoured within a quarter second."""
+    import time as _time
+    end = _time.time() + float(seconds)
+    while True:
+        _check_cancel(cancel_event)
+        left = end - _time.time()
+        if left <= 0:
+            return
+        _time.sleep(min(0.25, left))
+
+
+def _read_body(response, cancel_event=None, chunk_size: int = 65536) -> bytes:
+    """Read a response body in chunks so a cancel can stop the transfer."""
+    chunks = []
+    while True:
+        _check_cancel(cancel_event)
+        chunk = response.read(chunk_size)
+        if not chunk:
+            break
+        chunks.append(chunk)
+    return b"".join(chunks)
+
 
 def load_token() -> str:
     token = os.getenv("HUGGINGFACE_TOKEN", "").strip()
@@ -66,7 +98,7 @@ def sanitize_filename_part(text: str) -> str:
     text = re.sub(r"[^a-z0-9_]", "", text)
     return text or "unknown"
 
-def save_image_bytes(output_path: Path, data: bytes) -> None:
+def save_image_bytes(output_path: Path, data: bytes, cancel_event=None) -> None:
     """Write image *data* to *output_path* atomically.
 
     A failed, truncated or cancelled download must never leave a 0-byte or
@@ -74,6 +106,7 @@ def save_image_bytes(output_path: Path, data: bytes) -> None:
     The bytes are written to a ``.part`` sibling and only replace the target
     once they are complete and plausibly an image.
     """
+    _check_cancel(cancel_event)
     if not data or len(data) < 1000:
         raise ImageGenerationError(
             f"Provider returned a {len(data)}-byte response, not an image.")
@@ -131,11 +164,12 @@ def _load_config_value(key: str, default: str = "") -> str:
 # ──── Pollinations.ai backend ─────────────────────────────────────────────
 
 def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
-                           output_path: Path, status_callback=None) -> Path:
+                           output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Pollinations.ai (free, no API key needed)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     # Pollinations uses a simple GET URL API
     # https://image.pollinations.ai/prompt/{encoded_prompt}?model={model}&width={w}&height={h}&nologo=true
@@ -170,7 +204,7 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
                         f"Pollinations.ai returned HTTP {response.status}")
 
                 update_status("Saving generated image...")
-                save_image_bytes(output_path, response.read())
+                save_image_bytes(output_path, _read_body(response, cancel_event), cancel_event)
 
                 # Verify the file is actually an image (not an error page)
                 file_size = output_path.stat().st_size
@@ -186,14 +220,14 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
                 if attempt < max_attempts:
                     wait = 20
                     update_status(f"Rate limited (429). Waiting {wait}s...")
-                    time.sleep(wait)
+                    _sleep_cancellable(wait, cancel_event)
                     continue
                 raise ImageGenerationError("Pollinations.ai rate limit reached. Wait a minute and try again.")
             elif e.code == 503:
                 if attempt < max_attempts:
                     wait = 15
                     update_status(f"Pollinations.ai overloaded (503). Waiting {wait}s...")
-                    time.sleep(wait)
+                    _sleep_cancellable(wait, cancel_event)
                     continue
                 raise ImageGenerationError("Pollinations.ai is temporarily unavailable.")
             else:
@@ -202,7 +236,7 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status(f"Network error. Waiting 15s... ({err_str[:50]})")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -216,7 +250,7 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status(f"Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Pollinations.ai failed: {str(e)[:200]}")
 
@@ -247,11 +281,12 @@ def _build_cloudflare_url(base_url: str, account_id: str, model: str) -> str:
         raise ValueError("Invalid URL")
 
 def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
-                          output_path: Path, status_callback=None) -> Path:
+                          output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Cloudflare Workers AI (free tier: 10,000 neurons/day)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     token, account_id = _load_cloudflare_config()
 
@@ -279,7 +314,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
         try:
             update_status(f"Requesting Cloudflare Workers AI (attempt {attempt}/{max_attempts})...")
             with urllib.request.urlopen(req, timeout=180) as response:
-                result_bytes = response.read()
+                result_bytes = _read_body(response, cancel_event)
 
             # Cloudflare returns JSON with base64 image data
             result = json.loads(result_bytes.decode("utf-8"))
@@ -299,7 +334,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
 
             import base64
             img_bytes = base64.b64decode(image_data)
-            save_image_bytes(output_path, img_bytes)
+            save_image_bytes(output_path, img_bytes, cancel_event)
 
             return output_path
 
@@ -342,13 +377,13 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
             elif e.code == 429:
                 if attempt < max_attempts:
                     update_status("Cloudflare rate limited (429). Waiting 20s...")
-                    time.sleep(20)
+                    _sleep_cancellable(20, cancel_event)
                     continue
                 raise ImageGenerationError("Cloudflare rate limit reached.")
             elif e.code >= 500:
                 if attempt < max_attempts:
                     update_status(f"Cloudflare is temporarily busy (HTTP {e.code}). Retrying in 15s...")
-                    time.sleep(15)
+                    _sleep_cancellable(15, cancel_event)
                     continue
                 raise ImageGenerationError(
                     f"Cloudflare's servers are temporarily overloaded (HTTP {e.code}). "
@@ -361,7 +396,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status(f"Cloudflare network error. Waiting 15s...")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -375,7 +410,7 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status(f"Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Cloudflare generation failed: {str(e)[:200]}")
 
@@ -385,11 +420,12 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
 # ──── Hugging Face backend ───────────────────────────────────────────────
 
 def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
-                            output_path: Path, status_callback=None) -> Path:
+                            output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Hugging Face Inference API (raw HTTP, no PIL needed for decoding)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     try:
         token = load_token()
@@ -429,7 +465,7 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
                     raise ImageGenerationError(f"HuggingFace HTTP {response.status}: {err_body}")
 
                 update_status("Saving generated image...")
-                save_image_bytes(output_path, response.read())
+                save_image_bytes(output_path, _read_body(response, cancel_event), cancel_event)
 
             # Verify it's a real image
             if output_path.stat().st_size < 1000:
@@ -441,22 +477,22 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
             err_lower = str(e).lower()
             if "rate_limited" in err_lower and attempt < max_attempts:
                 update_status("Rate limited (429). Waiting 30s to retry...")
-                time.sleep(30)
+                _sleep_cancellable(30, cancel_event)
                 continue
             if "model_loading" in err_lower and attempt < max_attempts:
                 update_status("Model is loading (503). Waiting 20s to retry...")
-                time.sleep(20)
+                _sleep_cancellable(20, cancel_event)
                 continue
             raise
 
         except urllib.error.HTTPError as e:
             if e.code == 429 and attempt < max_attempts:
                 update_status("Rate limited (429). Waiting 30s...")
-                time.sleep(30)
+                _sleep_cancellable(30, cancel_event)
                 continue
             if e.code == 503 and attempt < max_attempts:
                 update_status("Model loading (503). Waiting 20s...")
-                time.sleep(20)
+                _sleep_cancellable(20, cancel_event)
                 continue
             raise ImageGenerationError(f"HuggingFace HTTP {e.code}")
 
@@ -464,7 +500,7 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status(f"Network error. Retrying in 15s...")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -478,7 +514,7 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status(f"Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Image generation failed: {str(e)[:200]}")
 
@@ -490,11 +526,12 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
 # ──── Prodia backend ───────────────────────────────────────────────────
 
 def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
-                       output_path: Path, status_callback=None) -> Path:
+                       output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Prodia v2 API (inference.prodia.com)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     prodia_key = _load_config_value("prodia_key")
     if not prodia_key:
@@ -568,7 +605,7 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Prodia returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            save_image_bytes(output_path, img_data)
+            save_image_bytes(output_path, img_data, cancel_event)
 
             return output_path
 
@@ -585,13 +622,13 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
             elif e.code == 429:
                 if attempt < max_attempts:
                     update_status("Prodia rate limited (429). Waiting 20s...")
-                    time.sleep(20)
+                    _sleep_cancellable(20, cancel_event)
                     continue
                 raise ImageGenerationError("Prodia rate limit reached. Wait a minute and try again.")
             elif e.code >= 500:
                 if attempt < max_attempts:
                     update_status(f"Prodia is temporarily busy (HTTP {e.code}). Retrying in 15s...")
-                    time.sleep(15)
+                    _sleep_cancellable(15, cancel_event)
                     continue
                 raise ImageGenerationError(
                     f"Prodia's servers are temporarily overloaded (HTTP {e.code}). "
@@ -603,7 +640,7 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status("Prodia network error. Waiting 15s...")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -617,7 +654,7 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status("Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Prodia generation failed: {str(e)[:200]}")
 
@@ -627,11 +664,12 @@ def _generate_prodia(prompt: str, model_id: str, width: int, height: int,
 # ──── Replicate backend ─────────────────────────────────────────────────
 
 def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
-                          output_path: Path, status_callback=None) -> Path:
+                          output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Replicate (pay-per-image, very reliable)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     token = _load_config_value("replicate_token")
     if not token:
@@ -687,7 +725,7 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
                 if status not in ("succeeded", "completed"):
                     update_status("Replicate is generating...")
                     for i in range(90):  # ~90 seconds max at 1s intervals
-                        time.sleep(1)
+                        _sleep_cancellable(1, cancel_event)
                         with urllib.request.urlopen(poll_req, timeout=15) as poll_resp:
                             result = json.loads(poll_resp.read().decode("utf-8"))
                         status = result.get("status", "")
@@ -720,7 +758,7 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Replicate returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            save_image_bytes(output_path, img_data)
+            save_image_bytes(output_path, img_data, cancel_event)
 
             return output_path
 
@@ -747,13 +785,13 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
             elif e.code == 429:
                 if attempt < max_attempts:
                     update_status("Replicate rate limited (429). Waiting 20s...")
-                    time.sleep(20)
+                    _sleep_cancellable(20, cancel_event)
                     continue
                 raise ImageGenerationError("Replicate rate limit reached. Wait a minute and try again.")
             elif e.code >= 500:
                 if attempt < max_attempts:
                     update_status(f"Replicate is temporarily busy (HTTP {e.code}). Retrying in 15s...")
-                    time.sleep(15)
+                    _sleep_cancellable(15, cancel_event)
                     continue
                 raise ImageGenerationError(
                     f"Replicate's servers are temporarily overloaded (HTTP {e.code}). "
@@ -765,7 +803,7 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status("Replicate network error. Waiting 15s...")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -779,7 +817,7 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status("Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Replicate generation failed: {str(e)[:200]}")
 
@@ -789,11 +827,12 @@ def _generate_replicate(prompt: str, model_id: str, width: int, height: int,
 # ──── Fal.ai backend ────────────────────────────────────────────────────
 
 def _generate_fal(prompt: str, model_id: str, width: int, height: int,
-                    output_path: Path, status_callback=None) -> Path:
+                    output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Fal.ai (fast inference, pay-per-use)."""
     def update_status(msg):
         if status_callback:
             status_callback(msg)
+    _check_cancel(cancel_event)
 
     token = _load_config_value("fal_key")
     if not token:
@@ -837,7 +876,7 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
                 poll_req = urllib.request.Request(status_url, headers=headers)
 
                 for i in range(60):  # ~120 seconds max
-                    time.sleep(2)
+                    _sleep_cancellable(2, cancel_event)
                     with urllib.request.urlopen(poll_req, timeout=30) as poll_resp:
                         job = json.loads(poll_resp.read().decode("utf-8"))
 
@@ -885,7 +924,7 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
                 raise ImageGenerationError("Fal.ai returned too-small response. Try again.")
 
             update_status("Saving generated image...")
-            save_image_bytes(output_path, img_data)
+            save_image_bytes(output_path, img_data, cancel_event)
 
             return output_path
 
@@ -902,13 +941,13 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
             elif e.code == 429:
                 if attempt < max_attempts:
                     update_status("Fal.ai rate limited (429). Waiting 20s...")
-                    time.sleep(20)
+                    _sleep_cancellable(20, cancel_event)
                     continue
                 raise ImageGenerationError("Fal.ai rate limit reached. Wait a minute and try again.")
             elif e.code >= 500:
                 if attempt < max_attempts:
                     update_status(f"Fal.ai is temporarily busy (HTTP {e.code}). Retrying in 15s...")
-                    time.sleep(15)
+                    _sleep_cancellable(15, cancel_event)
                     continue
                 raise ImageGenerationError(
                     f"Fal.ai's servers are temporarily overloaded (HTTP {e.code}). "
@@ -920,7 +959,7 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
             err_str = str(e)
             if attempt < max_attempts:
                 update_status("Fal.ai network error. Waiting 15s...")
-                time.sleep(15)
+                _sleep_cancellable(15, cancel_event)
                 continue
             if "getaddrinfo" in err_str or "resolve" in err_str.lower():
                 raise ImageGenerationError(
@@ -934,7 +973,7 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
         except Exception as e:
             if attempt < max_attempts:
                 update_status("Error occurred. Retrying in 10s...")
-                time.sleep(10)
+                _sleep_cancellable(10, cancel_event)
                 continue
             raise ImageGenerationError(f"Fal.ai generation failed: {str(e)[:200]}")
 
@@ -949,6 +988,7 @@ def generate_image(
     filename: str | None = None,
     status_callback: Optional[Callable[[str], None]] = None,
     dimensions: str | None = None,
+    cancel_event=None,
 ) -> Path:
     def update_status(msg: str):
         if status_callback:
@@ -987,23 +1027,23 @@ def generate_image(
     result_path = None
     if "Pollinations" in provider:
         result_path = _generate_pollinations(prompt, model_id, width, height,
-                                               output_path, status_callback)
+                                               output_path, status_callback, cancel_event)
     elif "Cloudflare" in provider:
         result_path = _generate_cloudflare(prompt, model_id, width, height,
-                                              output_path, status_callback)
+                                              output_path, status_callback, cancel_event)
     elif "Prodia" in provider:
         result_path = _generate_prodia(prompt, model_id, width, height,
-                                          output_path, status_callback)
+                                          output_path, status_callback, cancel_event)
     elif "Replicate" in provider:
         result_path = _generate_replicate(prompt, model_id, width, height,
-                                             output_path, status_callback)
+                                             output_path, status_callback, cancel_event)
     elif "Fal.ai" in provider or "Fal" in provider:
         result_path = _generate_fal(prompt, model_id, width, height,
-                                       output_path, status_callback)
+                                       output_path, status_callback, cancel_event)
     else:
         # Hugging Face (or any unrecognized provider falls back to HF)
         result_path = _generate_huggingface(prompt, model_id, width, height,
-                                              output_path, status_callback)
+                                              output_path, status_callback, cancel_event)
 
     # Universal post-generation resize safety net
     # Many providers (Cloudflare FLUX, Replicate FLUX, etc.) only output 1024x1024

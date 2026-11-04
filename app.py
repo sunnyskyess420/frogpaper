@@ -14,11 +14,19 @@ APP_EDITION = "Halloween Edition"
 # Shown in the About window (tray right-click -> About FrogPaper). Newest
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
-RELEASE_HIGHLIGHTS = (
-    "v1.8.0: Painterly styles, smarter Ctrl+N, Facebook link",
-    "v1.7.12: Update check fixed, splash screen",
-    "v1.7.11: Splash screen and faster onedir startup",
+RELEASE_HISTORY = (
+    ("1.8.0", "Painterly styles, smarter Ctrl+N, Facebook link"),
+    ("1.7.12", "Update check fixed, splash screen"),
+    ("1.7.11", "Splash screen and faster onedir startup"),
+    ("1.7.10", "Clearer update errors"),
+    ("1.7.9", "Slideshow countdown shows seconds"),
+    ("1.7.8", "Check for Updates and slideshow timers"),
+    ("1.7.7", "Update flow, installer, website link"),
+    ("1.7.6", "Security release, data moved to LOCALAPPDATA"),
 )
+
+# The About box has room for three lines; Settings > Help lists the rest.
+RELEASE_HIGHLIGHTS = tuple(f"v{v}: {t}" for v, t in RELEASE_HISTORY[:3])
 
 
 # Halloween Edition default startup subject (v1.7.x only). Fresh installs seed

@@ -819,6 +819,31 @@ class SettingsCategoriesMixin:
                                font=("Segoe UI", 10), fg=pal["muted"], bg=pal.get("card_bg", pal["bg"]))
         version_info.pack(anchor="w", padx=12, pady=4)
 
+        # Version history — every release the About box only summarises.
+        try:
+            from app import RELEASE_HISTORY as _HISTORY
+        except Exception:
+            _HISTORY = ()
+        if _HISTORY:
+            history_card = SettingCard(
+                frame, "Version History",
+                "What changed in each recent release.",
+                pal, pal.get("accent", COLOR_ACCENT),
+            )
+            history_body = history_card.get_content()
+            for ver, title in _HISTORY:
+                row = tk.Frame(history_body, bg=pal["card_bg"])
+                row.pack(fill="x", pady=1)
+                tk.Label(
+                    row, text=f"v{ver}", width=8, anchor="w",
+                    font=("Segoe UI", 9, "bold"),
+                    fg=pal.get("accent", pal["text"]), bg=pal["card_bg"],
+                ).pack(side="left")
+                tk.Label(
+                    row, text=title, anchor="w", justify="left",
+                    font=("Segoe UI", 9), fg=pal["text"], bg=pal["card_bg"],
+                ).pack(side="left", fill="x", expand=True)
+
         # Manual update check.  Kept out of the startup path so users can
         # re-check at any time, including after skipping a version.
         updates_card = SettingCard(

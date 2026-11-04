@@ -327,7 +327,7 @@ class TrayManager:
             app = self.app
             schedule_ui_update(app._restore_window)
             # The delayed call must be scheduled from the main thread
-            schedule_ui_update(lambda: app.root.after(100, app.generate_image))
+            schedule_ui_update(lambda: app.root.after(100, app.generate))
 
 
     def _tray_next_wallpaper(self, icon=None, item=None):

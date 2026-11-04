@@ -108,6 +108,12 @@ class TestAppStartupSmoke(unittest.TestCase):
 
         self.assertIn(self.app.current_theme_name, THEMES)
 
+    def test_generate_shortcut_target_exists(self):
+        """Ctrl+N / tray "Generate" used to call self.generate_image(), which
+        never existed -- Tk swallowed the AttributeError and nothing happened."""
+        self.assertTrue(callable(getattr(self.app, "generate", None)))
+        self.assertFalse(hasattr(self.app, "generate_image"))
+
     def test_theme_engine_module_globals_resolvable(self):
         """Direct regression: the B2 split left apply_theme's globals behind."""
         import app_theme_engine as eng

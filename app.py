@@ -15,9 +15,9 @@ APP_EDITION = "Halloween Edition"
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
 RELEASE_HIGHLIGHTS = (
-    "v1.7.3: Restore no longer duplicates your gallery",
-    "v1.7.2: Backups you can actually restore",
-    "v1.7.1: New circular sidebar logo",
+    "v1.7.12: Update check fixed, splash screen",
+    "v1.7.11: Splash screen and faster onedir startup",
+    "v1.7.10: Clearer update errors",
 )
 
 
@@ -844,7 +844,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.root.bind("<Control-g>", lambda e: self._switch_to_tab("gallery"))
         self.root.bind("<Control-s>", lambda e: self._open_settings_window())
         # Ctrl+P removed — Prompt Builder tab no longer accessible via shortcut
-        self.root.bind("<Control-n>", lambda e: self.generate_image())
+        self.root.bind("<Control-n>", lambda e: self.generate())
         self.root.bind("<Escape>", lambda e: self._handle_escape())
 
         # Global Hotkey (Ctrl+Alt+N for next wallpaper)

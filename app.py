@@ -163,6 +163,7 @@ from utils import (
     save_config,
     get_app_dir,
     seed_bundled_files,
+    wheel_steps,
 )
 
 seed_bundled_files()
@@ -1105,7 +1106,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
 
         # Sidebar mousewheel scrolling
         def _sidebar_wheel(event):
-            sidebar_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            sidebar_canvas.yview_scroll(wheel_steps(event, per_notch=1), "units")
             return "break"
         sidebar_canvas.bind("<MouseWheel>", _sidebar_wheel)
         left.bind("<MouseWheel>", _sidebar_wheel)
@@ -2199,7 +2200,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                         if isinstance(widget, tk.Canvas):
                             try:
                                 if widget.cget("scrollregion"):
-                                    widget.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                                    widget.yview_scroll(wheel_steps(event, per_notch=1), "units")
                                     return "break"
                             except Exception:
                                 pass
@@ -2211,7 +2212,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 if hover_c is not None:
                     try:
                         if hover_c.winfo_toplevel() is ev_toplevel:
-                            hover_c.yview_scroll(int(-1 * (event.delta / 120)), "units")
+                            hover_c.yview_scroll(wheel_steps(event, per_notch=1), "units")
                     except Exception:
                         pass
             # Pinned dropdown popups already scrolled themselves via their
@@ -2229,7 +2230,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         pointer_y = getattr(event, 'y_root', 0) or self.root.winfo_pointery()
         mouse_x = pointer_x - self.root.winfo_rootx()
         mouse_y = pointer_y - self.root.winfo_rooty()
-        step = int(-1 * (event.delta / 120))
+        step = wheel_steps(event, per_notch=1)
 
         # If focus is in an input widget, ONLY block scrolling when the
         # mouse is actually over that input widget.  Otherwise the scroll
@@ -2335,7 +2336,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
     def _on_prompt_text_scroll(self, event):
         """Handle mousewheel scrolling specifically for Prompt Preview text widget."""
         try:
-            self.prompt_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self.prompt_text.yview_scroll(wheel_steps(event), "units")
             return "break"  # Prevent event from bubbling up to parent
         except Exception:
             pass
@@ -2346,7 +2347,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
 
         try:
 
-            self.template_var_scroll_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            self.template_var_scroll_canvas.yview_scroll(wheel_steps(event, per_notch=1), "units")
 
         except Exception:
 

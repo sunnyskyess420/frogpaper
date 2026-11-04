@@ -154,6 +154,25 @@ def load_json_list(path: Path) -> list:
         return []
 
 
+# ── Mouse wheel ─────────────────────────────────────────────────────────
+# Windows sends delta=120 per notch, but precision touchpads and high-res
+# wheels send smaller values.  int(-delta / 120) truncated those to 0, so
+# scrolling sometimes did nothing for several flicks and then jumped.
+WHEEL_LINES_PER_NOTCH = 3
+
+
+def wheel_steps(event, per_notch: int = WHEEL_LINES_PER_NOTCH) -> int:
+    """Convert a mouse-wheel event into scroll units, never returning 0."""
+    delta = getattr(event, "delta", 0) or 0
+    if not delta:
+        return 0
+    raw = -delta / 120.0
+    steps = int(raw * per_notch)
+    if steps == 0:
+        steps = -1 if raw < 0 else 1
+    return steps
+
+
 def atomic_write_json(path: Path, data, indent: int = 2, ensure_ascii: bool = False) -> None:
     """Write JSON atomically using temp file + os.replace to prevent corruption."""
     path = Path(path)

@@ -53,7 +53,7 @@ from gallery_manager import (
 )
 
 
-from utils import load_json_list, save_json_list, get_app_dir
+from utils import load_json_list, save_json_list, get_app_dir, wheel_steps
 
 # Pinned dropdown support
 try:
@@ -1223,6 +1223,19 @@ class GalleryTab:
             ("Times New Roman",         "times.ttf",         ["Times New Roman"]),
             ("Trebuchet MS",            "trebuc.ttf",        ["Trebuchet MS"]),
             ("Verdana",                 "verdana.ttf",       ["Verdana"]),
+            # Second wave: display and text faces that ship with Windows 10/11.
+            ("Bahnschrift",             "bahnschrift.ttf",   ["Bahnschrift"]),
+            ("Candara",                 "candara.ttf",       ["Candara"]),
+            ("Constantia",              "constan.ttf",       ["Constantia"]),
+            ("Corbel",                  "corbel.ttf",        ["Corbel"]),
+            ("Franklin Gothic Medium",  "framd.ttf",         ["Franklin Gothic Medium"]),
+            ("Gabriola",                "gabriola.ttf",      ["Gabriola"]),
+            ("Ink Free",                "inkfree.ttf",       ["Ink Free"]),
+            ("Lucida Console",          "lucon.ttf",         ["Lucida Console"]),
+            ("Lucida Sans Unicode",     "l_10646.ttf",       ["Lucida Sans Unicode"]),
+            ("Palatino Linotype",       "pala.ttf",          ["Palatino Linotype"]),
+            ("Segoe Print",             "segoepr.ttf",       ["Segoe Print"]),
+            ("Segoe Script",            "segoesc.ttf",       ["Segoe Script"]),
         ]
 
         def _discover(display_name, win_file, linux_names):
@@ -1259,7 +1272,8 @@ class GalleryTab:
         for name, wfile, lnames in curated:
             _discover(name, wfile, lnames)
 
-        font_names = [name for name, _, _ in curated if name in discovered_fonts]
+        font_names = sorted((name for name, _, _ in curated if name in discovered_fonts),
+                            key=str.lower)
         if not font_names:
             font_names = ["Default"]
 
@@ -1306,7 +1320,7 @@ class GalleryTab:
 
         # Mouse wheel scrolling — only when pointer is over the left panel
         def _on_ctrl_mousewheel(event):
-            ctrl_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+            ctrl_canvas.yview_scroll(wheel_steps(event, per_notch=1), "units")
             return "break"
         ctrl_canvas.bind("<MouseWheel>", _on_ctrl_mousewheel)
         ctrl_frame.bind("<MouseWheel>", _on_ctrl_mousewheel)
@@ -1344,7 +1358,10 @@ class GalleryTab:
 
         # ── Font list with per-font preview ──
         ttk.Label(ctrl_frame, text="Font:").pack(anchor="w", pady=(0, 2))
-        font_listbox = tk.Listbox(ctrl_frame, height=6, exportselection=False,
+        font_picker = ttk.Frame(ctrl_frame)
+        font_scroll = ttk.Scrollbar(font_picker, orient="vertical")
+        font_listbox = tk.Listbox(font_picker, height=9, exportselection=False,
+                                   yscrollcommand=font_scroll.set,
                                    bg=pal["panel2"], fg=pal["text"],
                                    selectbackground=pal["accent"],
                                    selectforeground=pal["bg"],
@@ -1352,7 +1369,16 @@ class GalleryTab:
                                    highlightbackground=pal.get("border_color", pal["panel2"]),
                                    font=("Segoe UI", 11),  # was ("TkDefaultFont", 11) — Visual Refresh P3 plan section 4
                                    relief="flat", bd=2)
-        font_listbox.pack(fill="x", pady=(0, 8))
+        font_scroll.config(command=font_listbox.yview)
+        font_listbox.pack(side="left", fill="both", expand=True)
+        font_scroll.pack(side="right", fill="y")
+        font_picker.pack(fill="x", pady=(0, 8))
+
+        def _on_font_wheel(event):
+            font_listbox.yview_scroll(wheel_steps(event), "units")
+            return "break"
+
+        font_listbox.bind("<MouseWheel>", _on_font_wheel)
 
         # Populate listbox — render each font name in its own font
         for i, fname in enumerate(font_names):

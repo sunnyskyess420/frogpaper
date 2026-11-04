@@ -57,6 +57,33 @@ except Exception as e:
     logging.warning("Could not create STYLED_DIR: %s", e)
 
 
+def _kuwahara(img, radius=4):
+    """Kuwahara filter: per-pixel pick the flattest of four windows.
+
+    This is the technique that actually produces a painted look - flat colour
+    regions with edges preserved - rather than the blur-then-sharpen approach
+    the painterly styles used before.
+    """
+    k = radius + 1
+    f = img.astype(np.float32)
+    sq = f * f
+    means, variances = [], []
+    for oy in (-radius, 0):
+        for ox in (-radius, 0):
+            shifted = np.roll(f, (oy, ox), axis=(0, 1))
+            shifted_sq = np.roll(sq, (oy, ox), axis=(0, 1))
+            m = cv2.blur(shifted, (k, k))
+            v = cv2.blur(shifted_sq, (k, k)) - m * m
+            means.append(m)
+            variances.append(v.sum(axis=2))
+    idx = np.argmin(np.stack(variances, axis=0), axis=0)
+    out = np.zeros_like(f)
+    for i, m in enumerate(means):
+        mask = idx == i
+        out[mask] = m[mask]
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
 def _gray(img):
     return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
@@ -229,29 +256,26 @@ class StyleTransfer:
             return img
     
     def _oil_painting(self, img: np.ndarray) -> np.ndarray:
-        """Thick brush look: strong mean shift, darkened creases."""
-        small, shape = _work_scale(img, 900)
-        out = cv2.pyrMeanShiftFiltering(small, sp=14, sr=45)
-        out = cv2.bilateralFilter(out, 9, 90, 90)
+        """Kuwahara flats with dark creases - reads as oil on canvas."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 5)
         hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
-        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.15, 0, 255).astype(np.uint8)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.2, 0, 255).astype(np.uint8)
         out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        edges = _thicken(cv2.Canny(_gray(out), 30, 80), 1)
-        out[edges > 0] = (out[edges > 0] * 0.65).astype(np.uint8)
+        creases = _thicken(cv2.Canny(_gray(out), 25, 70), 1)
+        out[creases > 0] = (out[creases > 0] * 0.7).astype(np.uint8)
         return _restore(out, shape)
 
     def _watercolor(self, img: np.ndarray) -> np.ndarray:
-        """Flat washes with pooled edges - quantised, then softened."""
-        small, shape = _work_scale(img, 1000)
-        out = cv2.bilateralFilter(small, 15, 120, 120)
-        out = cv2.medianBlur(out, 5)
-        out = _kmeans(out, 10)
+        """Soft Kuwahara washes, pooled pigment, lifted paper."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 3)
         hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
-        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 0.9, 0, 255).astype(np.uint8)
-        hsv[..., 2] = np.clip(hsv[..., 2].astype(np.int16) + 12, 0, 255).astype(np.uint8)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 0.8, 0, 255).astype(np.uint8)
+        hsv[..., 2] = np.clip(hsv[..., 2].astype(np.int16) + 20, 0, 255).astype(np.uint8)
         out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        edges = cv2.GaussianBlur(cv2.Canny(_gray(out), 40, 100), (5, 5), 0)
-        out[edges > 35] = (out[edges > 35] * 0.5).astype(np.uint8)
+        pools = cv2.GaussianBlur(cv2.Canny(_gray(out), 40, 100), (7, 7), 0)
+        out[pools > 30] = (out[pools > 30] * 0.55).astype(np.uint8)
         return _restore(out, shape)
 
     def _sketch(self, img: np.ndarray) -> np.ndarray:
@@ -472,13 +496,13 @@ class StyleTransfer:
         return cv2.cvtColor(dodge, cv2.COLOR_GRAY2BGR)
 
     def _gouache(self, img: np.ndarray) -> np.ndarray:
-        """Opaque matte paint: heavy flatten, chalky, faint grain."""
-        small, shape = _work_scale(img, 900)
-        out = cv2.bilateralFilter(small, 9, 110, 110)
+        """Small Kuwahara dabs, chalky matte, faint canvas grain."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 3)
         mean = out.reshape(-1, 3).mean(axis=0)
-        out = (out.astype(np.float32) * 0.55 + mean * 0.45).clip(0, 255).astype(np.uint8)
-        out = cv2.convertScaleAbs(out, alpha=0.8, beta=34)
-        grain = np.random.normal(0, 4, out.shape).astype(np.int16)
+        out = (out.astype(np.float32) * 0.7 + mean * 0.3).clip(0, 255).astype(np.uint8)
+        out = cv2.convertScaleAbs(out, alpha=0.85, beta=26)
+        grain = np.random.normal(0, 3.5, out.shape).astype(np.int16)
         return _restore(np.clip(out.astype(np.int16) + grain, 0, 255).astype(np.uint8), shape)
 
     def _art_deco(self, img: np.ndarray) -> np.ndarray:
@@ -495,30 +519,32 @@ class StyleTransfer:
         return out
 
     def _surreal_dali(self, img: np.ndarray) -> np.ndarray:
-        """Dream grade with a visible horizontal melt."""
+        """Dream grade with a strong horizontal melt and colour fringing."""
         h, w = img.shape[:2]
         xs = np.arange(w, dtype=np.float32)
         ys = np.arange(h, dtype=np.float32)[:, None]
-        shift = np.sin(xs / max(1.0, w / 5.0)) * (h * 0.03)
-        map_x = np.tile(xs, (h, 1)) + shift.astype(np.float32)
-        map_y = np.tile(ys, (1, w)) + (shift * 0.6).astype(np.float32)
-        out = cv2.remap(img, map_x.astype(np.float32), map_y.astype(np.float32),
-                        cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        shift = np.sin(xs / max(1.0, w / 4.0)) * (h * 0.05)
+        map_x = (np.tile(xs, (h, 1)) + shift).astype(np.float32)
+        map_y = (np.tile(ys, (1, w)) + shift * 0.75).astype(np.float32)
+        out = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        # colour fringing: nudge the channels apart like a bad lens
+        out[..., 0] = np.roll(out[..., 0], 2, axis=1)
+        out[..., 2] = np.roll(out[..., 2], -2, axis=1)
         hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
-        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.25, 0, 255).astype(np.uint8)
-        hsv[..., 0] = ((hsv[..., 0].astype(np.int16) + 4) % 180).astype(np.uint8)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.3, 0, 255).astype(np.uint8)
+        hsv[..., 0] = ((hsv[..., 0].astype(np.int16) + 5) % 180).astype(np.uint8)
         out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        return _vignette(cv2.convertScaleAbs(out, alpha=1.08, beta=-10), 0.5)
+        return _vignette(cv2.convertScaleAbs(out, alpha=1.1, beta=-12), 0.55)
 
     def _3d_render(self, img: np.ndarray) -> np.ndarray:
-        """Glossy CG render: smooth surfaces, strong specular bloom."""
-        small, shape = _work_scale(img, 900)
-        base = cv2.bilateralFilter(small, 11, 70, 70)
-        base = cv2.convertScaleAbs(base, alpha=1.1, beta=6)
+        """CG look: Kuwahara surfaces, glossy specular bloom, punchy grade."""
+        small, shape = _work_scale(img, 1100)
+        base = _kuwahara(small, 3)
+        base = cv2.convertScaleAbs(base, alpha=1.12, beta=4)
         lum = _gray(base).astype(np.float32) / 255.0
-        spec = np.clip((lum - 0.6) / 0.4, 0, 1) ** 1.5
-        glow = cv2.GaussianBlur((spec[..., None] * base).astype(np.uint8), (0, 0), 12)
-        out = cv2.addWeighted(base, 1.0, glow, 0.95, 0)
+        spec = np.clip((lum - 0.62) / 0.38, 0, 1) ** 1.4
+        glow = cv2.GaussianBlur((spec[..., None] * base).astype(np.uint8), (0, 0), 14)
+        out = cv2.addWeighted(base, 1.0, glow, 1.0, 0)
         return _restore(np.clip(out, 0, 255).astype(np.uint8), shape)
 
     def _anime_key(self, img: np.ndarray) -> np.ndarray:
@@ -578,11 +604,13 @@ class StyleTransfer:
         return _restore(out, shape)
 
     def _impressionist(self, img: np.ndarray) -> np.ndarray:
-        """Dappled light: big mean-shift blobs, lifted highlights."""
-        small, shape = _work_scale(img, 900)
-        out = cv2.pyrMeanShiftFiltering(small, sp=18, sr=55)
-        out = cv2.medianBlur(out, 5)
-        out = cv2.convertScaleAbs(out, alpha=1.1, beta=18)
+        """Fine Kuwahara dabs plus broken, dappled light."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 2)
+        h, w = out.shape[:2]
+        dapple = cv2.GaussianBlur(np.random.normal(0, 14, (h, w)).astype(np.float32), (0, 0), 3)
+        out = np.clip(out.astype(np.float32) + dapple[:, :, None], 0, 255).astype(np.uint8)
+        out = cv2.convertScaleAbs(out, alpha=1.08, beta=16)
         return _restore(out, shape)
 
     def get_style_list(self) -> list:

@@ -59,7 +59,7 @@ The installer is unsigned, so Windows SmartScreen may warn — choose **More inf
 
 ```
 FrogPaper-Setup-1.8.0.exe
-SHA-256: <fill in after build>
+SHA-256: E646264636CCA739CB7FA6B22271C5392927F29F7EEDC7180DDB99CDADF569AA
 ```
 
 Verify with `certutil -hashfile FrogPaper-Setup-1.8.0.exe SHA256`.

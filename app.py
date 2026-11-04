@@ -5,7 +5,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.7.12"
+APP_VERSION = "1.8.0"
 
 # Halloween Edition branding (v1.7.x only). Clear this string in the next
 # release to drop the edition label - the theme and sounds stay.
@@ -15,9 +15,9 @@ APP_EDITION = "Halloween Edition"
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
 RELEASE_HIGHLIGHTS = (
+    "v1.8.0: Painterly styles, smarter Ctrl+N, Facebook link",
     "v1.7.12: Update check fixed, splash screen",
     "v1.7.11: Splash screen and faster onedir startup",
-    "v1.7.10: Clearer update errors",
 )
 
 

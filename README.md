@@ -10,14 +10,14 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 **FrogPaper** is a two-app wallpaper studio.
 
-- **FrogPaper Desktop — v1.7.12** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Desktop — v1.8.0** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
 - **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
 
 No browser. No account. Just the apps and your imagination.
 
 | App | Current version | Platform | Stack |
 |---|---|---|---|
-| **FrogPaper Desktop** | 1.7.12 | Windows 10 / 11 | Python 3.11+, Tkinter |
+| **FrogPaper Desktop** | 1.8.0 | Windows 10 / 11 | Python 3.11+, Tkinter |
 | **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
@@ -99,7 +99,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Recipe Library** | Save, load, import, export reusable prompt configurations |
 | **19 App Themes** | Full theme system with dark, light, and specialty color schemes |
 | **Windows Integration** | Native wallpaper setting, system tray with full controls, minimize-to-tray, startup tasks |
-| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate), Ctrl+Alt+N (next wallpaper) |
+| **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate — random or your prompt), Ctrl+Alt+N (next wallpaper) |
 
 ---
 
@@ -300,7 +300,7 @@ Right-clicking the tray icon gives full app control without opening the window:
 |---|---|
 | `Ctrl+G` | Switch focus to Gallery |
 | `Ctrl+S` | Open Settings |
-| `Ctrl+N` | Generate image |
+| `Ctrl+N` | Generate image — random prompt when nothing changed, your built prompt right after an edit |
 | `Ctrl+Alt+N` | Advance slideshow (global hotkey, requires `keyboard` package) |
 | `Escape` | Close Settings; otherwise show the shortcut hint toast |
 
@@ -454,6 +454,32 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 ---
 
 ## Desktop Changelog
+
+### v1.8.0 - Painterly Styles, Smarter Ctrl+N, Facebook Link
+
+**Styles**
+- Rewrote the artistic filters so they match their names. Line Art, Comic Book, Manga, Pop Art, Noir B&W, Art Deco, 3D Render and Posterize were broken or unrecognisable; Edge Enhance rendered nearly black.
+- Oil Painting, Watercolour, Gouache, Impressionist and 3D Render now run through a Kuwahara renderer instead of a blur, so they read as painted rather than filtered.
+- Sketch Pencil is its own graphite pass instead of a copy of Sketch.
+- New regression test: every style keeps the image size and never renders blank.
+
+**Generation**
+- Ctrl+N now picks a random prompt when nothing has changed, and your built prompt straight after an edit. The log states which branch ran.
+- Cancel actually stops the transfer: response bodies are read in 64 KiB chunks, back-off sleeps are interruptible, and a cancelled run never leaves a partial PNG.
+- Pollinations 401/402/403/404 explain themselves; 402 means the model is out of credits.
+
+**Interface**
+- Add Text font picker: 14 to 26 faces, alphabetical, with a scrollbar. It looked like six fonts because the list was six rows tall with no scrollbar.
+- Mouse wheel: high-resolution and touchpad deltas are no longer truncated to zero. Three lines per notch for text, one unit for canvases.
+- Footer links now say what they open: "Downloads & Updates" and "Facebook Page".
+- The welcome/tutorial prompt no longer returns on every launch.
+
+**Reliability**
+- A config.json that cannot be read (locked, corrupt, or saved with a UTF-8 BOM) is never overwritten. That path used to erase every API key; a BOM from Notepad or PowerShell 5.1 triggered it.
+- Changing Sync Scope no longer deletes the cloud copies of images outside the new scope.
+- Gallery thumbnails no longer blank out past 200 images.
+- Ctrl+N and the tray's Generate item call a method that exists (they used to fail silently).
+- Packaging: the installer no longer ships every root .py file (including a debug script that deletes config.json), and the build script stops deleting the onedir output folder.
 
 ### v1.7.6 - Security Release (Pillow 13, NLTK 3.10.4)
 
@@ -731,7 +757,7 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## System Requirements
 
-### Desktop (v1.7.12)
+### Desktop (v1.8.0)
 
 | Requirement | Minimum | Recommended |
 |---|---|---|

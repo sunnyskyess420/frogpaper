@@ -819,31 +819,6 @@ class SettingsCategoriesMixin:
                                font=("Segoe UI", 10), fg=pal["muted"], bg=pal.get("card_bg", pal["bg"]))
         version_info.pack(anchor="w", padx=12, pady=4)
 
-        # Version history — every release the About box only summarises.
-        try:
-            from app import RELEASE_HISTORY as _HISTORY
-        except Exception:
-            _HISTORY = ()
-        if _HISTORY:
-            history_card = SettingCard(
-                frame, "Version History",
-                "What changed in each recent release.",
-                pal, pal.get("accent", COLOR_ACCENT),
-            )
-            history_body = history_card.get_content()
-            for ver, title in _HISTORY:
-                row = tk.Frame(history_body, bg=pal["card_bg"])
-                row.pack(fill="x", pady=1)
-                tk.Label(
-                    row, text=f"v{ver}", width=8, anchor="w",
-                    font=("Segoe UI", 9, "bold"),
-                    fg=pal.get("accent", pal["text"]), bg=pal["card_bg"],
-                ).pack(side="left")
-                tk.Label(
-                    row, text=title, anchor="w", justify="left",
-                    font=("Segoe UI", 9), fg=pal["text"], bg=pal["card_bg"],
-                ).pack(side="left", fill="x", expand=True)
-
         # Manual update check.  Kept out of the startup path so users can
         # re-check at any time, including after skipping a version.
         updates_card = SettingCard(
@@ -865,47 +840,26 @@ class SettingsCategoriesMixin:
         )
         self._update_status_label.pack(side="left", padx=12)
 
-        # What's New in <current version> - header auto-follows APP_VERSION
-        wn_header = tk.Label(frame, text=f"What's New in v{_VER}", font=("Segoe UI", 14, "bold"),
+        # Version history — driven by RELEASE_HISTORY in app.py, so the app,
+        # the README changelog and this page cannot drift apart.
+        try:
+            from app import RELEASE_HISTORY as _HISTORY
+        except Exception:
+            _HISTORY = ()
+        vh_header = tk.Label(frame, text="Version History", font=("Segoe UI", 14, "bold"),
                              fg=pal["text"], bg=pal["bg"], anchor="w")
-        wn_header.pack(fill="x", pady=(16, 8))
-
-        changes = [
-            ("Halloween", "New 🎃 Halloween theme - pumpkin orange on a haunted night, with glowing rounded buttons, candle focus and a soft fog in dialogs (Settings > General > App Theme)"),
-            ("Ghost Sounds", "While the Halloween theme is active, every popup plays a spooky ghost-attack sound instead of the frog ribbit; all other themes are unchanged"),
-            ("Startup Subject", "The Halloween Edition pre-fills the startup subject with \"Halloween\" - change or clear it any time in this card; the next release returns to a blank default"),
-            ("Live Countdown", "The slideshow countdown now shows seconds, so you can see the timer ticking"),
-            ("Clearer Errors", "If an update check fails, FrogPaper now explains whether it was a timeout, DNS problem, GitHub rate limit, or server error"),
-            ("Check for Updates", "New button in Settings > Help checks GitHub on demand and tells you whether you're current"),
-            ("Manual Updates", "Update popups open the release page in your browser; FrogPaper no longer runs installers by itself"),
-            ("Multi-Select", "Ctrl+click several images to tag them at once in every view (v1.6.1)"),
-            ("Visual Refresh", "Harmonized colours, surfaces, spacing and type across all themes, plus scrolling that works everywhere (v1.6.0)"),
-        ]
-        for category, desc in changes:
-            row = tk.Frame(frame, bg=pal["bg"])
-            row.pack(fill="x", pady=2)
-            tk.Label(row, text=category, font=("Segoe UI", 9, "bold"),
-                    fg=pal.get("accent", COLOR_ACCENT), bg=pal["bg"], width=14, anchor="nw").pack(side="left")
-            tk.Label(row, text=desc, font=("Segoe UI", 9),
-                    fg=pal["muted"], bg=pal["bg"], anchor="w", wraplength=500, justify="left").pack(side="left")
-
-        # Previous versions (release history)
-        pv_header = tk.Label(frame, text="Previous versions", font=("Segoe UI", 11, "bold"),
-                             fg=pal["muted"], bg=pal["bg"], anchor="w")
-        pv_header.pack(fill="x", pady=(16, 4))
-        history = [
-            ("v1.6.1", "Multi-select tagging fixes - tagging targets exactly what you picked, in every view"),
-            ("v1.6.0", "Visual Refresh across all 18 themes; mouse-wheel scrolling fixed everywhere; no startup theme flash; Frog Sneak control"),
-            ("v1.5.0", "Instant gallery views, full keyboard navigation with visible focus rings, friendlier file-error dialogs"),
-            ("v1.4.1", "Gallery scroll fix after switching views; crash fixes across color parsing and dialogs"),
-        ]
-        for version, desc in history:
+        vh_header.pack(fill="x", pady=(16, 8))
+        for version, desc in _HISTORY:
             row = tk.Frame(frame, bg=pal["bg"])
             row.pack(fill="x", pady=1)
-            tk.Label(row, text=version, font=("Segoe UI", 9, "bold"),
-                    fg=pal["muted"], bg=pal["bg"], width=14, anchor="nw").pack(side="left")
-            tk.Label(row, text=desc, font=("Segoe UI", 8),
-                    fg=pal["muted"], bg=pal["bg"], anchor="w", wraplength=500, justify="left").pack(side="left")
+            current = version == _VER
+            tk.Label(row, text=f"v{version}", font=("Segoe UI", 9, "bold"),
+                     fg=pal.get("accent", COLOR_ACCENT) if current else pal["muted"],
+                     bg=pal["bg"], width=14, anchor="nw").pack(side="left")
+            tk.Label(row, text=desc, font=("Segoe UI", 9),
+                     fg=pal["text"] if current else pal["muted"],
+                     bg=pal["bg"], anchor="w", wraplength=500,
+                     justify="left").pack(side="left")
 
         # Getting Started section
         gs_header = tk.Label(frame, text="Getting Started", font=("Segoe UI", 14, "bold"),

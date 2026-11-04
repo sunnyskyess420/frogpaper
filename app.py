@@ -7,15 +7,15 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
 APP_VERSION = "1.8.0"
 
-# Halloween Edition branding (v1.7.x only). Clear this string in the next
-# release to drop the edition label - the theme and sounds stay.
-APP_EDITION = "Halloween Edition"
+# Edition label. Empty for a normal release; About then shows just the
+# version. Set it for seasonal builds ("Halloween Edition").
+APP_EDITION = ""
 
 # Shown in the About window (tray right-click -> About FrogPaper). Newest
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
 RELEASE_HISTORY = (
-    ("1.8.0", "Painterly styles, smarter Ctrl+N, Facebook link"),
+    ("1.8.0", "Painterly styles, smarter Ctrl+N, Halloween defaults gone"),
     ("1.7.12", "Update check fixed, splash screen"),
     ("1.7.11", "Splash screen and faster onedir startup"),
     ("1.7.10", "Clearer update errors"),
@@ -29,9 +29,8 @@ RELEASE_HISTORY = (
 RELEASE_HIGHLIGHTS = tuple(f"v{v}: {t}" for v, t in RELEASE_HISTORY[:3])
 
 
-# Halloween Edition default startup subject (v1.7.x only). Fresh installs seed
-# it from config.template.json; the next release restores the blank "" default.
-HALLOWEEN_STARTUP_SUBJECT = "Halloween"
+# Default startup subject for fresh installs (blank = random).
+DEFAULT_STARTUP_SUBJECT = ""
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -719,7 +718,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.auto_generate_on_startup_var = tk.BooleanVar(
             value=config.get("auto_generate_on_startup", False))
         self.startup_subject_var = tk.StringVar(
-            value=config.get("startup_subject", HALLOWEEN_STARTUP_SUBJECT))
+            value=config.get("startup_subject", DEFAULT_STARTUP_SUBJECT))
         self.frog_sneak_var = tk.StringVar(
             value=config.get("frog_sneak", "classic"))
 

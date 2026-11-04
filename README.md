@@ -473,6 +473,8 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 - Mouse wheel: high-resolution and touchpad deltas are no longer truncated to zero. Three lines per notch for text, one unit for canvases.
 - Footer links now say what they open: "Downloads & Updates" and "Facebook Page".
 - The welcome/tutorial prompt no longer returns on every launch.
+- The Halloween Edition branding is retired: About shows a plain version, and
+  fresh installs start with a blank startup subject instead of "Halloween".
 
 **Reliability**
 - A config.json that cannot be read (locked, corrupt, or saved with a UTF-8 BOM) is never overwritten. That path used to erase every API key; a BOM from Notepad or PowerShell 5.1 triggered it.

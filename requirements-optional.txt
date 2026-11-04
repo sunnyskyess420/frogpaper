@@ -1,0 +1,26 @@
+# Optional extras for FrogPaper — NOT required to run, test, or build.
+#
+# Why this file exists
+# --------------------
+# sentence-transformers pulls in PyTorch. On Linux, PyTorch's CUDA wheels pull
+# nvidia-* packages (nvidia-nvshmem-cu13 among them), which NVIDIA licenses as
+# proprietary. License scanners follow that chain from requirements.txt and
+# raise a "critical: unclear licence" finding, even though:
+#
+#   * nothing in FrogPaper imports torch at runtime (keyword_expander.py
+#     guards the import and falls back to NLTK / plain word lists), and
+#   * FrogPaper.spec excludes torch, torchvision, torchaudio, transformers,
+#     sentence_transformers, tokenizers and safetensors from the packaged EXE,
+#     so none of it ships to users.
+#
+# Keeping it out of requirements.txt also cuts ~2-3 GB and several minutes
+# from every clean build.
+#
+# Install only if you want semantic keyword expansion while running from
+# source:
+#
+#     pip install -r requirements-optional.txt
+#
+# NLTK (WordNet) already covers the non-semantic path and stays in
+# requirements.txt.
+sentence-transformers>=5.6.0,<7.0.0

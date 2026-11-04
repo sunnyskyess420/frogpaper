@@ -30,6 +30,12 @@ pip install -r requirements.txt
 python app.py
 ```
 
+Optional: semantic keyword expansion (pulls ~2-3 GB of PyTorch, not needed to run or build):
+
+```
+pip install -r requirements-optional.txt
+```
+
 **2. Configure a Provider**
 Open **Settings** (top of sidebar) and pick a provider under **Generation**:
 - **Pollinations.ai** — Free, no API key needed. Just select and go.
@@ -377,6 +383,7 @@ FrogPaper/
 ├── prebuild_check.py           # Secret scan run before PyInstaller
 │
 ├── requirements.txt
+├── requirements-optional.txt   # optional: sentence-transformers (~2-3 GB)
 ├── config.template.json        # Clean first-run defaults
 ├── keywords.json               # Thematic keyword bank
 ├── negative_presets.json       # Negative prompt presets

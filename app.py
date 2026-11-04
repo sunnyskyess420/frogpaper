@@ -475,7 +475,7 @@ class ThemedDialog:
         if UI_EFFECTS_AVAILABLE and apply_glass_to_dialog:
             try:
                 apply_glass_to_dialog(dlg, width=w, height=h,
-                                      corner_radius=16, bg_color=pal["bg"])
+                                      corner_radius=22, bg_color=pal["bg"])
             except Exception:
                 pass
 
@@ -554,7 +554,7 @@ class ThemedDialog:
                 btn = RoundedButton(
                     btn_row, text=label, width=80, height=32,
                     fill_color=accent, text_color=fg,
-                    radius=10, font=("Segoe UI", 9, "bold"),
+                    radius=14, font=("Segoe UI", 9, "bold"),
                     command=make_cmd(label), use_gradient=True,
                 )
                 btn.pack(side="right", padx=(6, 0))
@@ -864,6 +864,13 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 pass
 
         _t3 = time.perf_counter()
+        # Windows 11 only: rounded outer window corners.
+        try:
+            from ui_effects import round_window_corners
+            round_window_corners(self.root)
+        except Exception:
+            pass
+
         self.apply_theme(load_config().get("app_theme", "darkforest"))
         logger.info(f"apply_theme: {time.perf_counter()-_t3:.2f}s")
         
@@ -1180,7 +1187,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             self._rounded_prompt_btn = RoundedButton(
                 gen_row, text="Generate Prompt", width=140, height=38,
                 fill_color=panel2_preview, text_color=button_fg_preview,
-                radius=10, font=("Segoe UI", 10, "bold"),
+                radius=14, font=("Segoe UI", 10, "bold"),
                 command=self.generate_prompt_only, use_gradient=False,
             )
             self._rounded_prompt_btn.grid(row=0, column=0, sticky="ew", padx=(0, 3), pady=(0, 0))
@@ -1193,7 +1200,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             self._rounded_gen_btn = RoundedButton(
                 gen_row, text="Generate Image", width=140, height=38,
                 fill_color=accent_preview, text_color=primary_text,
-                radius=10, font=("Segoe UI", 10, "bold"),
+                radius=14, font=("Segoe UI", 10, "bold"),
                 command=self.generate, use_gradient=True,
             )
             self._rounded_gen_btn.grid(row=0, column=1, sticky="ew", padx=(3, 0), pady=(0, 0))
@@ -2417,7 +2424,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             try:
                 glass_overlay = apply_glass_to_dialog(
                     about_window, width=400, height=300,
-                    corner_radius=20, bg_color=pal["bg"]
+                    corner_radius=26, bg_color=pal["bg"]
                 )
             except Exception:
                 pass
@@ -2496,7 +2503,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 text_color=_readable_fg(pal.get("button_fg", COLOR_WHITE),
                                         COLOR_NEAR_BLACK, COLOR_WHITE,
                                         pal.get("accent", pal["progress"])),
-                radius=8, font=("Segoe UI", 10),
+                radius=12, font=("Segoe UI", 10),
                 command=about_window.destroy, use_gradient=True,
             )
             ok_btn.place(relx=0.5, rely=0.5, anchor="center")

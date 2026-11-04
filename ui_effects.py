@@ -395,6 +395,29 @@ def create_gradient_button_image(width: int, height: int,
 
 # ─── Animated Theme Transition ─────────────────────────────────────────────
 
+def round_window_corners(window) -> bool:
+    """Ask Windows 11 to round this window's corners.
+
+    Returns True when the request was accepted.  Windows 10 and the DWM
+    fallback simply leave the window square - never raises.
+    """
+    try:
+        import ctypes
+        from ctypes import wintypes
+
+        hwnd = wintypes.HWND(window.winfo_id())
+        parent = ctypes.windll.user32.GetParent(hwnd)
+        if parent:
+            hwnd = wintypes.HWND(parent)
+        pref = ctypes.c_int(2)  # DWMWCP_ROUND
+        # 33 = DWMWA_WINDOW_CORNER_PREFERENCE (Windows 11 22000+)
+        res = ctypes.windll.dwmapi.DwmSetWindowAttribute(
+            hwnd, 33, ctypes.byref(pref), ctypes.sizeof(pref))
+        return res == 0
+    except Exception:
+        return False
+
+
 class ThemeTransition:
     """
     Manages smooth animated color transitions when switching themes.

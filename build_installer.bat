@@ -20,6 +20,10 @@ set "INNO_PATH=C:\Program Files\Inno Setup 7\ISCC.exe"
 if exist "%INNO_PATH%" goto :found_inno
 set "INNO_PATH=C:\Program Files (x86)\Inno Setup 7\ISCC.exe"
 if exist "%INNO_PATH%" goto :found_inno
+set "INNO_PATH=C:\Program Files\Inno Setup 6\ISCC.exe"
+if exist "%INNO_PATH%" goto :found_inno
+set "INNO_PATH=C:\Program Files (x86)\Inno Setup 6\ISCC.exe"
+if exist "%INNO_PATH%" goto :found_inno
 where iscc >nul 2>&1
 if not errorlevel 1 (
     set "INNO_PATH=iscc"

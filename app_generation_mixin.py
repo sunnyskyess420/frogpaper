@@ -35,6 +35,18 @@ logger = logging.getLogger(__name__)
 
 
 
+def choose_generation_source(has_wallpaper: bool, prompt_changed: bool) -> str:
+    """Decide what Ctrl+N should build.
+
+    * nothing on screen yet   -> roll a random prompt
+    * prompt edited since the last image -> honour the built prompt
+    * otherwise               -> keep it surprising, roll a random prompt
+    """
+    if not has_wallpaper:
+        return "random"
+    return "prompt" if prompt_changed else "random"
+
+
 class FrogPaperAppGenerationMixin:
     """Mixed into FrogPaperApp (see app.py); methods are verbatim."""
 
@@ -191,6 +203,9 @@ class FrogPaperAppGenerationMixin:
 
         subject_lock = self.get_active_subject_lock()
 
+        self._last_generated_signature = (
+            subject, setting, style, lighting, mood, color, atmosphere, mode)
+
         logger.debug(
             "generate: subject=%r style=%r lighting=%r setting=%r atmosphere=%r "
             "mood=%r color=%r mode=%r subject_lock=%s",
@@ -225,6 +240,40 @@ class FrogPaperAppGenerationMixin:
             subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit
 
         )
+
+    def prompt_signature(self) -> tuple:
+        """Everything Ctrl+N compares to decide if the prompt was edited."""
+        return (
+            self.get_active_subject(), self.get_active_setting(),
+            self.get_active_style(), self.get_active_lighting(),
+            self.get_active_mood(), self.get_active_color(),
+            self.get_active_atmosphere(), self.get_active_mode(),
+        )
+
+    def _has_any_wallpaper(self) -> bool:
+        if getattr(self, "last_image_path", None):
+            return True
+        if getattr(self, "gallery_images", None):
+            return True
+        return bool(getattr(getattr(self, "slideshow", None), "history", None))
+
+    def smart_generate(self):
+        """Ctrl+N: random when idle, the built prompt when you just edited it."""
+        sig = self.prompt_signature()
+        last = getattr(self, "_last_generated_signature", None)
+        if last is None:
+            # First press with no history: take today's dropdowns as the
+            # baseline so an untouched prompt counts as "not changed".
+            self._last_generated_signature = sig
+            last = sig
+        source = choose_generation_source(self._has_any_wallpaper(), sig != last)
+        if source == "random":
+            try:
+                self.random_theme()
+            except Exception as exc:
+                logger.warning("Random prompt failed, using current values: %s", exc)
+        logger.info("Ctrl+N generation source: %s", source)
+        self.generate()
 
     def generate_prompt_only(self):
         """Generate prompt text from sidebar choices without generating the image.

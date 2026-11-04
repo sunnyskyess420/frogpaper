@@ -114,6 +114,37 @@ class TestAppStartupSmoke(unittest.TestCase):
         self.assertTrue(callable(getattr(self.app, "generate", None)))
         self.assertFalse(hasattr(self.app, "generate_image"))
 
+    def test_ctrl_n_rolls_random_when_prompt_is_untouched(self):
+        """Nothing on screen or an untouched prompt -> surprise me."""
+        calls = []
+        self.app._has_any_wallpaper = lambda: True
+        self.app.prompt_signature = lambda: ("same",)
+        self.app._last_generated_signature = ("same",)
+        self.app.random_theme = lambda: calls.append("random")
+        self.app.generate = lambda: calls.append("generate")
+        self.app.smart_generate()
+        self.assertEqual(calls, ["random", "generate"])
+
+    def test_ctrl_n_uses_the_built_prompt_after_an_edit(self):
+        calls = []
+        self.app._has_any_wallpaper = lambda: True
+        self.app.prompt_signature = lambda: ("edited",)
+        self.app._last_generated_signature = ("same",)
+        self.app.random_theme = lambda: calls.append("random")
+        self.app.generate = lambda: calls.append("generate")
+        self.app.smart_generate()
+        self.assertEqual(calls, ["generate"])
+
+    def test_ctrl_n_rolls_random_on_a_first_run(self):
+        calls = []
+        self.app._has_any_wallpaper = lambda: False
+        self.app.prompt_signature = lambda: ("anything",)
+        self.app._last_generated_signature = None
+        self.app.random_theme = lambda: calls.append("random")
+        self.app.generate = lambda: calls.append("generate")
+        self.app.smart_generate()
+        self.assertEqual(calls, ["random", "generate"])
+
     def test_footer_links_point_at_the_right_pages(self):
         """The bar used to say "Link To Website"; it now names both targets."""
         self.assertIn("github.io", self.app._website_link.url)

@@ -844,7 +844,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.root.bind("<Control-g>", lambda e: self._switch_to_tab("gallery"))
         self.root.bind("<Control-s>", lambda e: self._open_settings_window())
         # Ctrl+P removed — Prompt Builder tab no longer accessible via shortcut
-        self.root.bind("<Control-n>", lambda e: self.generate())
+        self.root.bind("<Control-n>", lambda e: self.smart_generate())
         self.root.bind("<Escape>", lambda e: self._handle_escape())
 
         # Global Hotkey (Ctrl+Alt+N for next wallpaper)

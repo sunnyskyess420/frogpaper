@@ -229,24 +229,29 @@ class StyleTransfer:
             return img
     
     def _oil_painting(self, img: np.ndarray) -> np.ndarray:
-        """Mean-shift flattening + edge darkening = thick brush look."""
-        small, shape = _work_scale(img, 1000)
-        out = cv2.pyrMeanShiftFiltering(small, 8, 30)
-        out = cv2.bilateralFilter(out, 9, 75, 75)
-        edges = _thicken(cv2.Canny(_gray(out), 35, 90), 1)
-        out[edges > 0] = (out[edges > 0] * 0.7).astype(np.uint8)
+        """Thick brush look: strong mean shift, darkened creases."""
+        small, shape = _work_scale(img, 900)
+        out = cv2.pyrMeanShiftFiltering(small, sp=14, sr=45)
+        out = cv2.bilateralFilter(out, 9, 90, 90)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.15, 0, 255).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        edges = _thicken(cv2.Canny(_gray(out), 30, 80), 1)
+        out[edges > 0] = (out[edges > 0] * 0.65).astype(np.uint8)
         return _restore(out, shape)
 
     def _watercolor(self, img: np.ndarray) -> np.ndarray:
-        """Soft washes with faint pigment edges, slightly desaturated."""
-        small, shape = _work_scale(img, 1100)
-        out = cv2.bilateralFilter(small, 9, 90, 90)
+        """Flat washes with pooled edges - quantised, then softened."""
+        small, shape = _work_scale(img, 1000)
+        out = cv2.bilateralFilter(small, 15, 120, 120)
         out = cv2.medianBlur(out, 5)
+        out = _kmeans(out, 10)
         hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
-        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 0.85, 0, 255).astype(np.uint8)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 0.9, 0, 255).astype(np.uint8)
+        hsv[..., 2] = np.clip(hsv[..., 2].astype(np.int16) + 12, 0, 255).astype(np.uint8)
         out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        edges = cv2.GaussianBlur(cv2.Canny(_gray(out), 50, 120), (3, 3), 0)
-        out[edges > 40] = (out[edges > 40] * 0.55).astype(np.uint8)
+        edges = cv2.GaussianBlur(cv2.Canny(_gray(out), 40, 100), (5, 5), 0)
+        out[edges > 35] = (out[edges > 35] * 0.5).astype(np.uint8)
         return _restore(out, shape)
 
     def _sketch(self, img: np.ndarray) -> np.ndarray:
@@ -269,12 +274,17 @@ class StyleTransfer:
         return result
     
     def _line_art(self, img: np.ndarray) -> np.ndarray:
-        """Ink outlines traced from edges, on white."""
+        """Sparse ink outlines: edges only, small speckle dropped."""
         gray = cv2.GaussianBlur(_gray(img), (5, 5), 0)
-        edges = cv2.Canny(gray, 40, 110)
+        edges = cv2.Canny(gray, 80, 200)
         edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8))
-        lines = _thicken(edges, 1)
-        return cv2.cvtColor(255 - lines, cv2.COLOR_GRAY2BGR)
+        # drop components smaller than ~40 px so texture noise disappears
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(edges, 8)
+        keep = np.zeros_like(edges)
+        for i in range(1, n):
+            if stats[i, cv2.CC_STAT_AREA] >= 40:
+                keep[labels == i] = 255
+        return cv2.cvtColor(255 - keep, cv2.COLOR_GRAY2BGR)
 
     def _comic_book(self, img: np.ndarray) -> np.ndarray:
         """Flat 6-colour print look with clean black keylines."""
@@ -373,24 +383,18 @@ class StyleTransfer:
         return np.clip(out, 0, 255).astype(np.uint8)
 
     def _cyberpunk_neon(self, img: np.ndarray) -> np.ndarray:
-        """Apply cyberpunk neon effect."""
-        # Convert to HSV and enhance neon colors
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        
-        # Enhance saturation and value for neon effect
-        s = cv2.multiply(s, 1.5)
-        v = cv2.multiply(v, 1.2)
-        
-        # Merge back
-        hsv_enhanced = cv2.merge([h, s, v])
-        result = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2BGR)
-        
-        # Add glow effect
-        glow = cv2.GaussianBlur(result, (15, 15), 0)
-        result = cv2.addWeighted(result, 0.7, glow, 0.3, 0)
-        
-        return result
+        """Dark plate, magenta/cyan edge glow."""
+        base = cv2.convertScaleAbs(img, alpha=0.5, beta=-12)
+        hsv = cv2.cvtColor(base, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.7, 0, 255).astype(np.uint8)
+        base = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        edges = cv2.Canny(_gray(img), 60, 140)
+        glow = cv2.GaussianBlur(edges, (0, 0), 8)
+        neon = np.zeros_like(img)
+        neon[..., 0] = glow                     # blue
+        neon[..., 1] = (glow.astype(np.float32) * 0.35).astype(np.uint8)   # green
+        neon[..., 2] = (glow.astype(np.float32) * 0.85).astype(np.uint8)   # red -> magenta
+        return np.clip(cv2.addWeighted(base, 1.0, neon, 1.3, 0), 0, 255).astype(np.uint8)
 
     def _vaporwave(self, img: np.ndarray) -> np.ndarray:
         """Apply vaporwave retro synth effect."""
@@ -468,13 +472,14 @@ class StyleTransfer:
         return cv2.cvtColor(dodge, cv2.COLOR_GRAY2BGR)
 
     def _gouache(self, img: np.ndarray) -> np.ndarray:
-        """Opaque matte paint: flattened contrast, chalky highlights."""
-        small, shape = _work_scale(img, 1000)
-        out = cv2.bilateralFilter(small, 7, 90, 90)
+        """Opaque matte paint: heavy flatten, chalky, faint grain."""
+        small, shape = _work_scale(img, 900)
+        out = cv2.bilateralFilter(small, 9, 110, 110)
         mean = out.reshape(-1, 3).mean(axis=0)
-        out = (out.astype(np.float32) * 0.65 + mean * 0.35).clip(0, 255).astype(np.uint8)
-        out = cv2.convertScaleAbs(out, alpha=0.85, beta=26)
-        return _restore(out, shape)
+        out = (out.astype(np.float32) * 0.55 + mean * 0.45).clip(0, 255).astype(np.uint8)
+        out = cv2.convertScaleAbs(out, alpha=0.8, beta=34)
+        grain = np.random.normal(0, 4, out.shape).astype(np.int16)
+        return _restore(np.clip(out.astype(np.int16) + grain, 0, 255).astype(np.uint8), shape)
 
     def _art_deco(self, img: np.ndarray) -> np.ndarray:
         """Gold-on-ink duotone with a geometric frame."""
@@ -490,29 +495,31 @@ class StyleTransfer:
         return out
 
     def _surreal_dali(self, img: np.ndarray) -> np.ndarray:
-        """Dream grade plus a slow horizontal melt."""
+        """Dream grade with a visible horizontal melt."""
         h, w = img.shape[:2]
         xs = np.arange(w, dtype=np.float32)
         ys = np.arange(h, dtype=np.float32)[:, None]
-        shift = (np.sin(xs / max(1.0, w / 6.0)) * (h * 0.012)).astype(np.float32)
-        map_x = np.tile(xs, (h, 1)) + shift
-        map_y = np.tile(ys, (1, w)) + shift * 0.5
-        out = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        shift = np.sin(xs / max(1.0, w / 5.0)) * (h * 0.03)
+        map_x = np.tile(xs, (h, 1)) + shift.astype(np.float32)
+        map_y = np.tile(ys, (1, w)) + (shift * 0.6).astype(np.float32)
+        out = cv2.remap(img, map_x.astype(np.float32), map_y.astype(np.float32),
+                        cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
         hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
-        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.15, 0, 255).astype(np.uint8)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.25, 0, 255).astype(np.uint8)
+        hsv[..., 0] = ((hsv[..., 0].astype(np.int16) + 4) % 180).astype(np.uint8)
         out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
-        return _vignette(cv2.convertScaleAbs(out, alpha=1.05, beta=-6), 0.45)
+        return _vignette(cv2.convertScaleAbs(out, alpha=1.08, beta=-10), 0.5)
 
     def _3d_render(self, img: np.ndarray) -> np.ndarray:
-        """Glossy CG look: smoothed surfaces plus a specular bloom."""
-        small, shape = _work_scale(img, 1000)
-        base = cv2.bilateralFilter(small, 9, 60, 60)
-        base = cv2.convertScaleAbs(base, alpha=1.06, beta=4)
+        """Glossy CG render: smooth surfaces, strong specular bloom."""
+        small, shape = _work_scale(img, 900)
+        base = cv2.bilateralFilter(small, 11, 70, 70)
+        base = cv2.convertScaleAbs(base, alpha=1.1, beta=6)
         lum = _gray(base).astype(np.float32) / 255.0
-        spec = np.clip((lum - 0.72) / 0.28, 0, 1)
-        glow = cv2.GaussianBlur((spec[..., None] * base).astype(np.uint8), (0, 0), 9)
-        out = cv2.addWeighted(base, 1.0, glow, 0.7, 0)
-        return _restore(out, shape)
+        spec = np.clip((lum - 0.6) / 0.4, 0, 1) ** 1.5
+        glow = cv2.GaussianBlur((spec[..., None] * base).astype(np.uint8), (0, 0), 12)
+        out = cv2.addWeighted(base, 1.0, glow, 0.95, 0)
+        return _restore(np.clip(out, 0, 255).astype(np.uint8), shape)
 
     def _anime_key(self, img: np.ndarray) -> np.ndarray:
         """Apply anime cel shading effect."""
@@ -571,11 +578,11 @@ class StyleTransfer:
         return _restore(out, shape)
 
     def _impressionist(self, img: np.ndarray) -> np.ndarray:
-        """Broken colour dabs: heavy mean shift, lifted light."""
-        small, shape = _work_scale(img, 1000)
-        out = cv2.pyrMeanShiftFiltering(small, 12, 40)
-        out = cv2.medianBlur(out, 3)
-        out = cv2.convertScaleAbs(out, alpha=1.05, beta=12)
+        """Dappled light: big mean-shift blobs, lifted highlights."""
+        small, shape = _work_scale(img, 900)
+        out = cv2.pyrMeanShiftFiltering(small, sp=18, sr=55)
+        out = cv2.medianBlur(out, 5)
+        out = cv2.convertScaleAbs(out, alpha=1.1, beta=18)
         return _restore(out, shape)
 
     def get_style_list(self) -> list:

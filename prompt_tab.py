@@ -16,6 +16,31 @@ from theme import COLOR_DIM_GRAY, COLOR_MID_GRAY  # shared color constants (migr
 logger = logging.getLogger(__name__)
 
 
+def parse_color_value(value, families, variations):
+    """Split "variation family" into (family, variation).
+
+    Both halves may be multi-word: "high contrast amber" -> ("amber",
+    "high contrast"), and "forest green" is a family by itself.  The old
+    parser split on the first space only, so any of those produced an empty
+    colour and the prompt silently lost its palette.
+    """
+    text = (value or "").strip().lower()
+    if not text:
+        return "", ""
+    fam_set, var_set = set(families), set(variations)
+    if text in fam_set:
+        return text, ""
+    if text in var_set:
+        return "", text
+    tokens = text.split()
+    for cut in range(len(tokens) - 1, 0, -1):
+        family = " ".join(tokens[cut:])
+        variation = " ".join(tokens[:cut])
+        if family in fam_set and variation in var_set:
+            return family, variation
+    return "", ""
+
+
 class PromptTab:
     """Prompt Builder tab: theme builder, templates, recipes, active-value getters/setters."""
 
@@ -2313,30 +2338,7 @@ class PromptTab:
         valid_families = set(app.COLOR_FAMILIES)
         valid_variations = set(app.COLOR_VARIATIONS)
         # Parse value like "rich gold" -> family="gold", variation="rich"
-        value = (value or "").strip().lower()
-        family = ""
-        variation = ""
-        if value:
-            parts = value.split(maxsplit=1)
-            if len(parts) == 2:
-                var, fam = parts
-                # Validate both parts
-                if fam in valid_families and var in valid_variations:
-                    family = fam
-                    variation = var
-                elif fam in valid_families:
-                    family = fam
-                    variation = ""
-                elif var in valid_families:
-                    family = var
-                    variation = ""
-            else:
-                single = parts[0]
-                # Single word: must be a valid family to be accepted
-                if single in valid_families:
-                    family = single
-                    variation = ""
-                # If single word is not a valid family, leave both empty (don't show partial tokens like "tones")
+        family, variation = parse_color_value(value, valid_families, valid_variations)
 
         try:
             refs["color_family_var"].set(family)

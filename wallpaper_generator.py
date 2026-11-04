@@ -230,6 +230,19 @@ def _generate_pollinations(prompt: str, model_id: str, width: int, height: int,
                     _sleep_cancellable(wait, cancel_event)
                     continue
                 raise ImageGenerationError("Pollinations.ai is temporarily unavailable.")
+            elif e.code in (401, 403):
+                raise ImageGenerationError(
+                    f"Pollinations rejected the request (HTTP {e.code}). "
+                    "The selected model may need a token or be unavailable right now.")
+            elif e.code == 402:
+                raise ImageGenerationError(
+                    "Pollinations has no credits left for this model (HTTP 402). "
+                    "Pick the free 'flux' model, wait for the quota to reset, or "
+                    "switch provider in Settings > Generation.")
+            elif e.code == 404:
+                raise ImageGenerationError(
+                    "Pollinations does not recognise that model (HTTP 404). "
+                    "Choose another model in Settings > Generation.")
             else:
                 raise ImageGenerationError(f"Pollinations.ai HTTP error: {e.code}")
         except urllib.error.URLError as e:

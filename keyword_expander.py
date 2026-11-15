@@ -10,6 +10,7 @@ import logging
 from typing import List, Dict, Optional, Tuple
 import re
 import hashlib
+import sys
 from datetime import datetime
 
 from utils import get_app_dir, get_bundle_dir
@@ -39,6 +40,18 @@ EXPANSIONS_CACHE = CACHE_DIR / "expansions.json"
 PERSIST_EXPANSIONS = True
 EMBEDDINGS_VERSION = 1
 DEFAULT_SENTENCE_MODEL = "all-MiniLM-L6-v2"
+
+
+def _persistence_enabled() -> bool:
+    """Never touch the user's cache while tests are running.
+
+    The suite imports modules both as a package and as top-level modules
+    (``discover -s tests``), so a flag set by tests/__init__.py is not enough:
+    checking for unittest itself covers every import style.
+    """
+    if not PERSIST_EXPANSIONS:
+        return False
+    return "unittest" not in sys.modules
 
 
 def bank_signature(keywords: List[str], model_name: str = DEFAULT_SENTENCE_MODEL) -> str:
@@ -340,7 +353,7 @@ class KeywordExpander:
 
     def _load_expansions(self) -> None:
         """Restore per-word results so a used word never loads the model again."""
-        if not PERSIST_EXPANSIONS:
+        if not _persistence_enabled():
             return
         try:
             if not EXPANSIONS_CACHE.exists():
@@ -357,7 +370,7 @@ class KeywordExpander:
             logger.debug("expansion cache unreadable: %s", exc)
 
     def _save_expansions(self) -> None:
-        if not PERSIST_EXPANSIONS:
+        if not _persistence_enabled():
             return
         try:
             CACHE_DIR.mkdir(parents=True, exist_ok=True)

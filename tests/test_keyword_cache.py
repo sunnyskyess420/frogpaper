@@ -105,13 +105,16 @@ class TestExpansionCache(unittest.TestCase):
         self.path = root / "expansions.json"
         self._patch_path = mock.patch.object(ke, "EXPANSIONS_CACHE", self.path)
         self._patch_dir = mock.patch.object(ke, "CACHE_DIR", root)
-        self._patch_flag = mock.patch.object(ke, "PERSIST_EXPANSIONS", True)
+        self._patch_flag = mock.patch.object(ke, "_persistence_enabled", lambda: True)
+        self._patch_flag2 = mock.patch.object(ke, "PERSIST_EXPANSIONS", True)
         self._patch_path.start()
         self._patch_dir.start()
         self._patch_flag.start()
+        self._patch_flag2.start()
         self.addCleanup(self._patch_path.stop)
         self.addCleanup(self._patch_dir.stop)
         self.addCleanup(self._patch_flag.stop)
+        self.addCleanup(self._patch_flag2.stop)
         self.addCleanup(self._tmp.cleanup)
 
         self.expander = ke.KeywordExpander()

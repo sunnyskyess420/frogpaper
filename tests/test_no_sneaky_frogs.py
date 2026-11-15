@@ -11,6 +11,7 @@ import pathlib
 import random
 import sys
 import unittest
+from unittest import mock
 
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 
@@ -147,13 +148,13 @@ class TestEndToEnd(unittest.TestCase):
                     self.assertFalse(has_amphibian(prompt["negative_prompt"]))
 
     def test_blank_subject_with_dial_off_never_picks_an_amphibian(self):
-        self.assertEqual(tm.get_frog_sneak_probability(), 0.0,
-                         "config.json must have frog_sneak = off for this test")
+        # Force the dial off rather than depending on this machine's config.
         random.seed(5)
-        for _ in range(25):
-            theme = tm.generate_themes(count=1, user_keywords=[], subject_lock=True)[0]
-            self.assertFalse(tm.is_amphibian_subject(theme["components"]["subject"]),
-                             theme["components"]["subject"])
+        with mock.patch.object(tm, "get_frog_sneak_probability", lambda: 0.0):
+            for _ in range(25):
+                theme = tm.generate_themes(count=1, user_keywords=[], subject_lock=True)[0]
+                self.assertFalse(tm.is_amphibian_subject(theme["components"]["subject"]),
+                                 theme["components"]["subject"])
 
 
 if __name__ == "__main__":

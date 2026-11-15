@@ -93,7 +93,8 @@ class TestSizeRounding(unittest.TestCase):
             return FakeResponse()
 
         out = pathlib.Path(tempfile.mkdtemp()) / "sized.png"
-        with mock.patch.object(wg.urllib.request, "urlopen", fake_urlopen):
+        with mock.patch.object(wg, "load_token", lambda: "hf_test"), \
+             mock.patch.object(wg.urllib.request, "urlopen", fake_urlopen):
             wg._generate_huggingface("prompt", wg.DEFAULT_HF_MODEL, 1920, 1080, out)
 
         params = captured["body"]["parameters"]

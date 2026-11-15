@@ -139,18 +139,24 @@ class TestBuildPromptCore(unittest.TestCase):
         self.assertTrue(result["prompt"].endswith("."))
 
     def test_fixed_section_order(self):
-        """subject anchor -> scene -> palette -> style -> quality."""
+        """subject anchor -> palette -> scene -> style -> quality.
+
+        The palette sits directly after the subject on purpose: a colour word
+        placed after the scene clause is largely ignored by image models, so
+        1.8.0 moved it forward. This test pins that order.
+        """
+        from prompt_validator import strengthen_color
         result = pb.build_prompt(make_theme(subject="frog"))
         p = result["prompt"]
         self.assertIn("Single main subject: Calm frog", p)  # mood locks onto subject
         idx_subject = p.index("Single main subject")
+        idx_palette = p.index(strengthen_color("cool blues"))
         idx_scene = p.index("misty pine forest at dawn")
-        idx_palette = p.index("cool blues")
         idx_style = p.index("Rendered as:")
         idx_quality = p.index("Ultra-high detail, 8K resolution")
-        self.assertLess(idx_subject, idx_scene)
-        self.assertLess(idx_scene, idx_palette)
-        self.assertLess(idx_palette, idx_style)
+        self.assertLess(idx_subject, idx_palette)
+        self.assertLess(idx_palette, idx_scene)
+        self.assertLess(idx_scene, idx_style)
         self.assertLess(idx_style, idx_quality)
 
     def test_metadata_passthrough(self):
@@ -208,10 +214,13 @@ class TestBuildPromptAnatomy(unittest.TestCase):
 
 class TestBuildPromptPriorities(unittest.TestCase):
     def test_user_color_beats_theme_palette(self):
+        from prompt_validator import strengthen_color
         theme = make_theme(components={"color": "neon pink"})
         result = pb.build_prompt(theme)
-        self.assertIn("neon pink", result["prompt"])
-        self.assertNotIn("cool blues", result["prompt"])
+        # The palette section carries the user colour (as the strengthener
+        # phrases it) and nothing of the theme palette.
+        self.assertIn(strengthen_color("neon pink"), result["prompt"])
+        self.assertNotIn(strengthen_color("cool blues"), result["prompt"])
 
     def test_user_atmosphere_beats_theme_environment(self):
         theme = make_theme(components={"atmosphere": "electric haze"})

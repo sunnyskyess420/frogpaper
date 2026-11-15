@@ -232,6 +232,7 @@ class TutorialManager:
             self.tutorial_window.destroy()
         
         self.tutorial_window = tk.Toplevel(self.app.root)
+        self.tutorial_window.protocol("WM_DELETE_WINDOW", self._close_tutorial)
         self.tutorial_window.title(self.current_tutorial["title"])
         self.tutorial_window.geometry("760x660")
         self.tutorial_window.resizable(True, True)
@@ -484,6 +485,12 @@ class TutorialManager:
     def _close_tutorial(self):
         """Close the tutorial window."""
         self.is_active = False
+        # Finishing (or closing) the tour counts as having seen the welcome
+        # prompt, whatever the config flag said before.
+        try:
+            self.mark_first_run_completed()
+        except Exception as exc:
+            logger.debug("Could not mark first run completed: %s", exc)
         self._remove_highlight()
         if self.tutorial_window:
             self.tutorial_window.destroy()
@@ -520,7 +527,11 @@ class TutorialManager:
         """Check if first-run tutorial should be shown."""
         from utils import load_config
         config = load_config()
-        return not config.get("first_run_completed", False)
+        if config.get("first_run_completed", False):
+            return False
+        # Anyone who already finished a tutorial never needs the prompt again,
+        # even if an older build failed to set the flag.
+        return not config.get("completed_tutorials")
     
     def mark_first_run_completed(self):
         """Mark first-run tutorial as completed."""

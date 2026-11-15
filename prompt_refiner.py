@@ -26,10 +26,11 @@ class PromptRefiner:
             S8  starts with a quality_lead phrase and ends with "8K resolution"
             S9  "No text, no watermark, ..."
 
-          The free-text sections (S2 scene, S3 lighting, S4 mood, S5 palette) sit in
-          the gap between S1 and S6.  They are assigned in order: the first free clause
-          goes to scene, the second to lighting, the third to mood, the fourth to
-          palette.  This matches the fixed build_prompt() section order exactly.
+          The free-text sections (S2 palette, S3 scene, S4 lighting, S5 mood) sit in
+          the gap between S1 and S6, in that order — palette comes early so the
+          colour is not buried behind the scene description.
+          Classification is content-based (see _clause_type); position is only a
+          fallback, so a re-ordered or hand-edited prompt still parses correctly.
 
           Freeform / legacy prompts that don't match any anchor fall through entirely
           into sections["main"] so nothing is lost.
@@ -134,7 +135,7 @@ class PromptRefiner:
                     zone = "free"
                     # Fall through to free zone handling below
 
-            # --- Free zone: S2 scene, S3 lighting, S4 mood, S5 palette (in order) ---
+            # --- Free zone: S2 palette, S3 scene, S4 lighting, S5 mood ---
             if zone in ("free", "pre_subject"):
                 free_clauses.append(clause)
                 continue
@@ -200,21 +201,16 @@ class PromptRefiner:
 
         for clause in free_clauses:
             kind = _clause_type(clause)
-            if kind == "scene" or not sections["scene"]:
-                if not sections["scene"]:
-                    sections["scene"] = clause
-                elif kind == "scene":
-                    sections["scene"] += ", " + clause
-                else:
-                    # Classified as lighting/mood/palette but scene is empty —
-                    # still fill scene first (first free clause is always scene)
-                    sections["scene"] = clause
+            # Content wins over position: the palette clause now leads the free
+            # zone, so "first free clause is always scene" no longer holds.
+            if kind == "palette" and not sections["palette"]:
+                sections["palette"] = clause
             elif kind == "lighting" and not sections["lighting"]:
                 sections["lighting"] = clause
             elif kind == "mood" and not sections["mood"]:
                 sections["mood"] = clause
-            elif kind == "palette" and not sections["palette"]:
-                sections["palette"] = clause
+            elif not sections["scene"]:
+                sections["scene"] = clause
             else:
                 # Already filled or unclassifiable — append to scene as overflow
                 sections["scene"] += ", " + clause
@@ -226,8 +222,8 @@ class PromptRefiner:
         """Reassemble a prompt from parsed sections in canonical builder order."""
         # Fixed order mirrors build_prompt section sequence
         ordered_keys = [
-            "subject", "scene", "lighting", "mood",
-            "palette", "composition", "style", "quality", "main",
+            "subject", "palette", "scene", "lighting", "mood",
+            "composition", "style", "quality", "main",
         ]
         parts = [sections[k] for k in ordered_keys if sections.get(k)]
         prompt = ". ".join(p.strip().rstrip(".") for p in parts if p.strip())

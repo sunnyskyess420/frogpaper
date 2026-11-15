@@ -363,7 +363,8 @@ def strengthen_color(color: str) -> str:
 
     Guards against:
     - Re-processing already-complete palette phrases ("tones tones", etc.)
-    - Prepending lighting words (neon, electric, glowing) as palette modifiers
+    - Prepending lighting words (neon, glowing, backlit) as palette modifiers
+      unless they were typed into the colour field next to a named family
     - Stacking modifiers onto phrases that already express the same meaning
     """
     if not color:
@@ -418,6 +419,17 @@ def strengthen_color(color: str) -> str:
             # Drop any modifier already present in the strengthened phrase
             strengthened_words = set(strengthened.lower().split())
             modifiers = [m for m in modifiers if m not in strengthened_words]
+        # Lighting/luminance words typed into the colour field are excluded
+        # above because they normally belong to Lighting — but next to a
+        # named colour family they still carry the palette's intensity
+        # ("neon pink"), so re-attach any the phrase doesn't already express.
+        if best_base in _COLOR_FAMILIES_SET:
+            strengthened_words = set(strengthened.lower().split())
+            for w in input_words:
+                if (w in _LIGHTING_QUALIFIER_WORDS
+                        and w not in strengthened_words
+                        and w not in modifiers):
+                    modifiers.append(w)
         if modifiers:
             mod_str = " ".join(modifiers)
             _COLOR_FAMILIES = _COLOR_FAMILIES_SET
@@ -446,19 +458,52 @@ def strengthen_color(color: str) -> str:
                 "light":     {"dark", "deep", "obsidian"},
                 "warm":      {"cool"},
                 "cool":      {"warm"},
+                # High-saturation lighting qualifiers contradict soft/low-key
+                # descriptors just like the intensity words above.
+                "neon":          {"soft", "muted", "pale", "pastel", "gentle", "subtle"},
+                "glowing":       {"soft", "muted", "pale"},
+                "fluorescent":   {"soft", "muted", "pale"},
+                "bioluminescent":{"soft", "muted", "pale"},
+                "blacklight":    {"soft", "muted", "pale"},
+                "backlit":       {"soft", "muted"},
+            }
+            # Lighting qualifiers that imply high saturation but are not
+            # themselves in _PREPEND_MODIFIERS.
+            _SATURATION_QUALIFIERS = {
+                "neon", "glowing", "fluorescent",
+                "bioluminescent", "blacklight",
+            }
+            _LOW_INTENSITY_WORDS = {
+                "soft", "muted", "pale", "pastel", "gentle", "subtle",
             }
             all_prepend = all(m in _PREPEND_MODIFIERS for m in modifiers)
             if best_base in _COLOR_FAMILIES or all_prepend:
                 # Strip antonyms of each modifier from the strengthened phrase.
                 cleaned = strengthened
+                stripped_soft = False
                 for modifier in modifiers:
                     antonyms = _ANTONYMS.get(modifier, set())
                     if antonyms:
-                        cleaned_words = [
-                            w for w in cleaned.split()
-                            if w.lower().rstrip(",") not in antonyms
-                        ]
-                        cleaned = " ".join(cleaned_words)
+                        kept_words = []
+                        for w in cleaned.split():
+                            lw = w.lower().rstrip(",")
+                            if lw in antonyms:
+                                if lw in _LOW_INTENSITY_WORDS:
+                                    stripped_soft = True
+                                continue
+                            kept_words.append(w)
+                        cleaned = " ".join(kept_words)
+                # e.g. "neon pink": stripping "soft" would leave a flat phrase.
+                # Restore an intensity word — unless a prepended modifier
+                # (vivid, electric, …) already carries the saturation.
+                if (stripped_soft
+                        and any(m in _SATURATION_QUALIFIERS for m in modifiers)
+                        and not any(m in _PREPEND_MODIFIERS for m in modifiers)):
+                    cw = cleaned.split()
+                    if (len(cw) >= 2
+                            and cw[-1].lower().rstrip(",") in _COLOR_SUFFIX_TOKENS):
+                        cw.insert(len(cw) - 2, "vivid")
+                    cleaned = " ".join(cw)
                 # Prepend modifier: "muted magenta" -> "muted magenta palette with fuchsia tones"
                 return _dedup_color_phrase(mod_str + " " + cleaned)
             else:

@@ -87,6 +87,11 @@ PINNED_CATEGORIES: list[str] = [
     "atmosphere", "color_family", "color_variation"
 ]
 
+# How many of the last picks to keep per dropdown.
+RECENT_LIMIT = 5
+# Below this many options the filter box is noise, so it is not shown.
+FILTER_MIN_ITEMS = 12
+
 
 class PinnedDropdownManager:
     """Manages pinned state for all categories."""
@@ -95,8 +100,10 @@ class PinnedDropdownManager:
         self._load: Callable[[], dict] = config_loader
         self._save: Callable[[dict], None] = config_saver
         self._pins: dict[str, list[str]] = {}  # {category: [pinned_items]}
+        self._recent: dict[str, list[str]] = {}  # {category: [most recent first]}
         self._callbacks: list[Callable[[], None]] = []  # Widgets to notify on change
         self._load_pins()
+        self._load_recent()
     
     def _load_pins(self) -> None:
         """Load from config.json."""
@@ -151,6 +158,49 @@ class PinnedDropdownManager:
     def get_pinned(self, category: str) -> list[str]:
         """Get pinned items for category."""
         return list(self._pins.get(category, []))
+
+    def _load_recent(self) -> None:
+        """Load the recently-used rows from config.json."""
+        try:
+            cfg = self._load()
+            raw = cfg.get("recent_options", {}) or {}
+            if not isinstance(raw, dict):
+                raw = {}
+            self._recent = {
+                cat: [v for v in (raw.get(cat) or []) if isinstance(v, str)][:RECENT_LIMIT]
+                for cat in PINNED_CATEGORIES
+            }
+        except Exception as e:
+            logger.warning(f"Failed to load recent options: {e}")
+            self._recent = {cat: [] for cat in PINNED_CATEGORIES}
+
+    def _save_recent(self) -> None:
+        try:
+            cfg = self._load()
+            cfg["recent_options"] = self._recent
+            self._save(cfg)
+        except Exception as e:
+            logger.error(f"Failed to save recent options: {e}")
+
+    def get_recent(self, category: str) -> list[str]:
+        """Values picked most recently for this dropdown, newest first."""
+        return list(self._recent.get(category, []))
+
+    def push_recent(self, category: str, value: str | None) -> None:
+        """Record a pick, moving it to the front of the recent list."""
+        if not value:
+            return
+        value = value.strip()
+        if not value:
+            return
+        bucket = self._recent.setdefault(category, [])
+        if bucket and bucket[0] == value:
+            return  # already the newest pick, nothing to write
+        if value in bucket:
+            bucket.remove(value)
+        bucket.insert(0, value)
+        del bucket[RECENT_LIMIT:]
+        self._save_recent()
     
     def strip_pin_marker(self, value: object) -> object:
         """Strip pin marker (★, ☆, ⭐, 📌, etc.) and leading/trailing whitespace from value string."""
@@ -265,9 +315,26 @@ class PinnedCombobox(ttk.Combobox):
         # Register for pin change notifications
         if _mgr:
             _mgr.register_callback(self._refresh_from_pins)
+
+        # Keyboard or typed choices feed the "recently used" row. add="+" so
+        # nothing else bound to these sequences is replaced.
+        self.bind("<<ComboboxSelected>>", self._on_value_chosen, add="+")
+        self.bind("<Return>", self._on_value_chosen, add="+")
         
         logger.info(f"PinnedCombobox created: category={category}, state={self.cget('state')}, values={len(self._base_values)} items")
     
+    def set_base_values(self, values: list[str]) -> None:
+        """Replace the option list without losing pins or the starred popup.
+
+        ``configure(values=...)`` alone only updates the ttk list; the custom
+        popup reads ``_base_values``, so both have to move together.
+        """
+        self._base_values = list(values) if values else []
+        try:
+            super().configure(values=self._build_display_values())
+        except tk.TclError:
+            super().configure(values=self._base_values)
+
     def _build_display_values(self) -> list[str]:
         """Build values list with pinned at top (with markers)."""
         if not _mgr:
@@ -607,6 +674,8 @@ class PinnedCombobox(ttk.Combobox):
             popup_height += len(pinned_items) * 28 + 40  # Favorites section
         if unpinned_items:
             popup_height += min(280, len(unpinned_items) * 28 + 20)  # Available section
+        if len([v for v in self._base_values if v]) > FILTER_MIN_ITEMS:
+            popup_height += 34  # filter box sits above the list
         
         # Adjust y position if popup would extend beyond screen bottom
         if y + popup_height > screen_height:
@@ -630,107 +699,36 @@ class PinnedCombobox(ttk.Combobox):
         frame = tk.Frame(self._popup_window, bg=bg_color)
         frame.pack(fill="both", expand=True)
         
-        # === FAVORITES SECTION (if any pinned) ===
-        if pinned_items:
-            fav_header = tk.Label(
-                frame, text=f"★ FAVORITES ({len(pinned_items)})",
-                font=("Segoe UI", 9, "bold"), fg=star_on, bg=bg_color,
-                anchor="w", padx=10, pady=6
+        # === FILTER BOX + ITEM SECTIONS ===
+        # The item sections are re-drawn on every keystroke, so they live in
+        # their own frame instead of being packed onto the window directly.
+        self._popup_filter_var = tk.StringVar()
+        self._popup_filter_entry = None
+        item_count = len([v for v in self._base_values if v])
+        if item_count > FILTER_MIN_ITEMS:
+            filter_wrap = tk.Frame(frame, bg=bg_color)
+            filter_wrap.pack(fill="x", padx=8, pady=(8, 4))
+            filter_entry = tk.Entry(
+                filter_wrap,
+                textvariable=self._popup_filter_var,
+                font=("Segoe UI", 10),
+                bg=hover_bg,
+                fg=fg_color,
+                insertbackground=fg_color,
+                relief="flat",
+                highlightthickness=1,
+                highlightbackground=sep_color,
+                highlightcolor=star_on,
             )
-            fav_header.pack(fill="x")
-            
-            fav_sep = tk.Frame(frame, height=1, bg=sep_color)
-            fav_sep.pack(fill="x", padx=5)
-            
-            # Add pinned items
-            for val in pinned_items:
-                is_current = (val == current_val)
-                self._create_popup_row(
-                    scrollable_parent=frame, value=val, is_pinned=True,
-                    bg_color=bg_color, fg_color=fg_color, hover_bg=hover_bg,
-                    selected_bg=selected_bg, selected_fg=selected_fg,
-                    is_current=is_current,
-                    star_on=star_on, star_off=star_off
-                )
-            
-            # Spacer between sections
-            spacer = tk.Frame(frame, height=8, bg=bg_color)
-            spacer.pack(fill="x")
-        
-        # === AVAILABLE ITEMS SECTION ===
-        # Header for available items
-        if pinned_items:
-            avail_header = tk.Label(
-                frame, text=f"Available Options ({len(unpinned_items)})",
-                font=("Segoe UI", 9), fg=header_fg, bg=bg_color,
-                anchor="w", padx=10, pady=4
-            )
-            avail_header.pack(fill="x")
-        else:
-            # No favorites yet - show instruction
-            avail_header = tk.Label(
-                frame, text="Click ☆ to add favorites",
-                font=("Segoe UI", 8), fg=header_fg, bg=bg_color,
-                anchor="w", padx=10, pady=4
-            )
-            avail_header.pack(fill="x")
-        
-        avail_sep = tk.Frame(frame, height=1, bg=sep_color)
-        avail_sep.pack(fill="x", padx=5)
-        
-        # === SCROLLABLE AREA FOR UNPINNED ITEMS ===
-        if unpinned_items:
-            # Canvas with scrollbar for long lists
-            canvas_container = tk.Frame(frame, bg=bg_color)
-            canvas_container.pack(fill="both", expand=True)
-            
-            # Widen to fit the longest item (the old fixed 260px clipped
-            # longer entries at high-DPI / large font settings).
-            popup_width = compute_popup_width(
-                tkfont.Font(family="Segoe UI", size=10).measure,
-                unpinned_items)
-            canvas = tk.Canvas(canvas_container, bg=bg_color, highlightthickness=0, width=popup_width)
-            scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
-            scrollable_frame = tk.Frame(canvas, bg=bg_color)
-            
-            scrollable_frame.bind(
-                "<Configure>",
-                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
-            )
-            
-            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=260)
-            canvas.configure(yscrollcommand=scrollbar.set)
-            
-            # Add unpinned items to scrollable area
-            for val in unpinned_items:
-                is_current = (val == current_val)
-                self._create_popup_row(
-                    scrollable_parent=scrollable_frame, value=val, is_pinned=False,
-                    bg_color=bg_color, fg_color=fg_color, hover_bg=hover_bg,
-                    selected_bg=selected_bg, selected_fg=selected_fg,
-                    is_current=is_current,
-                    star_on=star_on, star_off=star_off
-                )
-            
-            # Pack scroll area
-            canvas.pack(side="left", fill="both", expand=True)
-            scrollbar.pack(side="right", fill="y")
-            
-            # Set height based on item count (max 300px)
-            item_height = 28
-            max_height = min(280, len(unpinned_items) * item_height + 20)
-            canvas.config(height=max_height)
-            
-            # Store reference for external access
-            self._popup_canvas = canvas
-        else:
-            no_items = tk.Label(
-                frame, text="All items are favorites! ★",
-                font=("Segoe UI", 9, "italic"), fg=header_fg, bg=bg_color,
-                padx=10, pady=10
-            )
-            no_items.pack()
-            self._popup_canvas = None
+            filter_entry.pack(fill="x", ipady=3)
+            filter_entry.bind("<Escape>", lambda e: self._close_popup())
+            filter_entry.bind("<Return>", lambda e: self._select_first_match())
+            filter_entry.bind("<KeyRelease>", lambda e: self._apply_popup_filter())
+            self._popup_filter_entry = filter_entry
+
+        self._popup_body = tk.Frame(frame, bg=bg_color)
+        self._popup_body.pack(fill="both", expand=True)
+        self._render_popup_items(self._popup_body, colors)
 
         # Hack to stop main gallery scrolling: force clear hover canvas
         try:
@@ -800,13 +798,263 @@ class PinnedCombobox(ttk.Combobox):
         self._popup_window.bind("<FocusOut>", on_focus_out)
         
         self._popup_window.bind("<Escape>", lambda e: self._close_popup())
-        # Keyboard: start focus inside the popup so Tab can reach the
-        # star buttons and item rows immediately after it opens.
+        # Keyboard: start focus where typing should land - the filter box when
+        # the list is long enough to have one, otherwise the popup itself so
+        # Tab can reach the star buttons and item rows.
         try:
-            self._popup_window.focus_set()
+            if self._popup_filter_entry is not None:
+                self._popup_filter_entry.focus_set()
+            else:
+                self._popup_window.focus_set()
         except Exception:
             pass
     
+    def _render_popup_items(self, parent: tk.Frame, colors: dict) -> None:
+        """Draw the favourite / recent / available sections.
+
+        Called when the popup opens and again whenever the filter box changes,
+        so the sections are rebuilt from scratch each time.
+        """
+        bg_color = colors["bg"]
+        fg_color = colors["fg"]
+        hover_bg = colors["hover"]
+        selected_bg = colors.get("selected_bg", hover_bg)
+        selected_fg = colors.get("selected_fg", COLOR_WHITE)
+        header_fg = colors["header_fg"]
+        sep_color = colors["separator"]
+        star_off = colors["star_off"]
+        star_on = colors["star_on"]
+        current_val = self.get()
+
+        filter_text = ""
+        if getattr(self, "_popup_filter_var", None) is not None:
+            filter_text = (self._popup_filter_var.get() or "").strip().lower()
+
+        for child in list(parent.winfo_children()):
+            child.destroy()
+        self._popup_canvas = None
+        parent.configure(bg=bg_color)
+
+        def matches(val: str) -> bool:
+            return not filter_text or filter_text in val.lower()
+
+        pinned_list = _mgr.get_pinned(self._category) if _mgr else []
+        recent_list = _mgr.get_recent(self._category) if _mgr else []
+
+        pinned_items: list[str] = []
+        recent_items: list[str] = []
+        unpinned_items: list[str] = []
+        for val in self._base_values:
+            if not val or not matches(val):
+                continue
+            if val in pinned_list:
+                pinned_items.append(val)
+            elif val in recent_list:
+                recent_items.append(val)
+            else:
+                unpinned_items.append(val)
+
+        pinned_items.sort()
+        unpinned_items.sort()
+        recent_order = {val: idx for idx, val in enumerate(recent_list)}
+        recent_items.sort(key=lambda val: recent_order.get(val, len(recent_order)))
+
+        if not pinned_items and not recent_items and not unpinned_items:
+            empty = tk.Label(
+                parent, text=f"No match for \"{filter_text}\"",
+                font=("Segoe UI", 9, "italic"), fg=header_fg, bg=bg_color,
+                padx=10, pady=10,
+            )
+            empty.pack()
+            return
+
+        # === FAVORITES SECTION (if any pinned) ===
+        if pinned_items:
+            fav_header = tk.Label(
+                parent, text=f"★ FAVORITES ({len(pinned_items)})",
+                font=("Segoe UI", 9, "bold"), fg=star_on, bg=bg_color,
+                anchor="w", padx=10, pady=6
+            )
+            fav_header.pack(fill="x")
+
+            fav_sep = tk.Frame(parent, height=1, bg=sep_color)
+            fav_sep.pack(fill="x", padx=5)
+
+            for val in pinned_items:
+                self._create_popup_row(
+                    scrollable_parent=parent, value=val, is_pinned=True,
+                    bg_color=bg_color, fg_color=fg_color, hover_bg=hover_bg,
+                    selected_bg=selected_bg, selected_fg=selected_fg,
+                    is_current=(val == current_val),
+                    star_on=star_on, star_off=star_off
+                )
+
+            spacer = tk.Frame(parent, height=8, bg=bg_color)
+            spacer.pack(fill="x")
+
+        # === RECENTLY USED SECTION ===
+        if recent_items:
+            recent_header = tk.Label(
+                parent, text=f"🕘 RECENTLY USED ({len(recent_items)})",
+                font=("Segoe UI", 9, "bold"), fg=header_fg, bg=bg_color,
+                anchor="w", padx=10, pady=6
+            )
+            recent_header.pack(fill="x")
+
+            recent_sep = tk.Frame(parent, height=1, bg=sep_color)
+            recent_sep.pack(fill="x", padx=5)
+
+            for val in recent_items:
+                self._create_popup_row(
+                    scrollable_parent=parent, value=val, is_pinned=False,
+                    bg_color=bg_color, fg_color=fg_color, hover_bg=hover_bg,
+                    selected_bg=selected_bg, selected_fg=selected_fg,
+                    is_current=(val == current_val),
+                    star_on=star_on, star_off=star_off
+                )
+
+            spacer = tk.Frame(parent, height=8, bg=bg_color)
+            spacer.pack(fill="x")
+
+        # === AVAILABLE ITEMS SECTION ===
+        if pinned_items or recent_items:
+            avail_header = tk.Label(
+                parent, text=f"Available Options ({len(unpinned_items)})",
+                font=("Segoe UI", 9), fg=header_fg, bg=bg_color,
+                anchor="w", padx=10, pady=4
+            )
+            avail_header.pack(fill="x")
+        else:
+            avail_header = tk.Label(
+                parent, text="Click ☆ to add favorites",
+                font=("Segoe UI", 8), fg=header_fg, bg=bg_color,
+                anchor="w", padx=10, pady=4
+            )
+            avail_header.pack(fill="x")
+
+        avail_sep = tk.Frame(parent, height=1, bg=sep_color)
+        avail_sep.pack(fill="x", padx=5)
+
+        # === SCROLLABLE AREA FOR UNPINNED ITEMS ===
+        if unpinned_items:
+            canvas_container = tk.Frame(parent, bg=bg_color)
+            canvas_container.pack(fill="both", expand=True)
+
+            popup_width = compute_popup_width(
+                tkfont.Font(family="Segoe UI", size=10).measure,
+                unpinned_items)
+            canvas = tk.Canvas(canvas_container, bg=bg_color, highlightthickness=0, width=popup_width)
+            scrollbar = ttk.Scrollbar(canvas_container, orient="vertical", command=canvas.yview)
+            scrollable_frame = tk.Frame(canvas, bg=bg_color)
+
+            scrollable_frame.bind(
+                "<Configure>",
+                lambda e: canvas.configure(scrollregion=canvas.bbox("all"))
+            )
+
+            canvas.create_window((0, 0), window=scrollable_frame, anchor="nw", width=260)
+            canvas.configure(yscrollcommand=scrollbar.set)
+
+            for val in unpinned_items:
+                self._create_popup_row(
+                    scrollable_parent=scrollable_frame, value=val, is_pinned=False,
+                    bg_color=bg_color, fg_color=fg_color, hover_bg=hover_bg,
+                    selected_bg=selected_bg, selected_fg=selected_fg,
+                    is_current=(val == current_val),
+                    star_on=star_on, star_off=star_off
+                )
+
+            canvas.pack(side="left", fill="both", expand=True)
+            scrollbar.pack(side="right", fill="y")
+
+            item_height = 28
+            max_height = min(280, len(unpinned_items) * item_height + 20)
+            canvas.config(height=max_height)
+
+            self._popup_canvas = canvas
+        else:
+            no_items = tk.Label(
+                parent, text="All items are favorites! ★" if not filter_text else "No other matches",
+                font=("Segoe UI", 9, "italic"), fg=header_fg, bg=bg_color,
+                padx=10, pady=10
+            )
+            no_items.pack()
+            self._popup_canvas = None
+
+    def _apply_popup_filter(self) -> None:
+        """Schedule a re-draw for the current filter text.
+
+        Coalesced so holding a key does not rebuild the rows on every repeat.
+        """
+        if not self._popup_active or not self._popup_window:
+            return
+        if not getattr(self, "_popup_body", None):
+            return
+        job = getattr(self, "_filter_job", None)
+        if job:
+            try:
+                self.after_cancel(job)
+            except Exception:
+                pass
+        self._filter_job = self.after(60, self._redraw_popup_body)
+
+    def _redraw_popup_body(self) -> None:
+        self._filter_job = None
+        if not self._popup_active or not self._popup_window:
+            return
+        if not getattr(self, "_popup_body", None):
+            return
+        try:
+            colors = self._get_theme_colors()
+            self._render_popup_items(self._popup_body, colors)
+        except Exception as exc:
+            logger.debug(f"Popup filter failed: {exc}")
+
+    def _visible_values(self) -> list[str]:
+        """Values currently listed in the popup, in display order."""
+        if not getattr(self, "_popup_body", None):
+            return []
+        values = []
+        filter_text = ""
+        if getattr(self, "_popup_filter_var", None) is not None:
+            filter_text = (self._popup_filter_var.get() or "").strip().lower()
+        for val in self._base_values:
+            if val and (not filter_text or filter_text in val.lower()):
+                values.append(val)
+        return values
+
+    def _select_first_match(self) -> str:
+        """Enter in the filter box: take the first row that survives the filter."""
+        matches = self._visible_values()
+        if matches:
+            pinned_list = _mgr.get_pinned(self._category) if _mgr else []
+            recent_list = _mgr.get_recent(self._category) if _mgr else []
+            ordered = ([v for v in matches if v in pinned_list]
+                       + [v for v in matches if v in recent_list]
+                       + [v for v in matches if v not in pinned_list and v not in recent_list])
+            value = ordered[0]
+            self.set(value)
+            self._remember_choice(value)
+            self._close_popup()
+            self.event_generate("<<ComboboxSelected>>")
+        return "break"
+
+    def _remember_choice(self, value: str | None) -> None:
+        """Add *value* to the recently-used row for this category."""
+        if not _mgr or not value:
+            return
+        try:
+            _mgr.push_recent(self._category, value)
+        except Exception as exc:
+            logger.debug(f"Could not remember choice: {exc}")
+
+    def _on_value_chosen(self, event=None) -> None:
+        """Remember a value picked with the keyboard or typed by hand."""
+        try:
+            self._remember_choice(self.get())
+        except Exception:
+            pass
+
     def _create_popup_row(self, scrollable_parent: tk.Frame | ttk.Frame, value: str, is_pinned: bool, 
                           bg_color: str, fg_color: str, hover_bg: str, star_on: str, star_off: str,
                           selected_bg: str | None = None, selected_fg: str | None = None, is_current: bool = False) -> None:
@@ -872,6 +1120,7 @@ class PinnedCombobox(ttk.Combobox):
         def on_item_click(event=None, val=value):
             self._selection_in_progress = True  # Flag that we're selecting an item
             self.set(val)
+            self._remember_choice(val)
             self._close_popup()
             self.event_generate("<<ComboboxSelected>>")
             # Reset flag after a short delay to ensure click event completes

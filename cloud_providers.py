@@ -30,6 +30,9 @@ DROPBOX_APP_KEY = "YOUR_DROPBOX_APP_KEY"  # Will be loaded from config
 DROPBOX_APP_SECRET = "YOUR_DROPBOX_APP_SECRET"  # Will be loaded from config
 DROPBOX_REDIRECT_URI = "http://localhost:8080/callback"
 
+# (connect, read) seconds for every plain requests call in this module.
+HTTP_TIMEOUT = (10, 60)
+
 
 def load_config_credentials():
     """Load OAuth credentials from config.json."""
@@ -503,7 +506,7 @@ class OneDriveProvider:
             resp = requests.get(
                 "https://graph.microsoft.com/v1.0/me/drive/root/children?$filter=name eq 'FrogPaper'",
                 headers=headers
-            )
+            , timeout=HTTP_TIMEOUT)
             items = resp.json().get("value", [])
             if items:
                 folder_id = items[0]["id"]
@@ -515,7 +518,7 @@ class OneDriveProvider:
                 "https://graph.microsoft.com/v1.0/me/drive/root/children",
                 headers={**headers, "Content-Type": "application/json"},
                 json={"name": "FrogPaper", "folder": {}, "@microsoft.graph.conflictBehavior": "rename"}
-            )
+            , timeout=HTTP_TIMEOUT)
             if resp.status_code == 201:
                 folder_id = resp.json()["id"]
                 logger.info(f"FrogPaper folder created in OneDrive: {folder_id}")
@@ -538,7 +541,7 @@ class OneDriveProvider:
             resp = requests.get(
                 f"https://graph.microsoft.com/v1.0/me/drive/items/{parent_id}/children?$filter=name eq '{subfolder_name}'",
                 headers=headers
-            )
+            , timeout=HTTP_TIMEOUT)
             items = resp.json().get("value", [])
             if items:
                 folder_id = items[0]["id"]
@@ -550,7 +553,7 @@ class OneDriveProvider:
                 f"https://graph.microsoft.com/v1.0/me/drive/items/{parent_id}/children",
                 headers={**headers, "Content-Type": "application/json"},
                 json={"name": subfolder_name, "folder": {}, "@microsoft.graph.conflictBehavior": "rename"}
-            )
+            , timeout=HTTP_TIMEOUT)
             if resp.status_code == 201:
                 folder_id = resp.json()["id"]
                 logger.info(f"OneDrive subfolder '{subfolder_name}' created: {folder_id}")
@@ -592,7 +595,7 @@ class OneDriveProvider:
             # Check if file already exists and is unchanged
             local_size = file_path.stat().st_size
             check_url = f"https://graph.microsoft.com/v1.0/me/drive/items/{target_folder}:/{file_path.name}"
-            check_resp = requests.get(check_url, headers={"Authorization": f"Bearer {self.client}"})
+            check_resp = requests.get(check_url, headers={"Authorization": f"Bearer {self.client}"}, timeout=HTTP_TIMEOUT)
             if check_resp.status_code == 200:
                 remote_size = check_resp.json().get("size", 0)
                 if remote_size == local_size:
@@ -614,7 +617,7 @@ class OneDriveProvider:
                 }
             }
 
-            response = requests.post(upload_url, headers=headers, json=body)
+            response = requests.post(upload_url, headers=headers, json=body, timeout=HTTP_TIMEOUT)
             if response.status_code == 200:
                 upload_url = response.json().get("uploadUrl")
 
@@ -632,7 +635,7 @@ class OneDriveProvider:
                             "Content-Range": f"bytes {offset}-{min(offset + len(chunk) - 1, local_size - 1)}/{local_size}"
                         }
 
-                        response = requests.put(upload_url, headers=chunk_headers, data=chunk)
+                        response = requests.put(upload_url, headers=chunk_headers, data=chunk, timeout=HTTP_TIMEOUT)
                         if response.status_code not in [200, 201, 202]:
                             logger.error(f"Upload chunk failed: {response.text}")
                             return None
@@ -663,7 +666,7 @@ class OneDriveProvider:
                 "Authorization": f"Bearer {self.client}"
             }
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
             if response.status_code == 200:
                 files = response.json().get("value", [])
                 logger.info(f"Listed {len(files)} files from OneDrive")
@@ -690,7 +693,7 @@ class OneDriveProvider:
                 "Authorization": f"Bearer {self.client}"
             }
             
-            response = requests.get(url, headers=headers)
+            response = requests.get(url, headers=headers, timeout=HTTP_TIMEOUT)
             if response.status_code == 200:
                 with open(dest_path, 'wb') as f:
                     f.write(response.content)

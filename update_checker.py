@@ -742,54 +742,6 @@ def start_update_install(app, release_info: dict) -> None:
     open_in_browser(page)
     return
 
-    if not getattr(sys, "frozen", False):
-        # Running from source — installing the EXE wouldn't update this tree.
-        logger.info("Source run detected; opening download page instead of auto-install")
-        open_in_browser(release_info.get("html_url") or url or DOWNLOADS_URL)
-        return
-
-    if not is_installer_url(url):
-        logger.info("No direct installer asset found; opening download page")
-        open_in_browser(release_info.get("html_url") or url or DOWNLOADS_URL)
-        return
-
-    expected = int(release_info.get("download_size") or 0)
-    try:
-        progress = UpdateProgressWindow(app, tag, expected_size=expected)
-    except Exception as exc:
-        logger.warning("Could not show progress window: %s", exc)
-        open_in_browser(release_info.get("html_url") or url)
-        return
-
-    def _worker():
-        try:
-            installer = download_installer(
-                url,
-                default_download_dir(),
-                progress_cb=progress.update,
-                cancel_event=progress.cancel_event,
-            )
-        except DownloadCancelled:
-            logger.info("Installer download cancelled by user")
-            progress.close()
-            return
-        except Exception as exc:
-            logger.warning("Installer download failed: %s", exc)
-            progress.close()
-            try:
-                schedule_ui_update(_download_failed, app, release_info, str(exc))
-            except Exception:
-                pass
-            return
-
-        progress.close()
-        try:
-            schedule_ui_update(_confirm_install, app, installer, tag)
-        except Exception:
-            pass
-
-    run_background(_worker, name="UpdateDownload")
-
 
 def show_update_notification(app, release_info: dict):
     """Display a themed update notification using the app's dialog system.

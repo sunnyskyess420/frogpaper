@@ -973,6 +973,107 @@ THEMES = {
         "mist_alpha":   0.25,        # subtle fog
     },
 
+    # ── Christmas — deep holiday red base, pine-green buttons, white text ───
+    "christmas": {
+        "bg":          "#1c0d0d",   # dark oxblood night
+        "panel":       "#261213",   # dark red panel
+        "panel2":      "#331818",   # candlelit red panel
+        "surface":     "#451f1f",   # raised cranberry surface
+        "text":        "#ffffff",   # clean white
+        "muted":       "#d8a0a0",   # soft rose secondary text
+        "entrybg":     "#1a0b0b",   # near-black red input field
+        "entryfg":     "#ffffff",
+        "tabbg":       "#2b1414",   # tab bar
+        "tabsel":      "#1d5c33",   # pine selected tab
+        "accent":      "#3f9e63",   # pine green
+        "progress":    "#55b878",   # pine progress
+        "actions":     ["#0f2f1c","#1d5c33","#2e7d4f","#3f9e63","#55b878","#f2c14e"],
+        "button_fg":   "#ffffff",
+        "primary_button_fg": "#0d2113",  # dark pine text on green fill
+        "button_hover":"#3d1818",   # red lift on hover
+        "accent_hover":"#55b878",   # brighter pine on hover
+        "accent_soft": "#ef9a9a",   # soft red for icons/labels
+        "scrollbar_bg":"#261213",
+        "scrollbar_fg":"#3f9e63",
+        "selected_bg": "#1d5c33",
+        "selected_fg": "#ffffff",
+        "border_color":"#5c2b2b",
+        "border_strong":"#7a3636",
+        "separator":   "#331818",
+        "elevated":    "#3a1515",   # popup / toast surface
+        "elevated_hi": "#4d1c1c",   # row hover inside popups
+        "preview_matte":"#140808",  # dark red matte behind previews
+        "success_color":"#81c784",  # holly green
+        "error_color": "#ff8a80",   # berry red
+        "warning_color":"#ffd54f",  # fairy-light gold
+        "tag_fg":      "#ef9a9a",
+        "favorite_color": "#ff5252",  # heart/star icons — bright holiday red
+        "heading_font_size": 11, "label_font_weight": "bold",
+        # Special effects — pine glow & holiday night mist
+        "glow_color":   "#55b878",   # pine fairy-light glow on buttons
+        "glow_intensity": 12,
+        "hover_transition": "",
+        "focus_color":  "#7de3a8",   # pine focus ring
+        "focus_shape":  "oval",
+        "button_radius": 8,
+        "mist_color":   "#1a0a0a",   # holiday night haze in dialogs
+        "mist_alpha":   0.22,
+    },
+
+    # ── Christmas — Blush Light: daylight version of the theme above ─────
+    # Same identity as the dark one (cranberry base, white text, berry
+    # highlights) turned up to a light blush. Pine survives only as the small
+    # "success" accent so the app does not become a fourth green theme.
+    "christmas_light": {
+        "bg":          "#fbeaee",   # blush snow, pink enough to read as the theme
+        "panel":       "#f6dae1",   # rose panel (sidebar)
+        "panel2":      "#efc7d2",   # deeper rose (plain buttons sit here)
+        "surface":     "#ffffff",   # raised white card
+        "text":        "#3d1a20",   # deep maroon ink
+        "muted":       "#6b4149",   # dusty rose secondary text
+        "entrybg":     "#fffdfd",
+        "entryfg":     "#3d1a20",
+        "tabbg":       "#f4d3db",
+        "tabsel":      "#17603b",   # holly selected tab
+        "accent":      "#a5273a",   # cranberry — the dark theme's red, lightened
+        "progress":    "#17603b",   # holly progress: green reads as "go"
+        "actions":     ["#6d1622","#8c1d2c","#a5273a","#c2334a","#d95b6b","#c9a227"],
+        "button_fg":   "#3d1a20",   # dark text on the blush button surface
+        "button_hover":"#f0d2d7",   # deeper blush on hover
+        "button_hover_fg": "#5c1420",
+        "primary_button_fg": "#ffffff",  # white on cranberry
+        "button_hover_primary": "#8c1d2c",
+        "secondary_button_bg": "#17603b",  # holly: actions alternate red/green
+        "secondary_button_fg": "#ffffff",
+        "accent_hover":"#8c1d2c",
+        "accent_soft": "#8c1d2c",   # berry red for icons/labels
+        "scrollbar_bg":"#f4d3db",
+        "scrollbar_fg":"#17603b",
+        "selected_bg": "#17603b",   # selection is holly, actions are cranberry
+        "selected_fg": "#ffffff",
+        "border_color":"#e6bcc5",
+        "border_strong":"#d3a0ab",
+        "separator":   "#f0d2d9",
+        "elevated":    "#ffffff",   # popup / toast surface
+        "elevated_hi": "#fceff2",   # row hover inside popups
+        "preview_matte":"#f9e3e8",  # matte behind previews
+        "success_color":"#17603b",  # holly
+        "error_color": "#a51f18",
+        "warning_color":"#7d5100",  # dark amber reads on blush
+        "tag_fg":      "#17603b",   # tag chips read holly, not cranberry
+        "favorite_color": "#d32f2f", # heart/star icons
+        "heading_font_size": 11, "label_font_weight": "bold",
+        # No glow or haze: both read as smudges on a light background
+        "glow_color":   "",
+        "glow_intensity": 0,
+        "hover_transition": "",
+        "focus_color":  "#a5273a",
+        "focus_shape":  "oval",
+        "button_radius": 8,
+        "mist_color":   "",
+        "mist_alpha":   0,
+    },
+
 }
 
 
@@ -1053,12 +1154,43 @@ THEME_DISPLAY_NAMES = {
 
     # Seasonal
     "halloween":        "🎃 Halloween — Spooky",
+    "christmas":        "🎄 Christmas — Festive",
+    "christmas_light":  "🎀 Christmas — Blush Light",
 
 }
 
 
 
 THEME_INTERNAL_NAMES = {v: k for k, v in THEME_DISPLAY_NAMES.items()}
+
+
+# ── Sidebar logo resolution ──────────────────────────────────────────────
+# A theme can ship its own logo as sidebar_logo_<theme>.png next to the default
+# sidebar_logo.png.  Variants inherit from their family first, so a new
+# "christmas_light" picks up the Christmas badge without a second asset.
+LOGO_EXTENSIONS = (".png", ".jpg", ".jpeg")
+DEFAULT_LOGO = "sidebar_logo.png"
+
+
+def resolve_sidebar_logo(theme_name: str, bundle_dir, default: str = DEFAULT_LOGO):
+    """Path to the logo for *theme_name*: exact match, then family, then default."""
+    from pathlib import Path
+
+    root = Path(bundle_dir)
+    candidates: list[str] = []
+    name = (theme_name or "").strip()
+    if name:
+        candidates.append(f"sidebar_logo_{name}")
+        family = name.split("_")[0]
+        if family and family != name:
+            candidates.append(f"sidebar_logo_{family}")
+    candidates.append("sidebar_logo")
+    for stem in candidates:
+        for ext in LOGO_EXTENSIONS:
+            candidate = root / f"{stem}{ext}"
+            if candidate.exists():
+                return candidate
+    return root / default
 
 
 # ── Theme popup sounds ────────────────────────────────────────────────────
@@ -1068,4 +1200,6 @@ THEME_INTERNAL_NAMES = {v: k for k, v in THEME_DISPLAY_NAMES.items()}
 # silently falls back to the frog ribbit so popups never go mute.
 THEME_POPUP_SOUNDS = {
     "halloween": "halloween-ghost-attack.mp3",
+    "christmas": "christmas-bells.mp3",
+    "christmas_light": "christmas-bells.mp3",
 }

@@ -24,6 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import prompt_builder as pb
+import prompt_validator as pv
 
 
 def make_theme(**overrides):
@@ -139,19 +140,57 @@ class TestBuildPromptCore(unittest.TestCase):
         self.assertTrue(result["prompt"].endswith("."))
 
     def test_fixed_section_order(self):
-        """subject anchor -> scene -> palette -> style -> quality."""
+        """subject anchor -> palette -> scene -> style -> quality."""
         result = pb.build_prompt(make_theme(subject="frog"))
         p = result["prompt"]
         self.assertIn("Single main subject: Calm frog", p)  # mood locks onto subject
         idx_subject = p.index("Single main subject")
+        idx_palette = p.index("refreshing blues tones")   # "cool blues" strengthened
         idx_scene = p.index("misty pine forest at dawn")
-        idx_palette = p.index("cool blues")
         idx_style = p.index("Rendered as:")
         idx_quality = p.index("Ultra-high detail, 8K resolution")
-        self.assertLess(idx_subject, idx_scene)
-        self.assertLess(idx_scene, idx_palette)
-        self.assertLess(idx_palette, idx_style)
+        self.assertLess(idx_subject, idx_palette)
+        # Colour must precede the scene: buried colour words render grey.
+        self.assertLess(idx_palette, idx_scene)
+        self.assertLess(idx_scene, idx_style)
         self.assertLess(idx_style, idx_quality)
+
+    def test_user_color_becomes_explicit_palette_phrase(self):
+        """A bare colour word is strengthened into "... palette with ... tones"."""
+        theme = make_theme(components={"color": "bold amber"})
+        p = pb.build_prompt(theme)["prompt"].lower()
+        self.assertIn("palette", p)
+        self.assertIn("amber", p)
+
+    def test_theme_palette_strengthening_is_idempotent(self):
+        """Already-strengthened theme palettes are not double-wrapped."""
+        theme = make_theme(palette="cool palette with blue-tinted refreshing blues tones")
+        p = pb.build_prompt(theme)["prompt"].lower()
+        self.assertEqual(p.count("palette"), 1)
+
+    def test_neon_color_keeps_modifier_and_intensity(self):
+        """'neon pink' must not collapse to the soft 'pink' mapping."""
+        out = pv.strengthen_color("neon pink")
+        self.assertIn("neon", out)
+        self.assertIn("pink", out)
+        self.assertIn("vivid", out)
+        self.assertNotIn("soft", out)
+
+    def test_neon_green_keeps_neon(self):
+        out = pv.strengthen_color("neon green")
+        self.assertTrue(out.startswith("neon "))
+        self.assertIn("green", out)
+
+    def test_lighting_word_alone_still_gets_palette_anchor(self):
+        self.assertEqual(pv.strengthen_color("neon"), "neon palette")
+
+    def test_existing_mappings_unchanged_by_stranded_modifier_fix(self):
+        self.assertEqual(
+            pv.strengthen_color("bold amber"),
+            "bold warm amber palette with golden honey tones")
+        self.assertEqual(
+            pv.strengthen_color("muted gold"),
+            "muted golden glow palette with warm amber tones")
 
     def test_metadata_passthrough(self):
         result = pb.build_prompt(make_theme())
@@ -210,7 +249,7 @@ class TestBuildPromptPriorities(unittest.TestCase):
     def test_user_color_beats_theme_palette(self):
         theme = make_theme(components={"color": "neon pink"})
         result = pb.build_prompt(theme)
-        self.assertIn("neon pink", result["prompt"])
+        self.assertIn("pink", result["prompt"].lower())
         self.assertNotIn("cool blues", result["prompt"])
 
     def test_user_atmosphere_beats_theme_environment(self):

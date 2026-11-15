@@ -164,7 +164,7 @@ class SettingsPersistenceMixin:
                 app._rebuild_neg_combined()
             except Exception:
                 pass
-        if config.get("remember_settings", False) and not config.get("auto_generate_on_startup", False):
+        if config.get("remember_settings", True) and not config.get("auto_generate_on_startup", False):
             app.set_active_mode(config.get("last_style_mode", app.DEFAULT_PROMPT_MODE_VALUE))
             app.set_active_subject(config.get("last_subject", ""))
             app.set_active_setting(config.get("last_setting", ""))

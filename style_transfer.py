@@ -57,6 +57,73 @@ except Exception as e:
     logging.warning("Could not create STYLED_DIR: %s", e)
 
 
+def _kuwahara(img, radius=4):
+    """Kuwahara filter: per-pixel pick the flattest of four windows.
+
+    This is the technique that actually produces a painted look - flat colour
+    regions with edges preserved - rather than the blur-then-sharpen approach
+    the painterly styles used before.
+    """
+    k = radius + 1
+    f = img.astype(np.float32)
+    sq = f * f
+    means, variances = [], []
+    for oy in (-radius, 0):
+        for ox in (-radius, 0):
+            shifted = np.roll(f, (oy, ox), axis=(0, 1))
+            shifted_sq = np.roll(sq, (oy, ox), axis=(0, 1))
+            m = cv2.blur(shifted, (k, k))
+            v = cv2.blur(shifted_sq, (k, k)) - m * m
+            means.append(m)
+            variances.append(v.sum(axis=2))
+    idx = np.argmin(np.stack(variances, axis=0), axis=0)
+    out = np.zeros_like(f)
+    for i, m in enumerate(means):
+        mask = idx == i
+        out[mask] = m[mask]
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _gray(img):
+    return cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+
+
+def _work_scale(img, max_w=1100):
+    """Downscale heavy filters; returns (image, needs_restore)."""
+    h, w = img.shape[:2]
+    if w <= max_w:
+        return img, None
+    s = max_w / float(w)
+    return cv2.resize(img, (int(w * s), int(h * s)), interpolation=cv2.INTER_AREA), img.shape
+
+
+def _restore(img, shape):
+    if shape is None:
+        return img
+    return cv2.resize(img, (shape[1], shape[0]), interpolation=cv2.INTER_LINEAR)
+
+
+def _kmeans(img, k):
+    z = img.reshape((-1, 3)).astype(np.float32)
+    crit = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 12, 1.0)
+    _, labels, centers = cv2.kmeans(z, k, None, crit, 3, cv2.KMEANS_PP_CENTERS)
+    return centers.astype(np.uint8)[labels.flatten()].reshape(img.shape)
+
+
+def _thicken(mask, n=1):
+    return cv2.dilate(mask, np.ones((2 * n + 1, 2 * n + 1), np.uint8))
+
+
+def _vignette(img, strength=0.6):
+    h, w = img.shape[:2]
+    kx = cv2.getGaussianKernel(w, max(1.0, w * 0.55))
+    ky = cv2.getGaussianKernel(h, max(1.0, h * 0.55))
+    mask = ky @ kx.T
+    mask = mask / mask.max()
+    mask = 1.0 - strength * (1.0 - mask)
+    return (img.astype(np.float32) * mask[:, :, None]).clip(0, 255).astype(np.uint8)
+
+
 class StyleTransfer:
     """Local artistic style transfer using OpenCV and PIL filters."""
     
@@ -189,44 +256,28 @@ class StyleTransfer:
             return img
     
     def _oil_painting(self, img: np.ndarray) -> np.ndarray:
-        """Apply oil painting effect using OpenCV."""
-        try:
-            # Use cv2.xphoto.oilPainting if available (OpenCV contrib modules)
-            try:
-                # Try the specialized oil painting function
-                styled = cv2.xphoto.oilPainting(img, 7, 1)
-                return styled
-            except AttributeError:
-                # Fallback to bilateral filter for oil painting effect
-                styled = cv2.bilateralFilter(img, 15, 80, 80)
-                # Apply multiple times for stronger effect
-                for _ in range(3):
-                    styled = cv2.bilateralFilter(styled, 15, 80, 80)
-                return styled
-        except Exception:
-            # Fallback to simple blur
-            return cv2.GaussianBlur(img, (7, 7), 0)
-    
+        """Kuwahara flats with dark creases - reads as oil on canvas."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 5)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.2, 0, 255).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        creases = _thicken(cv2.Canny(_gray(out), 25, 70), 1)
+        out[creases > 0] = (out[creases > 0] * 0.7).astype(np.uint8)
+        return _restore(out, shape)
+
     def _watercolor(self, img: np.ndarray) -> np.ndarray:
-        """Apply watercolor effect."""
-        # Convert to LAB color space
-        lab = cv2.cvtColor(img, cv2.COLOR_BGR2LAB)
-        
-        # Apply bilateral filter to L channel
-        l, a, b = cv2.split(lab)
-        l_filtered = cv2.bilateralFilter(l, 15, 80, 80)
-        
-        # Merge back
-        lab_filtered = cv2.merge([l_filtered, a, b])
-        
-        # Convert back to BGR
-        result = cv2.cvtColor(lab_filtered, cv2.COLOR_LAB2BGR)
-        
-        # Add slight blur for soft edges
-        result = cv2.GaussianBlur(result, (3, 3), 0)
-        
-        return result
-    
+        """Soft Kuwahara washes, pooled pigment, lifted paper."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 3)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 0.8, 0, 255).astype(np.uint8)
+        hsv[..., 2] = np.clip(hsv[..., 2].astype(np.int16) + 20, 0, 255).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        pools = cv2.GaussianBlur(cv2.Canny(_gray(out), 40, 100), (7, 7), 0)
+        out[pools > 30] = (out[pools > 30] * 0.55).astype(np.uint8)
+        return _restore(out, shape)
+
     def _sketch(self, img: np.ndarray) -> np.ndarray:
         """Apply sketch effect using edge detection."""
         # Convert to grayscale
@@ -247,62 +298,39 @@ class StyleTransfer:
         return result
     
     def _line_art(self, img: np.ndarray) -> np.ndarray:
-        """Apply high-contrast line art effect."""
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Apply adaptive thresholding
-        thresh = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, 
-                                       cv2.THRESH_BINARY, 11, 2)
-        
-        # Convert back to BGR
-        result = cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR)
-        
-        return result
-    
+        """Sparse ink outlines: edges only, small speckle dropped."""
+        gray = cv2.GaussianBlur(_gray(img), (5, 5), 0)
+        edges = cv2.Canny(gray, 80, 200)
+        edges = cv2.morphologyEx(edges, cv2.MORPH_CLOSE, np.ones((2, 2), np.uint8))
+        # drop components smaller than ~40 px so texture noise disappears
+        n, labels, stats, _ = cv2.connectedComponentsWithStats(edges, 8)
+        keep = np.zeros_like(edges)
+        for i in range(1, n):
+            if stats[i, cv2.CC_STAT_AREA] >= 40:
+                keep[labels == i] = 255
+        return cv2.cvtColor(255 - keep, cv2.COLOR_GRAY2BGR)
+
     def _comic_book(self, img: np.ndarray) -> np.ndarray:
-        """Apply comic book effect with bold lines and limited palette."""
-        # Reduce colors (posterize)
-        img_float = img.astype(np.float32) / 255.0
-        img_posterized = np.round(img_float * 4) / 4 * 255
-        img_posterized = img_posterized.astype(np.uint8)
-        
-        # Detect edges
-        gray = cv2.cvtColor(img_posterized, cv2.COLOR_BGR2GRAY)
-        edges = cv2.Canny(gray, 100, 200)
-        edges = cv2.dilate(edges, np.ones((2, 2), np.uint8))
-        
-        # Add edges to image
-        edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        result = cv2.bitwise_and(img_posterized, cv2.bitwise_not(edges_bgr))
-        
-        # Make edges black
-        result = cv2.add(result, edges_bgr)
-        
-        return result
-    
+        """Flat 6-colour print look with clean black keylines."""
+        small, shape = _work_scale(img, 900)
+        out = _kmeans(small, 6)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.35, 0, 255).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        edges = _thicken(cv2.Canny(_gray(out), 90, 180), 1)
+        out[edges > 0] = 0
+        return _restore(out, shape)
+
     def _manga(self, img: np.ndarray) -> np.ndarray:
-        """Apply manga effect with clean lines and high contrast."""
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Apply bilateral filter for smooth areas
-        smooth = cv2.bilateralFilter(gray, 9, 75, 75)
-        
-        # Detect edges
-        edges = cv2.Canny(smooth, 50, 150)
-        
-        # Create white background
-        white_bg = np.ones_like(gray) * 255
-        
-        # Combine edges with white background
-        result_gray = cv2.bitwise_and(white_bg, cv2.bitwise_not(edges))
-        
-        # Convert back to BGR
-        result = cv2.cvtColor(result_gray, cv2.COLOR_GRAY2BGR)
-        
-        return result
-    
+        """Clean ink lines over a 3-tone screentone."""
+        gray = _gray(img)
+        lines = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C,
+                                      cv2.THRESH_BINARY, 25, 12)
+        lines = cv2.medianBlur(lines, 3)
+        tones = (np.round(gray.astype(np.float32) / 85.0) * 85).clip(0, 255).astype(np.uint8)
+        out = np.where(lines == 0, 25, tones).astype(np.uint8)
+        return cv2.cvtColor(out, cv2.COLOR_GRAY2BGR)
+
     def _sepia(self, img: np.ndarray) -> np.ndarray:
         """Apply sepia tone effect."""
         # Convert to float
@@ -353,12 +381,10 @@ class StyleTransfer:
         return result
     
     def _posterize(self, img: np.ndarray) -> np.ndarray:
-        """Apply posterize effect (reduced color palette)."""
-        # Reduce to 4 colors per channel
-        img_float = img.astype(np.float32) / 255.0
-        img_posterized = np.round(img_float * 3) / 3 * 255
-        return img_posterized.astype(np.uint8)
-    
+        """Reduce to 6 real colours (k-means, not bit-masking)."""
+        small, shape = _work_scale(img, 900)
+        return _restore(_kmeans(small, 6), shape)
+
     def _emboss(self, img: np.ndarray) -> np.ndarray:
         """Apply emboss effect (3D relief)."""
         # Create emboss kernel
@@ -375,32 +401,24 @@ class StyleTransfer:
         return embossed
     
     def _edge_enhance(self, img: np.ndarray) -> np.ndarray:
-        """Apply edge enhancement."""
-        # Use PIL for edge enhancement
-        from PIL import ImageFilter
-        pil_img = Image.fromarray(cv2.cvtColor(img, cv2.COLOR_BGR2RGB))
-        enhanced = pil_img.filter(ImageFilter.FIND_EDGES)
-        return cv2.cvtColor(np.array(enhanced), cv2.COLOR_RGB2BGR)
+        """Unsharp mask - crisp, not black."""
+        blur = cv2.GaussianBlur(img, (0, 0), 2.0)
+        out = cv2.addWeighted(img, 1.9, blur, -0.9, 0)
+        return np.clip(out, 0, 255).astype(np.uint8)
 
     def _cyberpunk_neon(self, img: np.ndarray) -> np.ndarray:
-        """Apply cyberpunk neon effect."""
-        # Convert to HSV and enhance neon colors
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        
-        # Enhance saturation and value for neon effect
-        s = cv2.multiply(s, 1.5)
-        v = cv2.multiply(v, 1.2)
-        
-        # Merge back
-        hsv_enhanced = cv2.merge([h, s, v])
-        result = cv2.cvtColor(hsv_enhanced, cv2.COLOR_HSV2BGR)
-        
-        # Add glow effect
-        glow = cv2.GaussianBlur(result, (15, 15), 0)
-        result = cv2.addWeighted(result, 0.7, glow, 0.3, 0)
-        
-        return result
+        """Dark plate, magenta/cyan edge glow."""
+        base = cv2.convertScaleAbs(img, alpha=0.5, beta=-12)
+        hsv = cv2.cvtColor(base, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.7, 0, 255).astype(np.uint8)
+        base = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        edges = cv2.Canny(_gray(img), 60, 140)
+        glow = cv2.GaussianBlur(edges, (0, 0), 8)
+        neon = np.zeros_like(img)
+        neon[..., 0] = glow                     # blue
+        neon[..., 1] = (glow.astype(np.float32) * 0.35).astype(np.uint8)   # green
+        neon[..., 2] = (glow.astype(np.float32) * 0.85).astype(np.uint8)   # red -> magenta
+        return np.clip(cv2.addWeighted(base, 1.0, neon, 1.3, 0), 0, 255).astype(np.uint8)
 
     def _vaporwave(self, img: np.ndarray) -> np.ndarray:
         """Apply vaporwave retro synth effect."""
@@ -470,100 +488,64 @@ class StyleTransfer:
                 return img
 
     def _sketch_pencil(self, img: np.ndarray) -> np.ndarray:
-        """Apply charcoal pencil sketch effect."""
-        # Convert to grayscale
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Apply pencil sketch effect if available (OpenCV contrib modules)
-        try:
-            _, sketch = cv2.pencilSketch(gray, 60, 0.07, 0.02)
-            return cv2.cvtColor(sketch, cv2.COLOR_GRAY2BGR)
-        except (AttributeError, Exception):
-            # Fallback to simple edge detection
-            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-            edges = cv2.Canny(blurred, 50, 150)
-            edges_inv = cv2.bitwise_not(edges)
-            return cv2.cvtColor(edges_inv, cv2.COLOR_GRAY2BGR)
+        """Classic pencil dodge - soft graphite, no hard edges."""
+        gray = _gray(img)
+        inv = 255 - gray
+        blur = cv2.GaussianBlur(inv, (21, 21), 0)
+        dodge = cv2.divide(gray, 255 - blur, scale=256)
+        return cv2.cvtColor(dodge, cv2.COLOR_GRAY2BGR)
 
     def _gouache(self, img: np.ndarray) -> np.ndarray:
-        """Apply gouache opaque watercolor effect."""
-        # Enhance colors with bilateral filter
-        bilateral = cv2.bilateralFilter(img, 15, 80, 80)
-        
-        # Add matte finish with reduced contrast
-        result = cv2.addWeighted(bilateral, 0.8, img, 0.2, 0)
-        
-        return result
+        """Small Kuwahara dabs, chalky matte, faint canvas grain."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 3)
+        mean = out.reshape(-1, 3).mean(axis=0)
+        out = (out.astype(np.float32) * 0.7 + mean * 0.3).clip(0, 255).astype(np.uint8)
+        out = cv2.convertScaleAbs(out, alpha=0.85, beta=26)
+        grain = np.random.normal(0, 3.5, out.shape).astype(np.int16)
+        return _restore(np.clip(out.astype(np.int16) + grain, 0, 255).astype(np.uint8), shape)
 
     def _art_deco(self, img: np.ndarray) -> np.ndarray:
-        """Apply Art Deco geometric patterns effect."""
-        # Create geometric pattern overlay
-        pattern = np.zeros_like(img)
-        h, w = pattern.shape[:2]
-        
-        # Add gold accent lines
-        for i in range(0, h, 20):
-            cv2.line(pattern, (0, i), (w, i), (255, 215, 0), 2)
-        
-        # Blend with original
-        result = cv2.addWeighted(img, 0.7, pattern, 0.3, 0)
-        
-        return result
+        """Gold-on-ink duotone with a geometric frame."""
+        gray = cv2.equalizeHist(_gray(img))
+        t = (gray.astype(np.float32) / 255.0)[..., None]
+        ink = np.array([40, 22, 14], np.float32)      # BGR
+        gold = np.array([90, 190, 235], np.float32)
+        out = (ink * (1.0 - t) + gold * t).astype(np.uint8)
+        h, w = out.shape[:2]
+        m = max(8, int(min(h, w) * 0.02))
+        cv2.rectangle(out, (m, m), (w - m, h - m), (90, 190, 235), 2)
+        cv2.rectangle(out, (2 * m, 2 * m), (w - 2 * m, h - 2 * m), (60, 140, 190), 1)
+        return out
 
     def _surreal_dali(self, img: np.ndarray) -> np.ndarray:
-        """Apply surrealist melting effect."""
-        try:
-            # Apply wave distortion for melting effect using numpy vectorization
-            h, w = img.shape[:2]
-            
-            # Create coordinate grids
-            y_coords, x_coords = np.meshgrid(np.arange(h), np.arange(w), indexing='ij')
-            
-            # Calculate wave offsets
-            offset_x = 15 * np.sin(2 * np.pi * y_coords / h)
-            offset_y = 15 * np.cos(2 * np.pi * x_coords / w)
-            
-            # Create remap maps
-            map_x = (x_coords + offset_x).astype(np.float32)
-            map_y = (y_coords + offset_y).astype(np.float32)
-            
-            # Apply distortion
-            result = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
-            
-            # Add slight blur for dreamy effect
-            result = cv2.GaussianBlur(result, (3, 3), 0)
-            
-            return result
-        except Exception:
-            # Fallback: simple wave distortion using resize
-            try:
-                h, w = img.shape[:2]
-                # Create wavy effect by alternating resize
-                small_h = h // 2
-                small = cv2.resize(img, (w, small_h))
-                result = cv2.resize(small, (w, h))
-                return result
-            except Exception:
-                return img
+        """Dream grade with a strong horizontal melt and colour fringing."""
+        h, w = img.shape[:2]
+        xs = np.arange(w, dtype=np.float32)
+        ys = np.arange(h, dtype=np.float32)[:, None]
+        shift = np.sin(xs / max(1.0, w / 4.0)) * (h * 0.05)
+        map_x = (np.tile(xs, (h, 1)) + shift).astype(np.float32)
+        map_y = (np.tile(ys, (1, w)) + shift * 0.75).astype(np.float32)
+        out = cv2.remap(img, map_x, map_y, cv2.INTER_LINEAR, borderMode=cv2.BORDER_REFLECT)
+        # colour fringing: nudge the channels apart like a bad lens
+        out[..., 0] = np.roll(out[..., 0], 2, axis=1)
+        out[..., 2] = np.roll(out[..., 2], -2, axis=1)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.3, 0, 255).astype(np.uint8)
+        hsv[..., 0] = ((hsv[..., 0].astype(np.int16) + 5) % 180).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        return _vignette(cv2.convertScaleAbs(out, alpha=1.1, beta=-12), 0.55)
 
     def _3d_render(self, img: np.ndarray) -> np.ndarray:
-        """Apply digital 3D render effect."""
-        # Add depth and lighting effects
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Create depth map
-        depth = cv2.GaussianBlur(gray, (0, 0), 15)
-        
-        # Apply emboss for 3D effect
-        kernel = np.array([[-1, -1, -1],
-                          [-1, 8, -1],
-                          [-1, -1, 8]])
-        embossed = cv2.filter2D(img, -1, kernel)
-        
-        # Add glossy finish
-        result = cv2.addWeighted(embossed, 0.8, img, 0.2, 0)
-        
-        return result
+        """CG look: Kuwahara surfaces, glossy specular bloom, punchy grade."""
+        small, shape = _work_scale(img, 1100)
+        base = _kuwahara(small, 3)
+        base = cv2.convertScaleAbs(base, alpha=1.12, beta=4)
+        lum = _gray(base).astype(np.float32) / 255.0
+        spec = np.clip((lum - 0.62) / 0.38, 0, 1) ** 1.4
+        glow = cv2.GaussianBlur((spec[..., None] * base).astype(np.uint8), (0, 0), 14)
+        out = cv2.addWeighted(base, 1.0, glow, 1.0, 0)
+        return _restore(np.clip(out, 0, 255).astype(np.uint8), shape)
 
     def _anime_key(self, img: np.ndarray) -> np.ndarray:
         """Apply anime cel shading effect."""
@@ -584,23 +566,10 @@ class StyleTransfer:
         return result
 
     def _noir_bw(self, img: np.ndarray) -> np.ndarray:
-        """Apply high contrast noir B&W effect."""
-        # Convert to grayscale with high contrast
-        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-        
-        # Enhance contrast dramatically
-        enhanced = cv2.convertScaleAbs(gray, alpha=2.0, beta=0)
-        
-        # Add dramatic shadows
-        kernel = np.array([[0, -1, 0],
-                          [-1, 3, -1],
-                          [0, -1, 0]])
-        shadows = cv2.filter2D(enhanced, -1, kernel)
-        
-        # Combine
-        result = cv2.addWeighted(enhanced, 0.7, shadows, 0.3, 0)
-        
-        return result
+        """High-contrast black and white with a vignette."""
+        gray = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8)).apply(_gray(img))
+        gray = cv2.convertScaleAbs(gray, alpha=1.15, beta=-12)
+        return _vignette(cv2.cvtColor(gray, cv2.COLOR_GRAY2BGR), 0.65)
 
     def _vintage_sepia(self, img: np.ndarray) -> np.ndarray:
         """Apply aged photo sepia effect."""
@@ -624,47 +593,26 @@ class StyleTransfer:
         return aged
 
     def _pop_art(self, img: np.ndarray) -> np.ndarray:
-        """Apply bold colors comic style effect."""
-        # Enhance colors dramatically
-        hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        
-        # Boost saturation for comic effect
-        s = cv2.multiply(s, 1.5)
-        v = cv2.multiply(v, 1.1)
-        
-        enhanced_hsv = cv2.merge([h, s, v])
-        result = cv2.cvtColor(enhanced_hsv, cv2.COLOR_HSV2BGR)
-        
-        # Add comic book style outline
-        gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
-        edges = cv2.adaptiveThreshold(gray, 255, cv2.ADAPTIVE_THRESH_MEAN_C, cv2.THRESH_BINARY, 9, 2)
-        edges_bgr = cv2.cvtColor(edges, cv2.COLOR_GRAY2BGR)
-        
-        # Combine
-        final = cv2.addWeighted(result, 0.8, edges_bgr, 0.2, 0)
-        
-        return final
+        """Four loud colours with thin black keylines."""
+        small, shape = _work_scale(img, 800)
+        out = _kmeans(small, 4)
+        hsv = cv2.cvtColor(out, cv2.COLOR_BGR2HSV)
+        hsv[..., 1] = np.clip(hsv[..., 1].astype(np.int16) * 1.6, 0, 255).astype(np.uint8)
+        out = cv2.cvtColor(hsv, cv2.COLOR_HSV2BGR)
+        edges = _thicken(cv2.Canny(_gray(out), 80, 160), 1)
+        out[edges > 0] = 0
+        return _restore(out, shape)
 
     def _impressionist(self, img: np.ndarray) -> np.ndarray:
-        """Apply impressionist soft brushstroke effect."""
-        # Apply multiple bilateral filters for soft effect
-        result = img.copy()
-        for _ in range(3):
-            result = cv2.bilateralFilter(result, 15, 80, 80)
-        
-        # Add soft blur for dreamy effect
-        result = cv2.GaussianBlur(result, (3, 3), 0)
-        
-        # Enhance colors slightly
-        hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV)
-        h, s, v = cv2.split(hsv)
-        s = cv2.multiply(s, 1.1)
-        enhanced_hsv = cv2.merge([h, s, v])
-        result = cv2.cvtColor(enhanced_hsv, cv2.COLOR_HSV2BGR)
-        
-        return result
-    
+        """Fine Kuwahara dabs plus broken, dappled light."""
+        small, shape = _work_scale(img, 1100)
+        out = _kuwahara(small, 2)
+        h, w = out.shape[:2]
+        dapple = cv2.GaussianBlur(np.random.normal(0, 14, (h, w)).astype(np.float32), (0, 0), 3)
+        out = np.clip(out.astype(np.float32) + dapple[:, :, None], 0, 255).astype(np.uint8)
+        out = cv2.convertScaleAbs(out, alpha=1.08, beta=16)
+        return _restore(out, shape)
+
     def get_style_list(self) -> list:
         """Get list of available styles."""
         return list(self.available_styles.keys())

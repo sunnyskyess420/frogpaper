@@ -154,6 +154,25 @@ def load_json_list(path: Path) -> list:
         return []
 
 
+# ── Mouse wheel ─────────────────────────────────────────────────────────
+# Windows sends delta=120 per notch, but precision touchpads and high-res
+# wheels send smaller values.  int(-delta / 120) truncated those to 0, so
+# scrolling sometimes did nothing for several flicks and then jumped.
+WHEEL_LINES_PER_NOTCH = 3
+
+
+def wheel_steps(event, per_notch: int = WHEEL_LINES_PER_NOTCH) -> int:
+    """Convert a mouse-wheel event into scroll units, never returning 0."""
+    delta = getattr(event, "delta", 0) or 0
+    if not delta:
+        return 0
+    raw = -delta / 120.0
+    steps = int(raw * per_notch)
+    if steps == 0:
+        steps = -1 if raw < 0 else 1
+    return steps
+
+
 def atomic_write_json(path: Path, data, indent: int = 2, ensure_ascii: bool = False) -> None:
     """Write JSON atomically using temp file + os.replace to prevent corruption."""
     path = Path(path)
@@ -275,22 +294,36 @@ def _migrate_config(data: dict) -> dict:
     return data
 
 
+_CONFIG_UNREADABLE = False
+
+
+_CONFIG_ERROR_LOGGED = False
+
+
 def load_config() -> dict:
+    global _CONFIG_UNREADABLE, _CONFIG_ERROR_LOGGED
     if not CONFIG_FILE.exists():
+        _CONFIG_UNREADABLE = False
+        _CONFIG_ERROR_LOGGED = False
         return {}
     try:
-        with open(CONFIG_FILE, "r", encoding="utf-8") as f:
+        with open(CONFIG_FILE, "r", encoding="utf-8-sig") as f:
             data = json.load(f)
     except Exception as e:
         # Broken/corrupt config: back the broken file up so nothing is
         # silently lost, then start clean — the app treats this as fresh.
-        logger.error("Failed to read config (backing it up): %s", e)
+        if not _CONFIG_ERROR_LOGGED:
+            logger.error("Failed to read config (backing it up): %s", e)
+            _CONFIG_ERROR_LOGGED = True
         try:
             import shutil
             shutil.copy2(CONFIG_FILE, CONFIG_FILE.with_name("config.json.corrupt"))
         except Exception:
             pass
+        _CONFIG_UNREADABLE = True
         return {}
+    _CONFIG_UNREADABLE = False
+    _CONFIG_ERROR_LOGGED = False
     data = _validate_config(data)
     data = _migrate_config(data)
     return data
@@ -300,6 +333,12 @@ def save_config(data: dict) -> None:
     try:
         clean_data = dict(data or {})
         clean_data["config_version"] = CONFIG_SCHEMA_VERSION
+        if _CONFIG_UNREADABLE and CONFIG_FILE.exists() and CONFIG_FILE.stat().st_size > 2:
+            # Never overwrite a config we could not read this session: that
+            # replaced the user's keys with the caller's partial dict.
+            logger.error("Refusing to overwrite unreadable config.json")
+            atomic_write_json(CONFIG_FILE.with_name("config.json.new"), clean_data, indent=2)
+            return
         atomic_write_json(CONFIG_FILE, clean_data, indent=2)
     except Exception as e:
         logger.error("Failed to write config: %s", e)

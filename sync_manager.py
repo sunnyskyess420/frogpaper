@@ -272,9 +272,17 @@ class SyncManager:
         
         logger.info(f"Total files found: {len(current_files)}, Added: {len(added)}, Modified: {len(modified)}")
         
-        # Detect deleted files
+        # Detect deleted files.  Only a file inside a directory scanned this
+        # run can be proven deleted: a narrowed Sync Scope must never turn
+        # every out-of-scope image into a remote deletion.
         for file_key in self.sync_metadata["files"]:
             file_path = BASE_DIR / file_key
+            try:
+                in_scope = any(file_path.is_relative_to(d) for d in sync_dirs)
+            except (AttributeError, ValueError):
+                in_scope = False
+            if not in_scope:
+                continue
             if file_path not in current_files:
                 deleted.append(file_path)
         

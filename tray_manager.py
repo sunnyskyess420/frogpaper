@@ -40,6 +40,15 @@ from utils import get_app_dir, get_bundle_dir
 logger = logging.getLogger(__name__)
 
 
+def _app_version() -> str:
+    """Version of the running app, shown as a static row in the tray menu."""
+    try:
+        from app import APP_VERSION
+        return APP_VERSION
+    except Exception:
+        return ""
+
+
 class TrayManager:
     """System tray icon and menu management."""
 
@@ -209,6 +218,11 @@ class TrayManager:
                         visible=lambda item: getattr(app.slideshow, "running", False),
                     ),
                     pystray.Menu.SEPARATOR,
+                    pystray.MenuItem(
+                        f"FrogPaper v{_app_version()}",
+                        None,
+                        enabled=False,
+                    ),
                     pystray.MenuItem("About FrogPaper", app._tray_show_about),
                     pystray.MenuItem("Quit FrogPaper", app._tray_exit),
                 )
@@ -327,7 +341,7 @@ class TrayManager:
             app = self.app
             schedule_ui_update(app._restore_window)
             # The delayed call must be scheduled from the main thread
-            schedule_ui_update(lambda: app.root.after(100, app.generate_image))
+            schedule_ui_update(lambda: app.root.after(100, app.generate))
 
 
     def _tray_next_wallpaper(self, icon=None, item=None):

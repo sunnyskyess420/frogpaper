@@ -72,7 +72,6 @@ REM (config.json with API keys, wallpapers, logs, frogpaper.db) and
 REM rmdir /s destroyed all of it. Remove only the previous build.
 if exist "dist\FrogPaper.exe" del /q "dist\FrogPaper.exe"
 if exist "dist\_internal" rmdir /s /q "dist\_internal"
-if exist "dist\FrogPaper" rmdir /s /q "dist\FrogPaper"
 if exist __pycache__ rmdir /s /q __pycache__
 for /d %%i in ("%TEMP%\PyInstaller\*") do rmdir /s /q "%%i" 2>nul
 echo Cleanup complete.

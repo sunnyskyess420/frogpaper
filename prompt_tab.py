@@ -10,10 +10,41 @@ from negative_manager import (
 )
 
 from theme import COLOR_DIM_GRAY, COLOR_MID_GRAY  # shared color constants (migrated inline hex)
+from app_prompt_data import (
+    COLOR_FAMILIES_PARSE,
+    COLOR_VARIATIONS_PARSE,
+    canonical_option,
+    is_valid_color_combo,
+)
 
 
 
 logger = logging.getLogger(__name__)
+
+
+def parse_color_value(value, families, variations):
+    """Split "variation family" into (family, variation).
+
+    Both halves may be multi-word: "high contrast amber" -> ("amber",
+    "high contrast"), and "forest green" is a family by itself.  The old
+    parser split on the first space only, so any of those produced an empty
+    colour and the prompt silently lost its palette.
+    """
+    text = (value or "").strip().lower()
+    if not text:
+        return "", ""
+    fam_set, var_set = set(families), set(variations)
+    if text in fam_set:
+        return text, ""
+    if text in var_set:
+        return "", text
+    tokens = text.split()
+    for cut in range(len(tokens) - 1, 0, -1):
+        family = " ".join(tokens[cut:])
+        variation = " ".join(tokens[:cut])
+        if family in fam_set and variation in var_set:
+            return family, variation
+    return "", ""
 
 
 class PromptTab:
@@ -1323,7 +1354,8 @@ class PromptTab:
             progress_frame.grid_propagate(False)
             progress_frame.columnconfigure(0, weight=1)
             progress_frame.rowconfigure(0, weight=1)
-            app.progress = ttk.Progressbar(progress_frame, mode="determinate", maximum=100)
+            app.progress = ttk.Progressbar(progress_frame, mode="determinate", maximum=100,
+                                   style="Frog.Horizontal.TProgressbar")
             app.progress.grid(row=0, column=0, sticky="nsew")
             app.progress_overlay_label = tk.Label(progress_frame, text="", font=app.small_font, anchor="center")
             app.progress_overlay_label.place(relx=0.5, rely=0.5, anchor="center")
@@ -1335,7 +1367,8 @@ class PromptTab:
             image_progress_frame.grid_propagate(False)
             image_progress_frame.columnconfigure(0, weight=1)
             image_progress_frame.rowconfigure(0, weight=1)
-            app.image_progress = ttk.Progressbar(image_progress_frame, mode="determinate", maximum=100)
+            app.image_progress = ttk.Progressbar(image_progress_frame, mode="determinate", maximum=100,
+                                         style="Frog.Horizontal.TProgressbar")
             app.image_progress.grid(row=0, column=0, sticky="nsew")
             app.image_progress.grid_remove()  # Hide initially
             app.image_progress_overlay_label = tk.Label(image_progress_frame, text="", font=app.small_font, anchor="center")
@@ -1356,8 +1389,6 @@ class PromptTab:
             img_actions = ttk.Frame(preview_frame)
             img_actions.grid(row=1, column=0, columnspan=2, sticky="w", pady=(0, 6))
 
-            app._btn_img_generate = ttk.Button(img_actions, text=" Generate Image",
-                       command=app.generate_selected_image).pack(side="left", padx=(0, 6))
             app._btn_img_wallpaper = ttk.Button(img_actions, text=" Set as Wallpaper",
                        command=app.generate_and_set).pack(side="left", padx=(0, 6))
             app._btn_img_cancel = ttk.Button(img_actions, text=" Cancel",
@@ -2311,34 +2342,17 @@ class PromptTab:
         refs = app._get_pb_quick_refs()
         if not refs:
             return
-        # Valid sets derived from module-level constants
-        valid_families = set(app.COLOR_FAMILIES)
-        valid_variations = set(app.COLOR_VARIATIONS)
+        # Valid sets come from the parse vocabulary, which still contains the
+        # colour words that were retired from the dropdown, so a preset saved
+        # before the prune keeps its palette instead of losing it silently.
+        valid_families = set(COLOR_FAMILIES_PARSE)
+        valid_variations = set(COLOR_VARIATIONS_PARSE)
         # Parse value like "rich gold" -> family="gold", variation="rich"
-        value = (value or "").strip().lower()
-        family = ""
-        variation = ""
-        if value:
-            parts = value.split(maxsplit=1)
-            if len(parts) == 2:
-                var, fam = parts
-                # Validate both parts
-                if fam in valid_families and var in valid_variations:
-                    family = fam
-                    variation = var
-                elif fam in valid_families:
-                    family = fam
-                    variation = ""
-                elif var in valid_families:
-                    family = var
-                    variation = ""
-            else:
-                single = parts[0]
-                # Single word: must be a valid family to be accepted
-                if single in valid_families:
-                    family = single
-                    variation = ""
-                # If single word is not a valid family, leave both empty (don't show partial tokens like "tones")
+        family, variation = parse_color_value(value, valid_families, valid_variations)
+        # A combination the dropdown would never offer falls back to the family
+        # alone rather than sending nonsense such as "deep white" to the model.
+        if variation and not is_valid_color_combo(family, variation):
+            variation = ""
 
         try:
             refs["color_family_var"].set(family)
@@ -2357,7 +2371,7 @@ class PromptTab:
 
     def set_active_lighting(self, value):
         app = self.app
-        app._set_active_entry("lighting_entry", value)
+        app._set_active_entry("lighting_entry", canonical_option("lighting", value))
 
 
     def set_active_mode(self, mode_value):
@@ -2400,6 +2414,7 @@ class PromptTab:
     def set_active_setting(self, value):
         """Set setting in Quick Build controls."""
         app = self.app
+        value = canonical_option("setting", value)
         app.prompt_builder_values["setting"] = value or ""
         app._set_active_entry("setting_entry", value or "")
 

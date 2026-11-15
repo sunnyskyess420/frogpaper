@@ -11,6 +11,7 @@ working untouched.
 
 import logging
 import time
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -24,9 +25,10 @@ from app_runtime import (
     schedule_ui_update,
 )
 from gallery_manager import save_prompt_parameters
+import image_events
 from prompt_builder import build_all_prompts
 from theme_mixer import generate_themes
-from utils import has_huggingface_token, load_json_list, save_json_list
+from utils import load_json_list, save_json_list
 
 if PINNED_DROPDOWNS_AVAILABLE:
     from app_runtime import get_manager
@@ -35,8 +37,53 @@ logger = logging.getLogger(__name__)
 
 
 
+def choose_generation_source(has_wallpaper: bool, prompt_changed: bool) -> str:
+    """Decide what Ctrl+N should build.
+
+    * nothing on screen yet   -> roll a random prompt
+    * prompt edited since the last image -> honour the built prompt
+    * otherwise               -> keep it surprising, roll a random prompt
+    """
+    if not has_wallpaper:
+        return "random"
+    return "prompt" if prompt_changed else "random"
+
+
+def prompt_fingerprint(prompt: str) -> str:
+    """Short digest of the prompt text.
+
+    The image providers here expose no seed parameter, so two runs of the same
+    prompt are not byte-identical; the hash at least lets us group them.
+    """
+    try:
+        return hashlib.sha1((prompt or "").encode("utf-8")).hexdigest()[:16]
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
 class FrogPaperAppGenerationMixin:
     """Mixed into FrogPaperApp (see app.py); methods are verbatim."""
+
+    def _current_prompt_params(self):
+        """Snapshot of the eight option fields.
+
+        Used when a generation path arrives without ``ui_values``, so that no
+        image is left unrecorded.
+        """
+        try:
+            return {
+                "subject": self.get_active_subject(),
+                "setting": self.get_active_setting(),
+                "style": self.get_active_style(),
+                "lighting": self.get_active_lighting(),
+                "mood": self.get_active_mood(),
+                "color": self.get_active_color(),
+                "atmosphere": self.get_active_atmosphere(),
+                "mode": self.get_active_mode(),
+            }
+        except Exception as exc:
+            logger.debug("could not snapshot prompt params: %s", exc)
+            return {}
 
     def generate(self, show_progress=True):
 
@@ -45,6 +92,12 @@ class FrogPaperAppGenerationMixin:
             self._dialog.info("Please wait", "Generation is already in progress.")
 
             return
+
+        # Consume the source flag a caller left behind (startup auto-generate,
+        # random theme) so the saved prompt_params row records where the image
+        # came from.  Defaults to a manual generation.
+        self._gen_source = getattr(self, "_pending_gen_source", None) or image_events.SOURCE_MANUAL
+        self._pending_gen_source = None
 
         # Read from sidebar widgets (same as generate_prompt_only)
         logger.debug(f"generate: Reading from sidebar widgets")
@@ -191,17 +244,14 @@ class FrogPaperAppGenerationMixin:
 
         subject_lock = self.get_active_subject_lock()
 
-        logger.debug(f"generate: After getter functions:")
-        logger.info(f"  subject='{subject}'")
-        logger.info(f"  style='{style}'")
-        logger.info(f"  lighting='{lighting}'")
-        logger.info(f"  setting='{setting}'")
-        logger.info(f"  atmosphere='{atmosphere}'")
-        logger.info(f"  mood='{mood}'")
-        logger.info(f"  color='{color}'")
-        logger.info(f"  mode='{mode}'")
-        logger.info(f"  subject_lock={subject_lock}")
+        self._last_generated_signature = (
+            subject, setting, style, lighting, mood, color, atmosphere, mode)
 
+        logger.debug(
+            "generate: subject=%r style=%r lighting=%r setting=%r atmosphere=%r "
+            "mood=%r color=%r mode=%r subject_lock=%s",
+            subject, style, lighting, setting, atmosphere, mood, color, mode,
+            subject_lock)
         # Check if audit mode is enabled
         run_audit = False
         if hasattr(self, 'prompt_audit_var'):
@@ -231,6 +281,40 @@ class FrogPaperAppGenerationMixin:
             subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit
 
         )
+
+    def prompt_signature(self) -> tuple:
+        """Everything Ctrl+N compares to decide if the prompt was edited."""
+        return (
+            self.get_active_subject(), self.get_active_setting(),
+            self.get_active_style(), self.get_active_lighting(),
+            self.get_active_mood(), self.get_active_color(),
+            self.get_active_atmosphere(), self.get_active_mode(),
+        )
+
+    def _has_any_wallpaper(self) -> bool:
+        if getattr(self, "last_image_path", None):
+            return True
+        if getattr(self, "gallery_images", None):
+            return True
+        return bool(getattr(getattr(self, "slideshow", None), "history", None))
+
+    def smart_generate(self):
+        """Ctrl+N: random when idle, the built prompt when you just edited it."""
+        sig = self.prompt_signature()
+        last = getattr(self, "_last_generated_signature", None)
+        if last is None:
+            # First press with no history: take today's dropdowns as the
+            # baseline so an untouched prompt counts as "not changed".
+            self._last_generated_signature = sig
+            last = sig
+        source = choose_generation_source(self._has_any_wallpaper(), sig != last)
+        if source == "random":
+            try:
+                self.random_theme()
+            except Exception as exc:
+                logger.warning("Random prompt failed, using current values: %s", exc)
+        logger.info("Ctrl+N generation source: %s", source)
+        self.generate()
 
     def generate_prompt_only(self):
         """Generate prompt text from sidebar choices without generating the image.
@@ -463,18 +547,12 @@ class FrogPaperAppGenerationMixin:
     def _generate_themes_thread(self, subject, setting, style, lighting, mood, color, atmosphere, mode, subject_lock, run_audit=False):
 
         try:
-            logger.debug(f"_generate_themes_thread called with:")
-            logger.info(f"  subject='{subject}'")
-            logger.info(f"  setting='{setting}'")
-            logger.info(f"  style='{style}'")
-            logger.info(f"  lighting='{lighting}'")
-            logger.info(f"  mood='{mood}'")
-            logger.info(f"  color='{color}'")
-            logger.info(f"  atmosphere='{atmosphere}'")
-            logger.info(f"  mode='{mode}'")
-            logger.info(f"  subject_lock={subject_lock}")
-            logger.info(f"  run_audit={run_audit}")
-
+            logger.info(
+                "Generating: subject=%r style=%r lighting=%r setting=%r "
+                "atmosphere=%r mood=%r color=%r mode=%r subject_lock=%s "
+                "run_audit=%s",
+                subject, style, lighting, setting, atmosphere, mood, color, mode,
+                subject_lock, run_audit)
             if self.cancel_event.is_set(): return
 
             # Values are already passed as parameters from sidebar widget reading
@@ -632,7 +710,8 @@ class FrogPaperAppGenerationMixin:
                     False,  # auto_set_wallpaper
                     ui_values.get('subject') or 'wallpaper',
                     ui_values.get('style', ''),
-                    ui_values  # Pass full ui_values to save prompt parameters
+                    ui_values,  # full ui_values -> saved prompt parameters
+                    getattr(self, "_gen_source", image_events.SOURCE_MANUAL),
                 )
         else:
             self.current_prompt_data = None
@@ -732,39 +811,6 @@ class FrogPaperAppGenerationMixin:
 
     def selected_prompt(self):
         return self.current_prompt_data
-
-
-
-    def generate_selected_image(self):
-
-            if not has_huggingface_token():
-
-                self._dialog.error("No API Key", "No HuggingFace token found. Go to Settings and enter your token, or switch to Pollinations.ai (free, no key needed).")
-
-                return
-
-            data = self.selected_prompt()
-
-            if not data:
-
-                self._dialog.info("No preview", "Generate a preview first.")
-
-                return
-
-            self.run_image_generation(
-
-                data.get("prompt", ""), 
-
-                data.get("theme_sentence", "prompt"), 
-
-                data.get("style_mode", self.current_mode()),
-
-                subject=data.get("subject"),
-
-                art_style=data.get("art_style"),
-                ui_values=self.current_prompt_data
-
-            )
 
 
 
@@ -873,6 +919,9 @@ class FrogPaperAppGenerationMixin:
                 logger.debug("image_progress not found")
 
             self.cancel_event.clear()
+            # A fresh id per run: a worker from an earlier (cancelled) run must
+            # not publish its image into this one after cancel_event is cleared.
+            self._gen_run_id = getattr(self, "_gen_run_id", 0) + 1
 
             # Show the status label
             self.image_generation_status_label.config(text="🔄 Generating image...")
@@ -887,13 +936,15 @@ class FrogPaperAppGenerationMixin:
 
                 self._generate_image_thread, 
 
-                prompt, filename, auto_set_wallpaper, subject, art_style, ui_values
+                prompt, filename, auto_set_wallpaper, subject, art_style, ui_values,
+                getattr(self, "_gen_source", image_events.SOURCE_MANUAL),
 
             )
 
 
 
-    def _generate_image_thread(self, prompt, filename, auto_set_wallpaper, subject, art_style, ui_values=None):
+    def _generate_image_thread(self, prompt, filename, auto_set_wallpaper, subject, art_style, ui_values=None, source=None):
+            run_id = getattr(self, "_gen_run_id", 0)
 
             def status_cb(msg):
 
@@ -914,7 +965,7 @@ class FrogPaperAppGenerationMixin:
                 # Get live dimensions from the UI dropdown, not stale config
                 live_dims = self.get_current_dimensions() if hasattr(self, 'get_current_dimensions') else None
 
-                image_path = generate_image(prompt, subject=subject, style=art_style, filename=filename, status_callback=status_cb, dimensions=live_dims)
+                image_path = generate_image(prompt, subject=subject, style=art_style, filename=filename, status_callback=status_cb, dimensions=live_dims, cancel_event=self.cancel_event)
 
                 if self.cancel_event.is_set():
 
@@ -922,12 +973,22 @@ class FrogPaperAppGenerationMixin:
 
                     return
 
-                # Save prompt parameters with the generated image
-                if image_path and ui_values:
-                    try:
-                        save_prompt_parameters(image_path, ui_values)
-                    except Exception as e:
-                        logger.error(f"[ERROR] Failed to save prompt parameters: {e}")
+                # Save prompt parameters with the generated image.  Every image
+                # is recorded now, not just the runs that carried ui_values - a
+                # row per image is what makes the option report trustworthy.
+                if image_path:
+                    params = dict(ui_values) if ui_values else self._current_prompt_params()
+                    if params:
+                        params.setdefault("source", source or image_events.SOURCE_MANUAL)
+                        params.setdefault("prompt_hash", prompt_fingerprint(prompt))
+                        try:
+                            save_prompt_parameters(image_path, params)
+                        except Exception as e:
+                            logger.error(f"[ERROR] Failed to save prompt parameters: {e}")
+                        try:
+                            image_events.log_generation(image_path, params, source=params["source"])
+                        except Exception as e:
+                            logger.debug(f"image_events: generation not logged: {e}")
 
                 # Auto-tag from filename: SUBJECT_STYLE_YYYYMMDD_N.png
                 if image_path and subject:
@@ -944,6 +1005,9 @@ class FrogPaperAppGenerationMixin:
                     except Exception as e:
                         logger.error(f"[ERROR] Failed to auto-tag image: {e}")
 
+                if run_id != getattr(self, "_gen_run_id", 0):
+                    logger.info("Discarding image from a superseded run")
+                    return
                 schedule_ui_update(self._on_generation_complete, image_path, auto_set_wallpaper, None)
 
             except Exception as e:
@@ -954,6 +1018,8 @@ class FrogPaperAppGenerationMixin:
 
                     return
 
+                if run_id != getattr(self, "_gen_run_id", 0):
+                    return
                 schedule_ui_update(self._on_generation_complete, None, False, str(e))
 
 

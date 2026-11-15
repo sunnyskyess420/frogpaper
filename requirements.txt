@@ -70,10 +70,12 @@ sqlalchemy>=2.0.0,<3.0.0
 # after installing, and re-test style_transfer on Windows before changing.
 opencv-python==4.14.0.94
 
-# sentence-transformers pulls torch (~2-3 GB). It is an optional, dev-only
-# dependency; CI uses a lean install and the packaged EXE excludes it via
-# FrogPaper.spec. Pin the upper bound to prevent 7.x breakage.
-sentence-transformers>=5.6.0,<7.0.0
+# sentence-transformers (and the ~2-3 GB of PyTorch it drags in) moved to
+# requirements-optional.txt. Nothing here imports it at runtime - the keyword
+# expander guards the import and falls back to NLTK - and FrogPaper.spec
+# excludes it from the EXE. Keeping it out of this manifest also keeps
+# proprietary NVIDIA CUDA wheels out of dependency/licence scans and saves
+# several minutes on every clean build.
 
 # --- Build tooling ---
 pyinstaller>=6.0.0,<7.0.0

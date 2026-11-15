@@ -150,13 +150,23 @@ class FrogPaperAppSystemMixin:
     
     def _show_first_run_prompt(self):
         """Show a prompt to start the first-run tutorial."""
+        # A withdrawn/unmapped window means this is not a real first run
+        # (headless test, tray-only start).  A modal ask() would block
+        # whatever is pumping the Tk loop, so skip it entirely.
+        try:
+            if not self.root.winfo_viewable():
+                logger.debug("First-run prompt skipped: window not viewable")
+                return
+        except Exception:
+            return
+        # Mark it shown *before* asking.  Answering "Yes" used to leave
+        # first_run_completed False, so the prompt came back on every launch.
+        self._tutorial_mgr.mark_first_run_completed()
         if self._dialog.ask(
             "Welcome to FrogPaper! 🐸",
             "Would you like to take a quick 5-minute tour to learn the basics?"
         ):
             self._tutorial_mgr.start_tutorial("quick_start")
-        else:
-            self._tutorial_mgr.mark_first_run_completed()
     
     def _show_tutorial_menu(self):
         """Show the tutorial selection menu from the main app button."""

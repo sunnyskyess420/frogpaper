@@ -38,3 +38,4 @@ A light Christmas theme, the new badge everywhere, and frogs that stay away unle
 - Your wallpapers, tags, favourites and API keys in `%LOCALAPPDATA%\FrogPaper` are untouched.
 
 **Install:** `FrogPaper-Setup-1.9.0.exe`
+**SHA-256:** `6DB19533821D85980225B4983E2A85CE52E8A03EDA1763BCC03777DBE7E187F5`

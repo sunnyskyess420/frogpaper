@@ -94,3 +94,6 @@ verify_fix_in_exe.py
 # H1 guard: staged config when the real one could not be read
 config.json.new
 config.json.corrupt
+
+# Keyword-expander caches (rebuilt on demand)
+cache/

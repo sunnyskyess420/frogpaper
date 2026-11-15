@@ -43,6 +43,11 @@ logging.basicConfig(
         logging.StreamHandler(sys.stdout),
     ],
 )
+# Same third-party chatter suppression as app.py — the keyword expander's
+# sentence-transformers model load floods the log with Hub request lines.
+for _noisy_logger in ("httpx", "httpcore", "huggingface_hub",
+                      "sentence_transformers", "transformers"):
+    logging.getLogger(_noisy_logger).setLevel(logging.ERROR)
 log = logging.getLogger("daily_runner")
 
 
@@ -136,8 +141,35 @@ def run():
         log.error(f"Image generation error: {e}")
         sys.exit(1)
 
+    # Record what the dice picked, so automated images stop being invisible in
+    # the usage numbers (Phase 1 of the dropdown improvement plan).
     try:
-        success = set_wallpaper(image_path)
+        import hashlib
+
+        import image_events
+        from gallery_manager import save_prompt_parameters
+
+        components = theme.get("components") or {}
+        params = {
+            "subject": components.get("subject", ""),
+            "setting": components.get("setting", ""),
+            "style": components.get("style", ""),
+            "lighting": components.get("lighting", ""),
+            "mood": components.get("mood", ""),
+            "atmosphere": components.get("atmosphere", ""),
+            "color": components.get("color", ""),
+            "mode": "stylized",
+            "source": image_events.SOURCE_DAILY,
+            "prompt_hash": hashlib.sha1(prompt.encode("utf-8")).hexdigest()[:16],
+        }
+        save_prompt_parameters(image_path, params)
+        image_events.log_generation(image_path, params, source=image_events.SOURCE_DAILY)
+        log.info("Prompt parameters recorded")
+    except Exception as e:
+        log.warning(f"Could not record prompt parameters: {e}")
+
+    try:
+        success = set_wallpaper(image_path, source="daily_runner")
         if success:
             log.info(f"Wallpaper set: {image_path.name}")
         else:

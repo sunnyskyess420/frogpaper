@@ -761,6 +761,43 @@ def get_frog_sneak_probability() -> float:
     return FROG_SNEAK_LEVELS[FROG_SNEAK_DEFAULT]
 
 
+# Any pool text containing one of these puts an amphibian on screen.
+AMPHIBIAN_TOKENS = ("frog", "toad")
+
+
+def is_amphibian_subject(subject: str) -> bool:
+    """True when the subject itself is a frog/toad (then frogs are wanted)."""
+    text = (subject or "").lower()
+    return any(token in text for token in AMPHIBIAN_TOKENS)
+
+
+def strip_amphibian_pool(pool, subject: str):
+    """Drop pool entries that would smuggle an amphibian into a non-frog scene.
+
+    A composition entry used to read "wide panoramic framing frog in natural
+    environment", which put a frog in prompts whose subject was a wolf and whose
+    Frog Dial was off.
+    """
+    if is_amphibian_subject(subject):
+        return list(pool or [])
+    return [entry for entry in (pool or [])
+            if not any(token in str(entry).lower() for token in AMPHIBIAN_TOKENS)]
+
+
+def random_subject_pool(subjects, frog_level: float | None = None):
+    """Subject pool for the dice button.
+
+    With the Frog Dial off, the dice must not hand out a frog either - picking
+    one is still possible by choosing it in the dropdown, but never unasked.
+    """
+    level = get_frog_sneak_probability() if frog_level is None else frog_level
+    pool = [s for s in (subjects or []) if s]
+    if level and level > 0:
+        return pool
+    without_amphibians = [s for s in pool if not is_amphibian_subject(s)]
+    return without_amphibians or pool
+
+
 def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = True, custom_subject: str = "",
                     explicit_subject: str = "", explicit_setting: str = "", explicit_style: str = "", explicit_lighting: str = "",
                     explicit_mood: str = "", explicit_color: str = "", explicit_atmosphere: str = "") -> list[dict]:
@@ -843,7 +880,7 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
                     )
                 else:
                     # Frogs are excluded from the general pool — they only come from the dial above.
-                    non_frog_pool = [s for s in kw.get("subjects", []) if "frog" not in s.lower()]
+                    non_frog_pool = [s for s in kw.get("subjects", []) if not is_amphibian_subject(s)]
                     subject = choose_from_alias_or_pool([], SUBJECT_ALIASES, non_frog_pool, "cinematic wallpaper subject")
 
         if explicit_style:
@@ -855,6 +892,9 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
 
         if explicit_mood:
             mood = explicit_mood
+            # The anchor takes the bare adjective; the sentence takes the rich
+            # phrasing. Passing the comma chain to both produced "Grand, frog".
+            anchor_mood = explicit_mood
             # Strengthen mood phrasing for better image generation
             if VALIDATOR_AVAILABLE:
                 mood = strengthen_mood(mood)
@@ -863,6 +903,7 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
             mood = choose_from_alias_or_pool(
                 user_buckets.get("mood", []), MOOD_ALIASES, kw.get("mood", []), "moody"
             )
+            anchor_mood = mood
 
         # Color handling: use explicit color if provided, otherwise choose from pool
         if explicit_color:
@@ -910,9 +951,13 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
         if not explicit_setting:
             setting = get_biased_setting(subject, setting, explicit_setting=False)
         
-        # Add composition variation per theme
+        # Add composition variation per theme. Frog/toad wording is dropped
+        # unless the subject is an amphibian, so a stray pool entry cannot put
+        # a frog in a wolf wallpaper.
         composition = choose_from_alias_or_pool(
-            user_buckets.get("composition", []), COMPOSITION_ALIASES, kw.get("composition", []), "wide cinematic desktop wallpaper framing"
+            user_buckets.get("composition", []), COMPOSITION_ALIASES,
+            strip_amphibian_pool(kw.get("composition", []), subject),
+            "wide cinematic desktop wallpaper framing"
         )
         # Vary composition for subsequent themes
         if i > 0 and random.random() < 0.4:
@@ -960,7 +1005,7 @@ def generate_themes(count: int = 5, user_keywords=None, subject_lock: bool = Tru
                 "setting": setting,
                 "style": style,
                 "tech": tech,
-                "mood": mood,
+                "mood": anchor_mood,
                 "color": varied_color,
                 "lighting": lighting,
                 "atmosphere": atmosphere,

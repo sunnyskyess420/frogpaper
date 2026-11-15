@@ -1,20 +1,24 @@
 import sys
 import os
 
+import image_events
+from random_pick import FairPicker, pick_colour_pair
+
 from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color constants (migrated inline hex)
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.8.0"
+APP_VERSION = "1.9.0"
 
 # Edition label. Empty for a normal release; About then shows just the
 # version. Set it for seasonal builds ("Halloween Edition").
-APP_EDITION = ""
+APP_EDITION = "Christmas Edition"
 
 # Shown in the About window (tray right-click -> About FrogPaper). Newest
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
 RELEASE_HISTORY = (
+    ("1.9.0", "Blush Light Christmas theme, new logo, honest Frog Dial"),
     ("1.8.0", "Painterly styles, smarter Ctrl+N, Halloween defaults gone"),
     ("1.7.12", "Update check fixed, splash screen"),
     ("1.7.11", "Splash screen and faster onedir startup"),
@@ -30,7 +34,41 @@ RELEASE_HIGHLIGHTS = tuple(f"v{v}: {t}" for v, t in RELEASE_HISTORY[:3])
 
 
 # Default startup subject for fresh installs (blank = random).
-DEFAULT_STARTUP_SUBJECT = ""
+DEFAULT_STARTUP_SUBJECT = "christmas"
+
+# Theme a fresh install starts on. The festive theme ships in the picker but is
+# never applied on its own: a seasonal build must not repaint somebody's app.
+DEFAULT_APP_THEME = "darkforest"
+
+# Seasonal-edition defaults applied to the colour dropdown on fresh starts.
+# (family, variation) — used only while APP_EDITION is set.
+EDITION_COLOR_DEFAULT = ("red", "vivid")
+
+
+def _apply_edition_defaults(config: dict) -> dict:
+    """One-time seasonal-edition defaults for existing installs.
+
+    Fills blanks only. Nothing the user already chose is rewritten - in
+    particular the festive theme is offered in the picker, never applied on
+    their behalf, so launching an edition build never repaints someone's app.
+    Runs once per config (flagged by a per-edition key); no-op for normal
+    (unbadged) releases.
+    """
+    if not APP_EDITION or not isinstance(config, dict):
+        return config
+    flag = APP_EDITION.lower().replace(" ", "_") + "_applied"
+    if config.get(flag):
+        return config
+    config[flag] = True
+    if not str(config.get("startup_subject") or "").strip():
+        config["startup_subject"] = DEFAULT_STARTUP_SUBJECT
+    if config.get("remember_settings") and not str(config.get("last_color") or "").strip():
+        config["last_color"] = f"{EDITION_COLOR_DEFAULT[1]} {EDITION_COLOR_DEFAULT[0]}"
+    try:
+        save_config(config)
+    except Exception:
+        logger.debug("edition defaults save failed", exc_info=True)
+    return config
 
 # Ensure local modules are found regardless of working directory
 # In frozen PyInstaller exe, _MEIPASS already handles this — don't override it
@@ -74,6 +112,13 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=_logging_handlers
 )
+
+# Third-party libraries log every Hub request / model probe at INFO — pure
+# noise for users (dozens of lines per keyword-expansion load). Keep real
+# warnings/errors, drop the chatter.
+for _noisy_logger in ("httpx", "httpcore", "huggingface_hub",
+                      "sentence_transformers", "transformers"):
+    logging.getLogger(_noisy_logger).setLevel(logging.ERROR)
 
 import ctypes
 import ctypes.wintypes
@@ -236,6 +281,9 @@ from app_prompt_data import (  # noqa: F401
     LEGACY_ATMOSPHERE_OPTIONS, # noqa: F401
     _merge_options,          # noqa: F401
     THEME_VARIABLE_OPTIONS,
+    canonical_option,
+    color_variation_options,
+    is_valid_color_combo,
 )
 
 
@@ -706,15 +754,21 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.thumb_cache = {}  # Cache for PhotoImage objects
         self.gen_future = None
 
-        self.current_theme_name = "darkforest"
+        self.current_theme_name = DEFAULT_APP_THEME
         self._tray_icon = None
         self._tray_thread = None
         self.gallery_cards = {}
         self.favorite_cards = {}
-        self.remember_settings_var = tk.BooleanVar(value=False)
+        config = _apply_edition_defaults(load_config())
+        # Deals every option once per cycle, so the random button covers the
+        # whole list instead of leaning on whatever random.choice feels like.
+        self.fair_picker = FairPicker(load_config, save_config)
+        # Remembering the last picks is what fills the last_* values the option
+        # report reads, so it is on unless the user turned it off (Phase 1 of
+        # the dropdown improvement plan).
+        self.remember_settings_var = tk.BooleanVar(value=config.get("remember_settings", True))
         self.custom_width_var = tk.StringVar(value="1024")
         self.custom_height_var = tk.StringVar(value="576")
-        config = load_config()
         self.auto_generate_on_startup_var = tk.BooleanVar(
             value=config.get("auto_generate_on_startup", False))
         self.startup_subject_var = tk.StringVar(
@@ -871,7 +925,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         except Exception:
             pass
 
-        self.apply_theme(load_config().get("app_theme", "darkforest"))
+        self.apply_theme(load_config().get("app_theme", DEFAULT_APP_THEME))
         logger.info(f"apply_theme: {time.perf_counter()-_t3:.2f}s")
         
         # Check if first-run tutorial should be shown
@@ -1061,6 +1115,32 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
 
 
 
+    def _refresh_sidebar_logo(self):
+        """Swap the sidebar logo for a theme-specific variant when one exists.
+
+        Convention: sidebar_logo_<theme>.png|jpg|jpeg next to the default
+        sidebar_logo.png. A variant without its own asset inherits its family
+        (christmas_light -> sidebar_logo_christmas.png), and themes with no
+        variant at all keep the default frog.
+        """
+        label = getattr(self, "_sidebar_logo_label", None)
+        if label is None:
+            return
+        try:
+            from PIL import Image as _PILImg, ImageTk as _PILTk
+            from utils import get_bundle_dir
+            from app_themes import resolve_sidebar_logo
+            theme_name = getattr(self, "current_theme_name", "") or ""
+            logo_path = resolve_sidebar_logo(theme_name, get_bundle_dir())
+            if not logo_path.exists():
+                return
+            logo_img = _PILImg.open(logo_path).convert("RGBA")
+            logo_img = logo_img.resize((200, 200), _PILImg.LANCZOS)
+            self._sidebar_logo_ref = _PILTk.PhotoImage(logo_img)
+            label.configure(image=self._sidebar_logo_ref)
+        except Exception:
+            logger.debug("sidebar logo refresh failed", exc_info=True)
+
     def build_ui(self):
 
         style = ttk.Style(self.root)
@@ -1141,7 +1221,10 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         try:
             from PIL import Image as _PILImg, ImageTk as _PILTk
             from utils import get_bundle_dir
-            _logo_path = get_bundle_dir() / 'sidebar_logo.png'
+            from app_themes import resolve_sidebar_logo
+            # Resolve to this theme's logo up front, not the default: otherwise
+            # the plain frog flashes before apply_theme swaps it.
+            _logo_path = resolve_sidebar_logo(getattr(self, "current_theme_name", ""), get_bundle_dir())
             if _logo_path.exists():
                 _logo_img = _PILImg.open(_logo_path).convert('RGBA')
                 # Circular logo — resize to a square with side breathing room.
@@ -1157,6 +1240,9 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
                 # "Generate Prompt" button row, 8px below as before.
                 _logo_label.pack(pady=(6, 8))
                 self._sidebar_logo_label = _logo_label
+                # Theme-specific variant (e.g. sidebar_logo_christmas.png)
+                # wins over the default; apply_theme re-applies on switch.
+                self._refresh_sidebar_logo()
         except Exception:
             self._sidebar_logo_label = None
 
@@ -1172,7 +1258,7 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         # Prompt) is panel2 with light text. One primary per area.
         if UI_EFFECTS_AVAILABLE:
             pal_preview = THEMES.get(
-                load_config().get("app_theme", "darkforest"),
+                load_config().get("app_theme", DEFAULT_APP_THEME),
                 THEMES["darkforest"]
             )
             accent_preview = pal_preview.get("accent", "#4a9eff")
@@ -1183,10 +1269,13 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             panel2_preview = pal_preview.get("panel2", "#263322")
             button_fg_preview = pal_preview.get("button_fg", COLOR_WHITE)
 
-            # Secondary button — Generate Prompt (panel2 fill, light text, no gradient)
+            # Secondary button — Generate Prompt (panel2 fill by default; a theme
+            # may supply its own secondary_button_bg/fg, e.g. holly green).
+            secondary_fill_preview = pal_preview.get("secondary_button_bg", panel2_preview)
+            secondary_fg_preview = pal_preview.get("secondary_button_fg", button_fg_preview)
             self._rounded_prompt_btn = RoundedButton(
                 gen_row, text="Generate Prompt", width=140, height=38,
-                fill_color=panel2_preview, text_color=button_fg_preview,
+                fill_color=secondary_fill_preview, text_color=secondary_fg_preview,
                 radius=14, font=("Segoe UI", 10, "bold"),
                 command=self.generate_prompt_only, use_gradient=False,
             )
@@ -1344,11 +1433,13 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         color_frame = ttk.Frame(left)
         color_frame.pack(fill="x", pady=(0, 14))
         
-        # Use random defaults for color to avoid empty on startup
-        color_families = [f for f in COLOR_FAMILIES if f]
-        color_variations = COLOR_VARIATIONS
-        default_family = random.choice(color_families) if color_families else ""
-        default_variation = random.choice(color_variations) if color_variations else ""
+        # Use random defaults for color to avoid empty on startup —
+        # seasonal edition builds start on festive colours instead.
+        if APP_EDITION:
+            default_family = EDITION_COLOR_DEFAULT[0]
+            default_variation = EDITION_COLOR_DEFAULT[1]
+        else:
+            default_family, default_variation = pick_colour_pair(getattr(self, "fair_picker", None))
         self.color_family_var = tk.StringVar(value=default_family)
         
         # Color Family - Use PinnedCombobox if available
@@ -1372,26 +1463,50 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
             self.color_family_combo.bind("<MouseWheel>", lambda e: "break")
         
         self.color_variation_var = tk.StringVar(value=default_variation)
+        variation_values = color_variation_options(default_family)
         
         # Color Variation - Use PinnedCombobox if available
         if PINNED_DROPDOWNS_AVAILABLE and getattr(self, '_pinned_dropdowns_enabled', False):
             try:
                 self.color_variation_combo = PinnedCombobox(color_frame, category="color_variation",
-                                                             values=COLOR_VARIATIONS, state="normal",
+                                                             values=variation_values, state="normal",
                                                              textvariable=self.color_variation_var, width=14)
                 self.color_variation_combo.pack(side="left")
                 self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
             except Exception as _cv_err:
                 logger.debug("Pinned color variation fallback: %s", _cv_err)
                 self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
-                                                          values=COLOR_VARIATIONS, state="normal", width=14)
+                                                          values=variation_values, state="normal", width=14)
                 self.color_variation_combo.pack(side="left")
                 self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
         else:
             self.color_variation_combo = ttk.Combobox(color_frame, textvariable=self.color_variation_var,
-                                                      values=COLOR_VARIATIONS, state="normal", width=14)
+                                                      values=variation_values, state="normal", width=14)
             self.color_variation_combo.pack(side="left")
             self.color_variation_combo.bind("<MouseWheel>", lambda e: "break")
+
+        def _sync_color_variations(_event=None):
+            """Offer only variations that make sense for the chosen family."""
+            try:
+                family = self.color_family_var.get()
+                options = color_variation_options(family)
+                if hasattr(self.color_variation_combo, "set_base_values"):
+                    # PinnedCombobox keeps its own copy for the starred popup.
+                    self.color_variation_combo.set_base_values(options)
+                else:
+                    self.color_variation_combo.configure(values=options)
+                if not is_valid_color_combo(family, self.color_variation_var.get()):
+                    self.color_variation_var.set("")
+            except Exception as _sync_err:
+                logger.debug("Colour variation refresh failed: %s", _sync_err)
+
+        self._sync_color_variations = _sync_color_variations
+        for _seq in ("<<ComboboxSelected>>", "<FocusOut>", "<Return>"):
+            try:
+                # add="+" so a PinnedCombobox keeps its own bindings.
+                self.color_family_combo.bind(_seq, _sync_color_variations, add="+")
+            except Exception:
+                pass
 
         # Setting (location/environment)
         setting_lbl = tk.Label(left, text="Setting", anchor="w")
@@ -1635,7 +1750,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         progress_frame.grid_propagate(False)
         progress_frame.columnconfigure(0, weight=1)
         progress_frame.rowconfigure(0, weight=1)
-        self.progress = ttk.Progressbar(progress_frame, mode="determinate", maximum=100)
+        self.progress = ttk.Progressbar(progress_frame, mode="determinate", maximum=100,
+                                        style="Frog.Horizontal.TProgressbar")
         self.progress.grid(row=0, column=0, sticky="nsew")
         self.progress_overlay_label = tk.Label(progress_frame, text="", font=self.bold_font, anchor="center")
         self.progress_overlay_label.place(relx=0.5, rely=0.5, anchor="center")
@@ -1647,7 +1763,8 @@ class FrogPaperApp(FrogPaperAppThemeMixin, FrogPaperAppGenerationMixin,
         self.image_generation_status_label.grid(row=3, column=0, sticky="ew", pady=(4, 0))
 
         # Generation progress bar overlay (over image preview)
-        self.generation_progress = ttk.Progressbar(preview_card, mode="indeterminate", maximum=100)
+        self.generation_progress = ttk.Progressbar(preview_card, mode="indeterminate", maximum=100,
+                                                   style="Frog.Horizontal.TProgressbar")
         self.generation_progress.place(relx=0.5, rely=0.5, anchor="center", relwidth=0.5, relheight=0.1)
         self.generation_progress.place_forget()  # Hide initially
 
@@ -2716,25 +2833,22 @@ def main():
                     # Use the configured startup subject from settings (blank = random)
                     subject = app.startup_subject_var.get().strip() or ""
                     app.set_active_subject(subject)
-                    # Randomize everything except subject
-                    import random as _rng
-                    import time
-                    _rng.seed(int(time.time() * 1000))  # Ensure different random values each time
+                    # Randomize everything except subject. Each dropdown deals
+                    # from its own shuffled bag, so a cycle covers the whole
+                    # list before anything repeats.
                     settings = [o for o in THEME_VARIABLE_OPTIONS["setting"] if o]
                     styles = [o for o in THEME_VARIABLE_OPTIONS["style"] if o]
                     lightings = [o for o in THEME_VARIABLE_OPTIONS["lighting"] if o]
                     moods = [o for o in THEME_VARIABLE_OPTIONS["mood"] if o]
                     atmospheres = [o for o in THEME_VARIABLE_OPTIONS.get("atmosphere", []) if o]
-                    color_families = [f for f in COLOR_FAMILIES if f]
-                    family = _rng.choice(color_families)
-                    variation = _rng.choice(COLOR_VARIATIONS)
+                    family, variation = pick_colour_pair(getattr(app, "fair_picker", None))
                     color_value = f"{variation} {family}".strip() if variation else family
-                    random_setting = _rng.choice(settings)
-                    random_style = _rng.choice(styles)
-                    random_lighting = _rng.choice(lightings)
-                    random_mood = _rng.choice(moods)
-                    random_atmosphere = _rng.choice(atmospheres)
-                    random_mode = _rng.choice(STYLE_MODES)
+                    random_setting = app.fair_picker.pick("setting", settings)
+                    random_style = app.fair_picker.pick("style", styles)
+                    random_lighting = app.fair_picker.pick("lighting", lightings)
+                    random_mood = app.fair_picker.pick("mood", moods)
+                    random_atmosphere = app.fair_picker.pick("atmosphere", atmospheres)
+                    random_mode = app.fair_picker.pick("mode", app.STYLE_MODES)
 
                     # Apply random values to both sidebar and PB Quick Build widgets
                     app.set_active_setting(random_setting)
@@ -2776,6 +2890,7 @@ def main():
                     app.update_mode_badge()
 
                     # Force UI update before generation
+                    app._pending_gen_source = image_events.SOURCE_STARTUP
                     app.root.update()
 
                     app.generate(show_progress=False)  # This generates themes/prompts AND the image

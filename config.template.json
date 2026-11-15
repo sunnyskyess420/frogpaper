@@ -29,7 +29,7 @@
   "minimize_to_tray": true,
   "slideshow_order": "random",
   "slideshow_skip_duplicates": true,
-  "remember_settings": false,
+  "remember_settings": true,
   "auto_generate_on_startup": false,
   "startup_subject": "",
   "frog_sneak": "classic",

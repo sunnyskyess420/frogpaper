@@ -21,7 +21,7 @@ STYLED_DIR.mkdir(parents=True, exist_ok=True)
 FAVORITES_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def set_wallpaper(image_path: str | Path) -> bool:
+def set_wallpaper(image_path: str | Path, source: str = "") -> bool:
     image_path = Path(image_path).resolve()
 
     if not image_path.exists():
@@ -42,6 +42,13 @@ def set_wallpaper(image_path: str | Path) -> bool:
 
     if result:
         print(f"  [OK] Wallpaper set: {image_path.name}")
+        # One place records every wallpaper set, whichever button or timer
+        # triggered it (Phase 1 of the dropdown improvement plan).
+        try:
+            import image_events
+            image_events.log_wallpaper(image_path, source=source)
+        except Exception:
+            pass
         return True
 
     print(f"  [X] Windows API call failed (error code: {ctypes.get_last_error()})")

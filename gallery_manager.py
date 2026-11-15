@@ -639,6 +639,20 @@ def delete_image_and_tags(image_path: str | Path) -> None:
             ]
 
             session.query(ImageTag).filter(ImageTag.image_path == image_path_str).delete()
+
+            # Keep the evidence: read the prompt parameters before the row that
+            # holds them is removed.  Deleting an image is the strongest
+            # negative signal the app has, and it used to be thrown away.
+            deleted_params = None
+            try:
+                _params_row = session.query(PromptParam).filter(
+                    PromptParam.image_path == image_path_str
+                ).first()
+                if _params_row and _params_row.params_json:
+                    deleted_params = json.loads(_params_row.params_json)
+            except Exception:
+                logger.debug("could not read params before delete", exc_info=True)
+
             session.query(PromptParam).filter(PromptParam.image_path == image_path_str).delete()
 
             # Remove orphaned tags (tags with zero remaining images)
@@ -651,6 +665,14 @@ def delete_image_and_tags(image_path: str | Path) -> None:
                     session.query(ImageTag).filter(ImageTag.tag == tag).delete()
 
             session.commit()
+
+            # Logged after the commit so the two sessions never overlap.
+            if deleted_params:
+                try:
+                    import image_events
+                    image_events.log_delete(image_path_str, deleted_params)
+                except Exception:
+                    logger.debug("delete event not logged", exc_info=True)
         except Exception:
             session.rollback()
             logger.exception("DB write failed in gallery_manager — rolled back, re-raising for caller")

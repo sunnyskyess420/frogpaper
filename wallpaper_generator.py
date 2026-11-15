@@ -1,6 +1,7 @@
 import json
 import os
 import re
+import time
 import urllib.request
 import urllib.parse
 import urllib.error
@@ -61,8 +62,46 @@ def load_token() -> str:
         except Exception:
             pass
     if not token:
-        raise ValueError("Missing Hugging Face token. Set the HUGGINGFACE_TOKEN environment variable first.")
+        raise ValueError("Missing Hugging Face token. Add one in Settings > AI Provider "
+                         "(or set the HUGGINGFACE_TOKEN environment variable).")
     return token
+
+
+HF_ROUTER_ROOT = "https://router.huggingface.co/hf-inference/models"
+#: OpenAI-compatible Images API. This is the path that spends Inference
+#: Provider credits, so paid models (FLUX) are served here rather than on the
+#: free hf-inference list.
+HF_OPENAI_URL = "https://router.huggingface.co/v1/images/generations"
+DEFAULT_HF_MODEL = "stabilityai/stable-diffusion-3-medium-diffusers"
+#: Models served by the free hf-inference list; everything else goes through
+#: the paid router endpoint above.
+HF_FREE_MODELS = {"stabilityai/stable-diffusion-3-medium-diffusers"}
+
+
+# Models that are no longer offered by any provider map onto the one that is
+# served, so a config saved with an old id keeps working. FLUX models are NOT
+# in this list: they are still available, just through the paid router.
+_RETIRED_HF_MODELS = {
+    "stabilityai/stable-diffusion-xl-base-1.0": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/FLUX.1-schnell": "stabilityai/stable-diffusion-3-medium-diffusers",
+    "black-forest-labs/FLUX.1-dev": "stabilityai/stable-diffusion-3-medium-diffusers",
+}
+
+
+def huggingface_model(model_id: str) -> str:
+    """Effective model for a request: retired ids fall back to the served one."""
+    model = (model_id or "").strip() or DEFAULT_HF_MODEL
+    return _RETIRED_HF_MODELS.get(model, model)
+
+
+def huggingface_endpoint(model_id: str) -> str:
+    """URL for a Hugging Face image model.
+
+    Hugging Face retired the legacy api-inference.huggingface.co host (it no
+    longer resolves in DNS); serverless inference now goes through the router.
+    """
+    model = (model_id or "").strip() or "stabilityai/stable-diffusion-3-medium-diffusers"
+    return f"{HF_ROUTER_ROOT}/{model}"
 
 def _load_cloudflare_config() -> tuple:
     """Load Cloudflare API token and account ID from config.
@@ -432,6 +471,137 @@ def _generate_cloudflare(prompt: str, model_id: str, width: int, height: int,
 
 # ──── Hugging Face backend ───────────────────────────────────────────────
 
+HF_PERMISSIONS_HINT = (
+    "Your Hugging Face token can sign in but is not allowed to call Inference Providers. "
+    "Create a token with the 'Make calls to Inference Providers' permission "
+    "(or a classic Read token), then save it in Settings > AI Provider."
+)
+
+
+def _is_permission_error(body: str) -> bool:
+    text = (body or "").lower()
+    return any(marker in text for marker in
+               ("sufficient permissions", "permission", "not authorized", "forbidden"))
+
+
+def _round_to_multiple(value: int, step: int = 16, minimum: int = 256) -> int:
+    """Round *value* down to a multiple of *step* (never below *minimum*).
+
+    Hugging Face rejects sizes that are not multiples of 16 (1080 -> HTTP 400);
+    the post-generation resize restores the requested dimensions afterwards.
+    """
+    try:
+        number = int(value)
+    except (TypeError, ValueError):
+        return minimum
+    rounded = (number // step) * step
+    return max(minimum, rounded)
+
+
+def _looks_like_dropped_connection(exc: Exception) -> bool:
+    """True for the server hanging up mid-request (RemoteDisconnected etc.)."""
+    if isinstance(exc, (ConnectionResetError, ConnectionAbortedError, TimeoutError)):
+        return True
+    text = f"{type(exc).__name__} {exc}".lower()
+    return any(marker in text for marker in
+               ("remote end closed", "remotedisconnected", "connection reset",
+                "connection aborted", "timed out", "timeout"))
+
+
+def huggingface_square_size(width, height) -> int:
+    """Side length for a Hugging Face request: always square.
+
+    Its free queue runs 30s+ on a wide image and often hangs up mid-transfer;
+    a square request is faster and reliable, and it avoids squashing the
+    result into a 16:9 wallpaper afterwards.
+    """
+    try:
+        side = min(int(width), int(height))
+    except (TypeError, ValueError):
+        side = 1024
+    return _round_to_multiple(side)
+
+
+def _generate_huggingface_router(prompt: str, model: str, token: str, output_path: Path,
+                                 update_status, cancel_event=None) -> Path:
+    """Image via the OpenAI-compatible router - the path that spends credits.
+
+    Free-tier models go through hf-inference instead; this one is what serves
+    FLUX and friends to a paying account, and it answers in seconds rather than
+    the minutes the free queue can take.
+    """
+    payload = json.dumps({
+        "model": model,
+        "prompt": prompt,
+        "n": 1,
+        "response_format": "b64_json",
+    }).encode("utf-8")
+    headers = {"Authorization": f"Bearer {token}", "Content-Type": "application/json"}
+
+    attempts = 2
+    started = time.monotonic()
+    data = None
+    for attempt in range(1, attempts + 1):
+        update_status(f"Requesting {model.split('/')[-1]} (attempt {attempt}/{attempts})...")
+        req = urllib.request.Request(HF_OPENAI_URL, data=payload, headers=headers, method="POST")
+        try:
+            with urllib.request.urlopen(req, timeout=180) as resp:
+                data = json.loads(resp.read().decode("utf-8"))
+            break
+        except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="replace")[:200]
+            except Exception:
+                pass
+            if e.code in (401, 403):
+                if _is_permission_error(body):
+                    raise ImageGenerationError(HF_PERMISSIONS_HINT)
+                raise ImageGenerationError(
+                    "Hugging Face rejected the token. Check it in Settings > AI Provider.")
+            if e.code == 402:
+                raise ImageGenerationError(
+                    f"Hugging Face credits are exhausted for {model}. Top up at huggingface.co/settings/billing, "
+                    "or pick Stable Diffusion 3 Medium (free tier) in Settings.")
+            if e.code == 404:
+                raise ImageGenerationError(
+                    f"Hugging Face does not serve {model} any more - its router lists no "
+                    f"image models at all. Pick Stable Diffusion 3 Medium in Settings, "
+                    f"or use another provider.")
+            if e.code == 429 or e.code >= 500:
+                if attempt < attempts:
+                    update_status(f"Hugging Face busy (HTTP {e.code}). Retrying once...")
+                    _sleep_cancellable(5, cancel_event)
+                    continue
+            raise ImageGenerationError(f"HuggingFace HTTP {e.code}: {body}".strip())
+        except urllib.error.URLError as e:
+            if attempt < attempts:
+                _sleep_cancellable(5, cancel_event)
+                continue
+            raise ImageGenerationError(f"Could not reach Hugging Face: {str(e)[:120]}")
+
+    elapsed = time.monotonic() - started
+    items = (data or {}).get("data") or []
+    if not items:
+        raise ImageGenerationError(
+            f"Hugging Face returned no image data after {elapsed:.0f}s. Try again, or another model.")
+
+    entry = items[0] if isinstance(items[0], dict) else {}
+    update_status(f"Saving generated image ({elapsed:.0f}s)...")
+    if entry.get("b64_json"):
+        import base64
+        image_bytes = base64.b64decode(entry["b64_json"])
+    elif entry.get("url"):
+        req = urllib.request.Request(entry["url"], headers={"User-Agent": "FrogPaper/1.9"})
+        with urllib.request.urlopen(req, timeout=120) as resp:
+            image_bytes = _read_body(resp, cancel_event)
+    else:
+        raise ImageGenerationError("Hugging Face returned neither image data nor a URL.")
+
+    save_image_bytes(output_path, image_bytes, cancel_event)
+    return output_path
+
+
 def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
                             output_path: Path, status_callback=None, cancel_event=None) -> Path:
     """Generate image via Hugging Face Inference API (raw HTTP, no PIL needed for decoding)."""
@@ -445,12 +615,25 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
     except ValueError as e:
         raise ImageGenerationError(str(e))
 
-    model = model_id if model_id else "stabilityai/stable-diffusion-xl-base-1.0"
-    api_url = f"https://api-inference.huggingface.co/models/{model_id or model}"
+    requested = (model_id or "").strip()
+    model = huggingface_model(requested)
+    if requested and model != requested:
+        update_status(f"{requested} is no longer served - using {model.split('/')[-1]}")
+
+    # Paying accounts get the credit-backed router (fast, serves FLUX); the
+    # free list only has one model and can queue for minutes.
+    if model not in HF_FREE_MODELS:
+        return _generate_huggingface_router(prompt, model, token, output_path,
+                                            update_status, cancel_event)
+
+    api_url = huggingface_endpoint(model)
 
     payload = json.dumps({
         "inputs": prompt,
-        "parameters": {"width": width, "height": height}
+        "parameters": {
+            "width": _round_to_multiple(width),
+            "height": _round_to_multiple(height),
+        }
     }).encode("utf-8")
 
     headers = {
@@ -459,12 +642,15 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
     }
 
     max_attempts = 3
+    started = time.monotonic()
     for attempt in range(1, max_attempts + 1):
         try:
             update_status(f"Requesting HuggingFace (Attempt {attempt}/{max_attempts})...")
             req = urllib.request.Request(api_url, data=payload, headers=headers, method="POST")
 
-            with urllib.request.urlopen(req, timeout=120) as response:
+            # The free queue can take minutes on a large image; 120s cut off
+            # requests that would have completed.
+            with urllib.request.urlopen(req, timeout=300) as response:
                 if response.status != 200:
                     err_body = response.read().decode("utf-8", errors="replace")[:200]
                     if response.status == 401:
@@ -499,6 +685,24 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
             raise
 
         except urllib.error.HTTPError as e:
+            body = ""
+            try:
+                body = e.read().decode("utf-8", errors="replace")[:160]
+            except Exception:
+                pass
+            if e.code in (401, 403):
+                if _is_permission_error(body):
+                    raise ImageGenerationError(HF_PERMISSIONS_HINT)
+                raise ImageGenerationError(
+                    f"Hugging Face rejected the token for {model}. Check it in Settings > AI Provider "
+                    f"(fine-grained tokens need 'Make calls to Inference Providers'). {body}".strip())
+            if e.code == 402:
+                raise ImageGenerationError(
+                    f"Hugging Face credits exhausted for {model}. Switch to FLUX.1-schnell in Settings.")
+            if e.code == 404:
+                raise ImageGenerationError(
+                    f"{model} is not served by Hugging Face's free inference any more. "
+                    f"Pick another model in Settings, or switch to Pollinations.ai (free, no key).")
             if e.code == 429 and attempt < max_attempts:
                 update_status("Rate limited (429). Waiting 30s...")
                 _sleep_cancellable(30, cancel_event)
@@ -507,7 +711,7 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
                 update_status("Model loading (503). Waiting 20s...")
                 _sleep_cancellable(20, cancel_event)
                 continue
-            raise ImageGenerationError(f"HuggingFace HTTP {e.code}")
+            raise ImageGenerationError(f"HuggingFace HTTP {e.code}: {body}".strip())
 
         except urllib.error.URLError as e:
             err_str = str(e)
@@ -525,11 +729,19 @@ def _generate_huggingface(prompt: str, model_id: str, width: int, height: int,
                 "Check your internet connection and try again.")
 
         except Exception as e:
+            dropped = _looks_like_dropped_connection(e)
             if attempt < max_attempts:
-                update_status(f"Error occurred. Retrying in 10s...")
+                update_status("Connection dropped. Retrying in 10s..." if dropped
+                              else "Error occurred. Retrying in 10s...")
                 _sleep_cancellable(10, cancel_event)
                 continue
-            raise ImageGenerationError(f"Image generation failed: {str(e)[:200]}")
+            elapsed = time.monotonic() - started
+            if dropped:
+                raise ImageGenerationError(
+                    f"Hugging Face closed the connection after {elapsed:.0f}s without returning an image. "
+                    f"Its free queue does this on large requests - try 1024x1024, retry later, "
+                    f"or switch to Pollinations.ai (free, no key) in Settings.")
+            raise ImageGenerationError(f"Image generation failed after {elapsed:.0f}s: {str(e)[:200]}")
 
     raise ImageGenerationError("All HuggingFace attempts failed.")
 
@@ -994,6 +1206,20 @@ def _generate_fal(prompt: str, model_id: str, width: int, height: int,
 
 # ──── Main generate_image dispatcher ──────────────────────────────────────
 
+def strip_image_extension(name: str) -> str:
+    """Drop a trailing image extension so 'x.png' does not become 'x.png.png'.
+
+    Callers pass filenames that already end in .png; generate_image appends the
+    extension itself, so the double-extension only showed up when the style was
+    blank (the subject+style branch ignores the passed filename).
+    """
+    text = str(name or "")
+    for ext in (".png", ".jpg", ".jpeg", ".webp", ".bmp"):
+        if text.lower().endswith(ext):
+            return text[: -len(ext)]
+    return text
+
+
 def generate_image(
     prompt: str,
     subject: str | None = None,
@@ -1011,7 +1237,7 @@ def generate_image(
     if subject and style:
         final_filename = get_unique_filename(subject, style, GENERATED_DIR)
     elif filename:
-        final_filename = filename
+        final_filename = strip_image_extension(filename)
     else:
         timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         final_filename = f"wallpaper-{timestamp}"
@@ -1035,6 +1261,11 @@ def generate_image(
         height = int(dims[1].strip()) if len(dims) == 2 else 1080
     except (ValueError, IndexError):
         width, height = 1920, 1080
+
+    # Hugging Face generates square, always: see huggingface_square_size().
+    if "Hugging Face" in provider:
+        side = huggingface_square_size(width, height)
+        width = height = side
 
     # Route to the correct backend
     result_path = None

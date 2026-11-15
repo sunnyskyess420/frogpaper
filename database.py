@@ -35,7 +35,7 @@ import threading
 from datetime import datetime
 from pathlib import Path
 
-from utils import get_app_dir
+from app_data_dir import resolve_app_dir as _resolve_app_dir  # tkinter-free: keeps the DB layer headless-importable
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ except ImportError:
     )
 
 # ── Paths ──────────────────────────────────────────────────────────────────
-BASE_DIR = get_app_dir()
+BASE_DIR = _resolve_app_dir()
 DB_PATH = BASE_DIR / "frogpaper.db"
 MIGRATION_MARKER = BASE_DIR / ".db_migrated"
 
@@ -96,6 +96,24 @@ if Base is not None:
         image_path = Column(Text, nullable=False, unique=True, index=True)
         params_json = Column(Text, nullable=True)  # JSON blob of all prompt params
         updated_at = Column(Text, nullable=True)  # ISO timestamp
+
+    class ImageEvent(Base):
+        """One thing that happened to an image, per option field.
+
+        Generation and deletion write one row per option field so the choice
+        stays queryable after the image is gone; favourite and wallpaper events
+        write a single row with an empty field.  See image_events.py.
+        """
+        __tablename__ = "image_events"
+
+        id = Column(Integer, primary_key=True, autoincrement=True)
+        image_path = Column(Text, nullable=False, index=True)
+        # generated | deleted | favorite_added | favorite_removed | wallpaper_set
+        event = Column(Text, nullable=False, index=True)
+        field = Column(Text, nullable=True)  # subject/setting/... or "" for image-level events
+        value = Column(Text, nullable=True)
+        source = Column(Text, nullable=True)  # manual | daily_runner | random_theme | startup_auto
+        created_at = Column(Text, nullable=False, index=True)  # ISO timestamp
 
     class Session(Base):
         """Named session capturing full Prompt Builder state."""

@@ -10,14 +10,14 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 **FrogPaper** is a two-app wallpaper studio.
 
-- **FrogPaper Desktop — v1.8.0** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Desktop — v1.9.0** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
 - **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
 
 No browser. No account. Just the apps and your imagination.
 
 | App | Current version | Platform | Stack |
 |---|---|---|---|
-| **FrogPaper Desktop** | 1.8.0 | Windows 10 / 11 | Python 3.11+, Tkinter |
+| **FrogPaper Desktop** | 1.9.0 | Windows 10 / 11 | Python 3.11+, Tkinter |
 | **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
@@ -90,6 +90,8 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 |---|---|
 | **Three-Column Layout** | Sidebar controls, center preview, right gallery panel — everything visible at once |
 | **Sidebar Controls** | 6 structured dropdowns + negative prompt builder, all action buttons at the top |
+| **Dropdown Filter & Recents** | Every list has a type-to-filter box and a 🕘 recently used row (last 5 picks, remembered across restarts) |
+| **Fair Random** | The dice deals from a shuffled bag — every option is used once before anything repeats, and the cycle survives a restart |
 | **Pinned Favorites (★)** | Every dropdown item has a star button — pinned choices rise to a "★ FAVORITES" section at the top of each list; manage them all under Settings > Advanced > Favorite Dropdown Items |
 | **Negative Prompt Builder** | Preset checkboxes with term counts, custom terms, live preview, smart negatives |
 | **6 AI Providers** | Pollinations.ai (free), Cloudflare Workers AI (free tier), Hugging Face Inference, Prodia, Replicate, Fal.ai |
@@ -103,7 +105,7 @@ FrogPaper is a complete wallpaper creation and management studio in a single win
 | **Favorites** | Bookmark wallpapers with dedicated slideshow source |
 | **Sessions** | Save and restore complete working states with auto-naming |
 | **Recipe Library** | Save, load, import, export reusable prompt configurations |
-| **19 App Themes** | Full theme system with dark, light, and specialty color schemes |
+| **21 App Themes** | Full theme system with dark, light, and specialty color schemes, including the festive Christmas pair (Dark + Blush Light) |
 | **Windows Integration** | Native wallpaper setting, system tray with full controls, minimize-to-tray, startup tasks |
 | **Keyboard Shortcuts** | Ctrl+G (Gallery), Ctrl+S (Settings), Ctrl+N (Generate — random or your prompt), Ctrl+Alt+N (next wallpaper) |
 
@@ -217,11 +219,12 @@ Requires Account ID and API Token from the Cloudflare dashboard.
 
 | Model | Notes |
 |---|---|
-| FLUX.1-schnell (Fast - Free) | Fast, free-credit model |
-| FLUX.1-dev (Higher Quality - Free Credits) | High quality |
-| Custom... | Any Hugging Face model ID |
+| Stable Diffusion 3 Medium (Free tier) | The only image model Hugging Face still serves on its free inference route |
+| Custom... | Any Hugging Face model ID that your account can reach |
 
-Requires a token from huggingface.co. Some models require accepting terms on the model page before API access.
+Requires a token from huggingface.co. A **fine-grained** token must have **"Make calls to Inference Providers"** enabled (a classic *Read* token works as-is) — a read-only fine-grained token signs in fine but every generation is refused. Check it with `python tools/verify_hf_token.py`.
+
+Images generate **square** on this provider (the shorter side of your chosen preset, rounded to a multiple of 16): Hugging Face's free queue drops wide requests often and is slow on them. Your size preset is restored when you switch to another provider. FLUX is no longer available through Hugging Face — their router lists no image models — so use Replicate or Fal.ai if you want it.
 
 ### Prodia (Pro Account)
 
@@ -371,7 +374,9 @@ FrogPaper/
 ├── rounded_widgets.py          # Themed rounded-corner widget images
 ├── ui_effects.py               # Gradients, rounded corners, visual polish
 ├── sv_ttk_fix.py               # Recolors sv_ttk sprite images per theme
-├── pinned_dropdowns.py         # Dropdown widget with pinned favourites
+├── pinned_dropdowns.py         # Dropdown widget with pinned favourites, filter + recents
+├── random_pick.py              # Shuffled-bag randomiser (every option used before repeats)
+├── image_events.py             # Generation / favourite / delete / wallpaper event log
 ├── tutorial_manager.py         # Built-in tutorials
 ├── thread_manager.py           # Background thread/queue management
 ├── theme.py                    # Shared visual constants
@@ -402,8 +407,11 @@ FrogPaper/
 ├── run_daily_runner.bat
 │
 ├── .github/workflows/tests.yml # CI: full pytest suite on a Windows runner
-├── tests/                      # 28 pytest modules (incl. test_prompt_builder.py,
+├── tests/                      # 40+ unittest modules (incl. test_prompt_builder.py,
 │                               #   test_keyword_expander.py, cloud / restore / UI tests)
+├── tools/                      # option_audit.py, option_report.py, theme_preview.py,
+│                               #   generate_brand_assets.py, fix_double_extensions.py
+├── docs/                       # option baseline, dropdown plan status, brand sheet
 └── sounds/                     # App sound effects
 ```
 
@@ -461,6 +469,37 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 ---
 
 ## Desktop Changelog
+
+### v1.9.0 - Blush Light Christmas Theme, New Logo, Honest Frog Dial
+
+**Theme**
+- New **❄️ Christmas — Blush Light** theme: the festive palette lifted into daylight — blush snow panels, cranberry actions, holly-green selections and a pink/red identity instead of yet another green theme.
+- The festive theme is **opt-in**: both Christmas themes sit in the picker and the app never switches you to one. The old one-time "edition default" that repainted existing installs on first launch is gone, and an edition build only fills settings you left blank.
+- Every foreground was checked against the surface it is painted on and clears WCAG AA (worst pair 4.67:1).
+- A light-themed app now shows the Christmas badge logo without needing a second asset — theme variants inherit their family's logo.
+
+**Branding**
+- The circular enamel-pin badge replaced the old frog-on-a-monitor logo everywhere: sidebar, system tray, taskbar/window icon, exe icon, Start-menu and desktop shortcuts, installer and uninstall entry, installer wizard artwork, splash screen, website favicon and header mark.
+- Icons below 64px use the frog's face inside a circle, because the arched "FrogPaper" lettering turns to mush at taskbar sizes.
+- `tools/generate_brand_assets.py` rebuilds every asset from `sidebar_logo.png` in one command.
+
+**Dropdowns**
+- Every list opens with a **type-to-filter** box (Enter takes the top match, Escape closes) and a **🕘 recently used** row holding your last five picks, remembered across restarts.
+- The dice button now deals from a shuffled bag: every option is used once before anything repeats (89 clicks used to hit 61 distinct subjects; now 89 of 89), and the cycle survives a restart.
+- Option lists repaired and trimmed: shipped typo gone, duplicates and misfiled terms removed, genre words moved out of Mood, leading capitals normalised (old spellings still resolve).
+- Colour: a validity matrix blocks nonsense combinations (`deep white`, `neon brown`) while every retired word still parses, so presets saved before the prune keep their palette.
+
+**Fixes**
+- **Frogs stop appearing when the Frog Dial is off.** Three separate leaks: a composition entry hardcoded "frog", the blank-subject pool excluded frogs but not toads, and the dice ignored the dial entirely.
+- **Mood no longer breaks the subject phrase.** Every mood was expanded into a comma chain and handed to the subject anchor, which keeps one word — prompts opened with "Grand, frog" instead of "Epic frog".
+- **Hugging Face works again, and only where it still exists.** It was calling `api-inference.huggingface.co`, a host that no longer resolves in DNS, so every request died before the token was read. It now uses the router, offers the one image model Hugging Face still serves (SD3 Medium), generates square (their free queue drops wide requests), rounds sizes to a multiple of 16, retries a dropped connection, and explains permission problems instead of blaming the plan. `tools/verify_hf_token.py` checks a token without launching the app.
+- **Progress bars follow the theme.** sv_ttk repainted them Windows blue on every re-theme; they now use a FrogPaper style, so they pick up the theme accent (cranberry on Blush Light, pine on the dark Christmas theme).
+- **Filenames no longer double their extension.** With an empty Style box, images were saved as `name.png.png`; 37 existing files were renamed and every stored path updated.
+- Deleting an image now keeps the evidence instead of discarding it, and every generated image is logged with where it came from.
+
+**Under the hood**
+- New `image_events` table plus `tools/option_report.py` (uses, favourites, deletes, wallpaper sets per option) and `tools/option_audit.py` (list hygiene gate).
+- 755 tests, including golden prompt snapshots and a regression suite for each bug above.
 
 ### v1.8.0 - Painterly Styles, Smarter Ctrl+N, Facebook Link
 
@@ -798,7 +837,7 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## System Requirements
 
-### Desktop (v1.8.0)
+### Desktop (v1.9.0)
 
 | Requirement | Minimum | Recommended |
 |---|---|---|

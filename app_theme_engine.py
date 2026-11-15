@@ -781,6 +781,21 @@ class FrogPaperAppThemeMixin:
             relief="flat",
             thickness=10,  # Visual Refresh P1 section 6.3: was 14 - slimmer countdown slab
         )
+        # Custom style name for FrogPaper's own bars: sv_ttk re-applies its own
+        # palette on <<ThemeChanged>>, which repainted these bars Windows blue.
+        style.configure("Frog.Horizontal.TProgressbar",
+            background=accent,
+            troughcolor=pal["panel2"],
+            borderwidth=0,
+            relief="flat",
+            thickness=10,
+            darkcolor=accent,
+            lightcolor=accent,
+            bordercolor=pal["panel2"],
+        )
+        style.map("Frog.Horizontal.TProgressbar",
+            background=[("active", accent), ("!active", accent)],
+        )
         style.configure("Vertical.TProgressbar",
             background=accent,
             troughcolor=pal["panel2"],
@@ -1038,6 +1053,8 @@ class FrogPaperAppThemeMixin:
             self._sidebar.configure(bg=pal["panel"])
         if hasattr(self, "_sidebar_logo_label") and self._sidebar_logo_label:
             self._sidebar_logo_label.configure(bg=pal["panel"])
+            if hasattr(self, "_refresh_sidebar_logo"):
+                self._refresh_sidebar_logo()
         for attr in ("title_label",
                       "_sidebar_mode_lbl",
                       "_sidebar_lighting_lbl", "_sidebar_color_lbl",
@@ -1331,8 +1348,12 @@ class FrogPaperAppThemeMixin:
             # Was: both buttons overridden to accent fill + accent_fg text, which
             # flattened the hierarchy that app.py sets up at construction time.
             primary_fg = pal.get("primary_button_fg") or accent_fg
-            secondary_fg = pal.get("button_fg", COLOR_WHITE)
-            secondary_fill = pal.get("panel2", pal.get("bg", "#263322"))
+            # Secondary button: a theme may give it its own fill (the Christmas
+            # light theme uses holly so red and green sit side by side); every
+            # other theme keeps the panel2 surface it had before.
+            secondary_fg = pal.get("secondary_button_fg", pal.get("button_fg", COLOR_WHITE))
+            secondary_fill = pal.get("secondary_button_bg",
+                                    pal.get("panel2", pal.get("bg", "#263322")))
             if hasattr(self, '_rounded_gen_btn') and self._rounded_gen_btn:
                 self._rounded_gen_btn.fill_color = accent
                 self._rounded_gen_btn.text_color = primary_fg

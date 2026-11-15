@@ -11,6 +11,7 @@ working untouched.
 
 import logging
 import time
+import hashlib
 from datetime import datetime
 from pathlib import Path
 
@@ -24,6 +25,7 @@ from app_runtime import (
     schedule_ui_update,
 )
 from gallery_manager import save_prompt_parameters
+import image_events
 from prompt_builder import build_all_prompts
 from theme_mixer import generate_themes
 from utils import load_json_list, save_json_list
@@ -47,8 +49,41 @@ def choose_generation_source(has_wallpaper: bool, prompt_changed: bool) -> str:
     return "prompt" if prompt_changed else "random"
 
 
+def prompt_fingerprint(prompt: str) -> str:
+    """Short digest of the prompt text.
+
+    The image providers here expose no seed parameter, so two runs of the same
+    prompt are not byte-identical; the hash at least lets us group them.
+    """
+    try:
+        return hashlib.sha1((prompt or "").encode("utf-8")).hexdigest()[:16]
+    except Exception:  # pragma: no cover - defensive
+        return ""
+
+
 class FrogPaperAppGenerationMixin:
     """Mixed into FrogPaperApp (see app.py); methods are verbatim."""
+
+    def _current_prompt_params(self):
+        """Snapshot of the eight option fields.
+
+        Used when a generation path arrives without ``ui_values``, so that no
+        image is left unrecorded.
+        """
+        try:
+            return {
+                "subject": self.get_active_subject(),
+                "setting": self.get_active_setting(),
+                "style": self.get_active_style(),
+                "lighting": self.get_active_lighting(),
+                "mood": self.get_active_mood(),
+                "color": self.get_active_color(),
+                "atmosphere": self.get_active_atmosphere(),
+                "mode": self.get_active_mode(),
+            }
+        except Exception as exc:
+            logger.debug("could not snapshot prompt params: %s", exc)
+            return {}
 
     def generate(self, show_progress=True):
 
@@ -57,6 +92,12 @@ class FrogPaperAppGenerationMixin:
             self._dialog.info("Please wait", "Generation is already in progress.")
 
             return
+
+        # Consume the source flag a caller left behind (startup auto-generate,
+        # random theme) so the saved prompt_params row records where the image
+        # came from.  Defaults to a manual generation.
+        self._gen_source = getattr(self, "_pending_gen_source", None) or image_events.SOURCE_MANUAL
+        self._pending_gen_source = None
 
         # Read from sidebar widgets (same as generate_prompt_only)
         logger.debug(f"generate: Reading from sidebar widgets")
@@ -669,7 +710,8 @@ class FrogPaperAppGenerationMixin:
                     False,  # auto_set_wallpaper
                     ui_values.get('subject') or 'wallpaper',
                     ui_values.get('style', ''),
-                    ui_values  # Pass full ui_values to save prompt parameters
+                    ui_values,  # full ui_values -> saved prompt parameters
+                    getattr(self, "_gen_source", image_events.SOURCE_MANUAL),
                 )
         else:
             self.current_prompt_data = None
@@ -894,13 +936,14 @@ class FrogPaperAppGenerationMixin:
 
                 self._generate_image_thread, 
 
-                prompt, filename, auto_set_wallpaper, subject, art_style, ui_values
+                prompt, filename, auto_set_wallpaper, subject, art_style, ui_values,
+                getattr(self, "_gen_source", image_events.SOURCE_MANUAL),
 
             )
 
 
 
-    def _generate_image_thread(self, prompt, filename, auto_set_wallpaper, subject, art_style, ui_values=None):
+    def _generate_image_thread(self, prompt, filename, auto_set_wallpaper, subject, art_style, ui_values=None, source=None):
             run_id = getattr(self, "_gen_run_id", 0)
 
             def status_cb(msg):
@@ -930,12 +973,22 @@ class FrogPaperAppGenerationMixin:
 
                     return
 
-                # Save prompt parameters with the generated image
-                if image_path and ui_values:
-                    try:
-                        save_prompt_parameters(image_path, ui_values)
-                    except Exception as e:
-                        logger.error(f"[ERROR] Failed to save prompt parameters: {e}")
+                # Save prompt parameters with the generated image.  Every image
+                # is recorded now, not just the runs that carried ui_values - a
+                # row per image is what makes the option report trustworthy.
+                if image_path:
+                    params = dict(ui_values) if ui_values else self._current_prompt_params()
+                    if params:
+                        params.setdefault("source", source or image_events.SOURCE_MANUAL)
+                        params.setdefault("prompt_hash", prompt_fingerprint(prompt))
+                        try:
+                            save_prompt_parameters(image_path, params)
+                        except Exception as e:
+                            logger.error(f"[ERROR] Failed to save prompt parameters: {e}")
+                        try:
+                            image_events.log_generation(image_path, params, source=params["source"])
+                        except Exception as e:
+                            logger.debug(f"image_events: generation not logged: {e}")
 
                 # Auto-tag from filename: SUBJECT_STYLE_YYYYMMDD_N.png
                 if image_path and subject:

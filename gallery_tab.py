@@ -54,6 +54,8 @@ from gallery_manager import (
 
 
 from utils import load_json_list, save_json_list, get_app_dir, wheel_steps
+from random_pick import pick_colour_pair
+import image_events
 
 # Pinned dropdown support
 try:
@@ -630,11 +632,12 @@ class GalleryTab:
         try:
             from icons import get_icon
             accent = pal.get("accent", pal["progress"])
+            fav_color = pal.get("favorite_color", accent)
             
             # Check if image is already favorited
             is_favorited = self._is_image_favorited(img_path)
             heart_name = "heart_filled" if is_favorited else "heart_outline"
-            heart_icon = get_icon(heart_name, size=36, color=accent)  # Doubled from 18 to 36
+            heart_icon = get_icon(heart_name, size=36, color=fav_color)  # Doubled from 18 to 36
             
             # Create button with heart icon — match parent bg so no square
             # outline is visible around the star shape.
@@ -677,7 +680,8 @@ class GalleryTab:
             accent = pal.get("accent", pal["progress"])
             # If it was favorited, now it's not (outline). If it wasn't, now it is (filled)
             heart_name = "heart_outline" if was_favorited else "heart_filled"
-            heart_icon = get_icon(heart_name, size=36, color=accent)  # Doubled from 18 to 36
+            heart_icon = get_icon(heart_name, size=36,
+                                  color=pal.get("favorite_color", accent))  # Doubled from 18 to 36
             heart_btn.configure(image=heart_icon)
             heart_btn.image = heart_icon
             heart_btn._icon_ref = heart_icon
@@ -714,6 +718,12 @@ class GalleryTab:
             if favorited_index is not None:
                 entry = existing.pop(favorited_index)
                 save_json_list(app.FAVORITES_LOG, existing)
+                try:
+                    removed_path = (entry or {}).get('original_image_path') or (entry or {}).get('copied_image_path')
+                    if removed_path:
+                        image_events.log_favorite(removed_path, added=False)
+                except Exception:
+                    logger.debug("favourite event not logged", exc_info=True)
                 
                 # Optionally delete the copied file
                 try:
@@ -2715,7 +2725,8 @@ class GalleryTab:
                 try:
                     from icons import get_icon
                     accent = pal.get("accent", pal["progress"])
-                    heart_icon = get_icon("heart_filled", size=36, color=accent)  # Doubled from 18 to 36
+                    heart_icon = get_icon("heart_filled", size=36,
+                                          color=pal.get("favorite_color", accent))  # Doubled from 18 to 36
 
                     _fav_btn_bg = pal.get("panel", "#1e1e2e")
                     try:
@@ -4983,7 +4994,12 @@ class GalleryTab:
     def random_theme(self):
         """Randomize all quick-build variables including setting and atmosphere."""
         app = self.app
-        subjects = [option for option in app.THEME_VARIABLE_OPTIONS["subject"] if option]
+        # Respect the Frog Dial: with it off, the dice must not hand out a frog.
+        try:
+            from theme_mixer import random_subject_pool
+            subjects = random_subject_pool(app.THEME_VARIABLE_OPTIONS["subject"])
+        except Exception:
+            subjects = [option for option in app.THEME_VARIABLE_OPTIONS["subject"] if option]
         settings = [option for option in app.THEME_VARIABLE_OPTIONS["setting"] if option]
         styles = [option for option in app.THEME_VARIABLE_OPTIONS["style"] if option]
         lightings = [option for option in app.THEME_VARIABLE_OPTIONS["lighting"] if option]
@@ -4991,21 +5007,26 @@ class GalleryTab:
         atmospheres = [option for option in app.THEME_VARIABLE_OPTIONS["atmosphere"] if option]
 
         # Color options — sourced from module-level constants (exclude blank family so random always picks a color)
-        color_families = [f for f in app.COLOR_FAMILIES if f]
-        color_variations = app.COLOR_VARIATIONS
+        picker = getattr(app, "fair_picker", None)
+
+        def pick(category, options):
+            """Deal the next unused option, so a cycle covers the whole list."""
+            if picker is not None:
+                return picker.pick(category, options)
+            return random.choice(options)
+
+        family, variation = pick_colour_pair(picker)
         # Build color string like "rich gold" or just "gold"
-        family = random.choice(color_families)
-        variation = random.choice(color_variations)
         color_value = f"{variation} {family}".strip() if variation else family
 
-        app.set_active_subject(random.choice(subjects))
-        app.set_active_setting(random.choice(settings))
-        app.set_active_style(random.choice(styles))
-        app.set_active_lighting(random.choice(lightings))
-        app.set_active_mood(random.choice(moods))
+        app.set_active_subject(pick("subject", subjects))
+        app.set_active_setting(pick("setting", settings))
+        app.set_active_style(pick("style", styles))
+        app.set_active_lighting(pick("lighting", lightings))
+        app.set_active_mood(pick("mood", moods))
         app.set_active_color(color_value)
-        app.set_active_atmosphere(random.choice(atmospheres))
-        random_mode = random.choice(app.STYLE_MODES)
+        app.set_active_atmosphere(pick("atmosphere", atmospheres))
+        random_mode = pick("mode", app.STYLE_MODES)
         app.set_active_mode(random_mode)
         # Also update the sidebar mode combobox so generate() reads the correct value
         if hasattr(app, 'mode_var'):
@@ -5015,6 +5036,12 @@ class GalleryTab:
             except Exception:
                 pass
         app.update_mode_badge()
+        # The next image generated from these values came from the dice, not
+        # from a deliberate pick - record that as the prompt source.
+        try:
+            app._pending_gen_source = image_events.SOURCE_RANDOM
+        except Exception:
+            pass
         # Don't auto-generate - just set random values
         app.status_var.set("Random prompt set - click Generate Image to create image")
 
@@ -5214,6 +5241,10 @@ class GalleryTab:
                 # Remove from favorites
                 entry = existing.pop(favorited_index)
                 save_json_list(app.FAVORITES_LOG, existing)
+                try:
+                    image_events.log_favorite(img_path, added=False)
+                except Exception:
+                    logger.debug("favourite event not logged", exc_info=True)
                 
                 # Optionally delete the copied file
                 try:
@@ -5279,6 +5310,10 @@ class GalleryTab:
                 save_json_list(app.FAVORITES_LOG, existing)
                 app.load_favorites()
                 app.status_var.set(f'❤️ Added to favorites: {Path(img_path).name}')
+                try:
+                    image_events.log_favorite(img_path, added=True)
+                except Exception:
+                    logger.debug("favourite event not logged", exc_info=True)
                 return True
                 
         except Exception as e:

@@ -9,6 +9,7 @@ import json
 import logging
 from typing import List, Dict, Optional, Tuple
 import re
+import hashlib
 from datetime import datetime
 
 from utils import get_app_dir, get_bundle_dir
@@ -24,6 +25,63 @@ BUNDLE_DIR = get_bundle_dir()
 KEYWORDS_FILE = BUNDLE_DIR / "keywords.json"
 LOGS_DIR = BASE_DIR / "logs"
 LOGS_DIR.mkdir(exist_ok=True)
+
+# Embeddings of the whole keyword bank, cached to disk. Recomputing them costs
+# seconds on every launch; loading the array is instant. The model itself still
+# has to be loaded to encode the user's word, but that is seconds, not minutes.
+CACHE_DIR = BASE_DIR / "cache"
+EMBEDDINGS_CACHE = CACHE_DIR / "keyword_embeddings.npz"
+#: Per-word expansion results, so a word seen once never pays for the model
+#: again. This is the cache that actually removes the launch pause: loading
+#: sentence-transformers costs ~14s here, computing the embeddings ~0.6s.
+EXPANSIONS_CACHE = CACHE_DIR / "expansions.json"
+#: Set False by the test suite so runs never read or write the user's cache.
+PERSIST_EXPANSIONS = True
+EMBEDDINGS_VERSION = 1
+DEFAULT_SENTENCE_MODEL = "all-MiniLM-L6-v2"
+
+
+def bank_signature(keywords: List[str], model_name: str = DEFAULT_SENTENCE_MODEL) -> str:
+    """Fingerprint of the keyword bank + model, so a stale cache is ignored."""
+    payload = json.dumps({"v": EMBEDDINGS_VERSION, "model": model_name,
+                          "words": sorted(keywords)}, ensure_ascii=False)
+    return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+
+
+def load_cached_embeddings(keywords: List[str], model_name: str = DEFAULT_SENTENCE_MODEL):
+    """Cached (numpy) embeddings for this keyword bank, or None."""
+    try:
+        import numpy as np
+    except ImportError:
+        return None
+    try:
+        if not EMBEDDINGS_CACHE.exists():
+            return None
+        with np.load(EMBEDDINGS_CACHE, allow_pickle=False) as data:
+            if str(data["signature"]) != bank_signature(keywords, model_name):
+                return None
+            if list(data["words"]) != sorted(keywords):
+                return None
+            return np.asarray(data["embeddings"], dtype="float32")
+    except Exception as exc:  # corrupt file, version drift, ...
+        logger.debug("keyword embeddings cache unreadable: %s", exc)
+        return None
+
+
+def save_cached_embeddings(keywords: List[str], embeddings, model_name: str = DEFAULT_SENTENCE_MODEL) -> None:
+    """Persist the bank embeddings; failures are never fatal."""
+    try:
+        import numpy as np
+        array = embeddings.detach().cpu().numpy() if hasattr(embeddings, "detach") else np.asarray(embeddings)
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        np.savez_compressed(
+            EMBEDDINGS_CACHE,
+            signature=bank_signature(keywords, model_name),
+            words=np.array(sorted(keywords)),
+            embeddings=array.astype("float32"),
+        )
+    except Exception as exc:
+        logger.debug("could not cache keyword embeddings: %s", exc)
 
 # Lazy database helper — avoids import-time dependency on database.py
 _db = None
@@ -89,6 +147,10 @@ class KeywordExpander:
         # Load keywords first so we have them for embeddings
         self._load_keywords()
         self._load_user_thesaurus()
+
+        # Restore expansions computed in earlier sessions - this is what keeps
+        # the sentence-transformer model unloaded for words already seen.
+        self._load_expansions()
         
         # Don't load BERT yet — do it lazily on first semantic search
         # to keep app startup fast.
@@ -185,17 +247,28 @@ class KeywordExpander:
             return
         try:
             from sentence_transformers import SentenceTransformer
-            
-            # Load a lightweight model
-            self.sentence_model = SentenceTransformer('all-MiniLM-L6-v2')
-            
-            # Create embeddings for all keywords in a single batch
+
             all_keywords = sorted(list(self.all_keywords_set))
+
+            # The model still has to load (it encodes the user's word), but the
+            # bank embeddings can come from disk instead of being recomputed on
+            # every launch.
+            self.sentence_model = SentenceTransformer(DEFAULT_SENTENCE_MODEL)
+            cached = load_cached_embeddings(all_keywords) if all_keywords else None
+            if cached is not None:
+                import torch
+                self.indexed_keywords = all_keywords
+                self.keyword_embeddings = torch.from_numpy(cached)
+                logger.info("keyword embeddings loaded from cache (%d words)", len(all_keywords))
+                return
+
+            # Create embeddings for all keywords in a single batch
             if all_keywords:
                 # Store the list so we can map indices back to words
                 self.indexed_keywords = all_keywords
                 self.keyword_embeddings = self.sentence_model.encode(all_keywords, convert_to_tensor=True)
-            
+                save_cached_embeddings(all_keywords, self.keyword_embeddings)
+
         except Exception as e:
             logger.error("Error setting up sentence transformers: %s", e)
             self.sentence_model = None
@@ -252,6 +325,54 @@ class KeywordExpander:
     def check_user_thesaurus(self, word: str) -> Optional[str]:
         """Check if user has defined a custom mapping for this word."""
         return self.user_thesaurus.get(word.lower())
+
+    # ── persistent expansion cache ───────────────────────────────────────
+    def _expansion_signature(self) -> str:
+        """Cache key: the keyword bank plus the user thesaurus."""
+        try:
+            payload = json.dumps({
+                "bank": bank_signature(sorted(self.all_keywords_set)),
+                "thesaurus": sorted((self.user_thesaurus or {}).items()),
+            }, ensure_ascii=False)
+            return hashlib.sha1(payload.encode("utf-8")).hexdigest()[:16]
+        except Exception:
+            return ""
+
+    def _load_expansions(self) -> None:
+        """Restore per-word results so a used word never loads the model again."""
+        if not PERSIST_EXPANSIONS:
+            return
+        try:
+            if not EXPANSIONS_CACHE.exists():
+                return
+            data = json.loads(EXPANSIONS_CACHE.read_text(encoding="utf-8"))
+            if data.get("signature") != self._expansion_signature():
+                return
+            words = data.get("words") or {}
+            if isinstance(words, dict):
+                self._expansion_cache.update(
+                    {str(k).lower(): str(v) for k, v in words.items()})
+                logger.debug("keyword expansions loaded from cache (%d words)", len(words))
+        except Exception as exc:
+            logger.debug("expansion cache unreadable: %s", exc)
+
+    def _save_expansions(self) -> None:
+        if not PERSIST_EXPANSIONS:
+            return
+        try:
+            CACHE_DIR.mkdir(parents=True, exist_ok=True)
+            EXPANSIONS_CACHE.write_text(json.dumps({
+                "signature": self._expansion_signature(),
+                "words": self._expansion_cache,
+            }, ensure_ascii=False, indent=0), encoding="utf-8")
+        except Exception as exc:
+            logger.debug("could not save expansion cache: %s", exc)
+
+    def _remember(self, word: str, value: str) -> str:
+        """Store one result in memory and on disk."""
+        self._expansion_cache[word] = value
+        self._save_expansions()
+        return value
     
     def expand_keyword(self, word: str) -> str:
         """Expand a single keyword using the expansion pipeline with caching."""
@@ -270,21 +391,18 @@ class KeywordExpander:
         user_mapping = self.check_user_thesaurus(word_clean)
         if user_mapping:
             self._log_expansion(word_clean, user_mapping, "user_thesaurus")
-            self._expansion_cache[word_clean] = user_mapping
-            return user_mapping
+            return self._remember(word_clean, user_mapping)
         
         # Step 2: Check if word exists in keywords set
         if word_clean in self.all_keywords_set:
-            self._expansion_cache[word_clean] = word_clean
-            return word_clean
+            return self._remember(word_clean, word_clean)
         
         # Step 3: Try semantic similarity (BERT)
         similar_words = self.find_semantic_similarities(word_clean)
         if similar_words and similar_words[0][1] > 0.75:  # Higher threshold for safety
             best_match = similar_words[0][0]
             self._log_expansion(word_clean, best_match, "semantic_similarity", similar_words[0][1])
-            self._expansion_cache[word_clean] = best_match
-            return best_match
+            return self._remember(word_clean, best_match)
         
         # Step 4: Try thesaurus expansion (NLTK)
         synonyms = self.get_synonyms_from_thesaurus(word_clean)
@@ -295,12 +413,10 @@ class KeywordExpander:
                 syn_clean = syn.lower().strip()
                 if syn_clean in self.all_keywords_set:
                     self._log_expansion(word_clean, syn_clean, "thesaurus_match")
-                    self._expansion_cache[word_clean] = syn_clean
-                    return syn_clean
+                    return self._remember(word_clean, syn_clean)
         
         # Step 5: Return original word if no expansion found
-        self._expansion_cache[word_clean] = word_clean
-        return word_clean
+        return self._remember(word_clean, word_clean)
     
     def expand_text(self, text: str) -> str:
         """Expand all keywords in a text string."""

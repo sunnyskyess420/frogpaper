@@ -4,7 +4,8 @@ prompt_builder.py
 Builds structured, high-quality prompts for AI image generation.
 
 Design principles:
-  - Fixed section order: mood+subject → scene → lighting → palette → composition → style → quality → negatives
+  - Fixed section order: mood+subject → palette → scene → lighting → composition → style → quality → negatives
+    (palette sits second on purpose: colour buried after the scene clause gets ignored)
   - Mood+subject lock: mood directly modifies the subject at the very start (e.g. "Ominous Cat"),
     subject repeated in the composition anchor
   - Detail budget: max 3–5 scene details to avoid token dilution
@@ -17,7 +18,7 @@ import logging
 
 # Import prompt validator for audit functionality
 try:
-    from prompt_validator import audit_prompt_variables, log_prompt_audit, get_audit_warnings, format_audit_summary  # noqa: F401  (availability probe)
+    from prompt_validator import audit_prompt_variables, log_prompt_audit, get_audit_warnings, format_audit_summary, strengthen_color  # noqa: F401  (availability probe)
     VALIDATOR_AVAILABLE = True
 except ImportError:
     VALIDATOR_AVAILABLE = False
@@ -461,9 +462,9 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
 
     Section order (fixed):
       1. Mood+Subject lock (opening anchor — mood directly modifies subject)
-      2. Scene / environment (detail-budgeted, max 4 items)
-      3. Lighting
-      4. Colour palette
+      2. Colour palette (early: a colour word at the end of the prompt is ignored)
+      3. Scene / environment (detail-budgeted, max 4 items)
+      4. Lighting
       5. Composition anchor (repeats subject — subject lock #2)
       6. Style descriptor
       7. Quality constraints (mode-specific)
@@ -490,6 +491,15 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     # Only use theme palette as fallback if user didn't explicitly select a color
     if not palette:
         palette = clean_text(theme.get("palette", ""))
+    # Strengthen the palette into an explicit "… palette with … tones" phrase.
+    # A bare colour word ("bold amber") is largely ignored by image models and
+    # comes back grey; the explicit palette phrasing is what actually lands.
+    # Idempotent for theme palettes that theme_mixer already strengthened.
+    if palette and VALIDATOR_AVAILABLE:
+        try:
+            palette = clean_text(strengthen_color(palette)) or palette
+        except Exception:
+            logger.debug("strengthen_color failed for %r", palette, exc_info=True)
     composition = clean_text(components.get("composition", "") or theme.get("composition", ""))
     # EXPLICIT ATMOSPHERE: prioritize user-selected atmosphere from Quick Build
     # components.atmosphere is the explicit user choice; theme.environment is auto-generated fallback
@@ -529,7 +539,7 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     s1_subject = _subject_anchor(subject, mood)
 
     # ------------------------------------------------------------------
-    # 2. Scene / environment — use the theme sentence which now includes
+    # 3. Scene / environment — use the theme sentence which now includes
     #    explicit atmosphere when user selected one in Quick Build
     # ------------------------------------------------------------------
     scene_pool = []
@@ -596,12 +606,16 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     s2_scene = ", ".join(scene_pool) if scene_pool else ""
 
     # ------------------------------------------------------------------
-    # 3. Lighting
+    # 4. Lighting
     # ------------------------------------------------------------------
     s3_lighting = lighting if lighting else ""
 
     # ------------------------------------------------------------------
-    # 4. Colour palette (mood is now in the subject anchor above)
+    # 2. Colour palette (mood is now in the subject anchor above)
+    #    Placed directly after the subject so the model reads the colour before
+    #    the scene/lighting clauses can lock it into a foggy grey composition.
+    #    The scene sentence repeats the phrase on purpose - that ordering was a
+    #    deliberate fix, so the early copy stays.
     # ------------------------------------------------------------------
     s4_palette = palette if palette else ""
 
@@ -654,9 +668,9 @@ def build_prompt(theme: dict, style_mode: str = "stylized", ui_values: dict = No
     # ------------------------------------------------------------------
     sections = [
         s1_subject,
+        s4_palette,
         s2_scene,
         s3_lighting,
-        s4_palette,
         s5_composition,
         s6_style,
         s7_quality,

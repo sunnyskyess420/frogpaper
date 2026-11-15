@@ -179,6 +179,29 @@ class SettingsProvidersMixin:
             app.model_choice_var.set("")
         app.custom_model_entry.pack_forget()
         self._update_provider_description()
+        # Hugging Face's free queue drops wide requests often (a 1920x1080 job
+        # runs 30s+ and frequently hangs up mid-transfer). Generating square is
+        # both faster and far more reliable, so switch the preset for the user
+        # and say why in the provider description. The previous choice is
+        # remembered and restored when they switch to any other provider.
+        current_preset = app.dimension_preset_var.get()
+        if provider == "Hugging Face Inference":
+            if current_preset != "Square" and "Square" in app.DIMENSION_PRESETS:
+                app._dimensions_before_huggingface = current_preset
+                try:
+                    app.dimension_preset_var.set("Square")
+                except Exception:
+                    pass
+        else:
+            remembered = getattr(app, "_dimensions_before_huggingface", None)
+            if current_preset == "Square":
+                restore = remembered if remembered in app.DIMENSION_PRESETS else "16:9 (1080p)"
+                if restore in app.DIMENSION_PRESETS:
+                    try:
+                        app.dimension_preset_var.set(restore)
+                    except Exception:
+                        pass
+            app._dimensions_before_huggingface = None
         # Rebuild the provider setup card for the new provider
         pal = self._palette
         self._rebuild_provider_setup(provider, pal)
@@ -195,7 +218,8 @@ class SettingsProvidersMixin:
             "Cloudflare Workers AI (Free Tier)": "Free: 10,000 neurons/day. Needs a Cloudflare account (free to create).",
             "Replicate (Pay-Per-Image)": "Pay per image (~$0.003 for FLUX schnell). Most reliable, huge model library.",
             "Fal.ai (Fast Inference)": "Fastest inference (~1-2 sec). Prepaid credits from $1. Great FLUX models.",
-            "Hugging Face Inference": "Uses your HF token. Free credits reset monthly ($0.10 for free users).",
+            "Hugging Face Inference": "Uses your HF token. Images generate square (1024x1024): its "
+                                      "free queue drops wide requests. Free credits reset monthly.",
         }
         app.provider_desc_var.set(descriptions.get(provider, ""))
 

@@ -98,36 +98,74 @@ class TestDialogWheelScroll(unittest.TestCase):
                 stack.append(c)
         return None
 
+    def _pump(self, times=12):
+        """Let Tk finish laying out and painting."""
+        for _ in range(times):
+            try:
+                self.root.update_idletasks()
+                self.root.update()
+            except tk.TclError:
+                return
+
     def test_settings_window_scrolls_on_wheel_over_child(self):
+        # A settings window left open by an earlier test would be reused by
+        # _open_settings_window(), and its canvas may belong to a destroyed
+        # build. Start from a known state.
+        existing = getattr(self.app, "_settings_win", None)
+        if existing is not None:
+            try:
+                if existing.winfo_exists():
+                    existing.destroy()
+            except Exception:
+                pass
+            self.app._settings_win = None
+
         self.app._open_settings_window()
-        for _ in range(10):
-            self.root.update()
+        self._pump()
         win = getattr(self.app, "_settings_win", None)
         self.assertIsNotNone(win, "settings window did not open")
-        canvas = getattr(self.app, "settings_canvas", None)
-        self.assertIsNotNone(canvas, "settings canvas missing")
+
         tab = getattr(self.app, "_settings_tab", None)
         if tab is not None:
             tab._switch_category("cloud")  # a page that is usually taller than the viewport
-        for _ in range(8):
-            self.root.update()
+        self._pump()
 
-        span = float(canvas.yview()[1]) - float(canvas.yview()[0])
-        if span >= 0.999:
-            # Nothing taller than the viewport in this environment - force a
-            # scrollable region so the wheel routing is still exercised.
+        # Read the canvas AFTER the category switch: switching rebuilds the
+        # page, and a stale reference would silently assert against a dead one.
+        canvas = getattr(self.app, "settings_canvas", None)
+        self.assertIsNotNone(canvas, "settings canvas missing")
+
+        # Make sure there is something to scroll. The scrollregion is forced
+        # when the page fits, then we wait until the canvas agrees it can move.
+        for _ in range(20):
+            try:
+                span = float(canvas.yview()[1]) - float(canvas.yview()[0])
+            except tk.TclError:
+                self.fail("settings canvas was destroyed while preparing the test")
+            if span < 0.999:
+                break
             canvas.configure(scrollregion=(0, 0, 800, 6000))
-            self.root.update_idletasks()
+            self._pump(3)
+        else:
+            self.fail("settings canvas never became scrollable")
 
         target = self._find_child_widget(canvas) or canvas
         gallery = getattr(self.app, "gallery_canvas", None)
         g0 = gallery.yview() if gallery is not None else None
         before = canvas.yview()
-        target.event_generate("<MouseWheel>", delta=-120, x=8, y=8, when="now")
-        self.root.update()
+
+        # Synthetic wheel events occasionally land before layout settles, so
+        # give it a few attempts rather than one.
+        for _ in range(6):
+            target.event_generate("<MouseWheel>", delta=-120, x=8, y=8, when="now")
+            self._pump(3)
+            if canvas.yview() != before:
+                break
+
         self.assertNotEqual(
             before, canvas.yview(),
-            "wheel over settings content did not scroll the settings page",
+            f"wheel over settings content did not scroll the settings page "
+            f"(canvas {canvas}, target {getattr(target, 'winfo_class', lambda: '?' )()})",
         )
         if g0 is not None:
             self.assertEqual(

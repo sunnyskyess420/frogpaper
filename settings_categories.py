@@ -897,6 +897,16 @@ class SettingsCategoriesMixin:
             pal
         )
         
+        HelpResourceCard(
+            frame,
+            "📝",
+            "How to Build a Prompt",
+            "What to put in each row, and the habits that make a prompt work",
+            "Start",
+            lambda: app.tutorial_manager.start_tutorial("prompt_guide"),
+            pal
+        )
+
         # Browse All Tutorials button — opens the same menu as the gallery header button
         tutorials_btn = ttk.Button(frame, text="🎓  Browse All Tutorials",
                                    command=app._show_tutorial_menu)

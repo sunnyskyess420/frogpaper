@@ -47,6 +47,11 @@ class TutorialManager:
                 "description": "Generate your first wallpaper with guided assistance",
                 "steps": self._get_practice_steps()
             },
+            "prompt_guide": {
+                "title": "How to Build a Prompt",
+                "description": "What to put in each row, and the habits that make a prompt work",
+                "steps": self._get_prompt_guide_steps()
+            },
         }
     
     def _get_quick_start_steps(self) -> List[Dict]:
@@ -214,6 +219,124 @@ class TutorialManager:
             }
         ]
     
+
+    def _get_prompt_guide_steps(self) -> List[Dict]:
+        """Steps for the prompt builder guide (mirrors the mobile Help page)."""
+        return [
+            {
+                "title": "How the builder works",
+                "content": (
+                    "The rows on the left turn into one sentence that the image "
+                    "model reads. Nothing is required: leave a row empty and it "
+                    "simply drops out of the sentence.\n\n"
+                    "The prompt preview shows exactly what will be sent, so if a "
+                    "result surprises you, read the preview first - the answer is "
+                    "usually there."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Subject - a thing, not a feeling",
+                "content": (
+                    "The Subject row is the one thing in the picture. Put a thing "
+                    "there: snowman, tree frog, gingerbread house, reindeer.\n\n"
+                    "One subject is enough. Two compete for the frame, and an "
+                    "adjective such as \"Christmas\" is not something the model "
+                    "can draw - it will invent a scene for you, and usually not "
+                    "the one you pictured."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Setting - a place, not a format",
+                "content": (
+                    "The Setting row is where it happens: \"snowy village at "
+                    "night\", \"cosy cabin with a fireplace\", \"lily pond at "
+                    "dawn\".\n\n"
+                    "Avoid formats. \"Movie poster\", \"4K wallpaper\" and "
+                    "\"phone background\" describe the output, not a place, and "
+                    "the model will draw the words instead of a scene."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Mode - the finish, and its negatives",
+                "content": (
+                    "A Mode colours the whole image: Cinematic, Anime, Pixel Art, "
+                    "and so on. It also adds its own wording and its own negative "
+                    "list, which you can see in the Avoid field.\n\n"
+                    "Leave it empty when you want your rows to do the work. For "
+                    "bright, warm pictures avoid Cinematic - it adds \"dramatic "
+                    "lighting, rich shadow\", which reads dark."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Style, Lighting, Color Palette, Mood, Atmosphere",
+                "content": (
+                    "Style is how it is drawn (watercolor storybook, claymation, "
+                    "oil painting) - pick one, since two pull against each "
+                    "other.\n\n"
+                    "Lighting is the light source or time of day (candlelight, "
+                    "golden hour, moonlight). Color Palette is the overall "
+                    "colour. Mood is the feeling (cozy, playful, mysterious). "
+                    "Atmosphere is what is in the air (snow, fog, embers).\n\n"
+                    "Two or three of these beat filling all of them: extra rows "
+                    "dilute the subject."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Four rules that do most of the work",
+                "content": (
+                    "1. Say what you want to see, not what it is for. "
+                    "\"Christmas\" is a feeling; \"a snowman in a snowy "
+                    "village\" is a picture.\n\n"
+                    "2. One subject, one place. Fill those two first.\n\n"
+                    "3. Two or three rows beat eight.\n\n"
+                    "4. Warm light beats sparkle: candlelight + cozy + snow makes "
+                    "a Christmas card; \"movie poster\" + Cinematic makes a dark "
+                    "forest."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Worked example - what went wrong",
+                "content": (
+                    "Subject \"Christmas\", Setting \"Christmas movie poster\", "
+                    "Mode Cinematic. The builder glued it into:\n\n"
+                    "\"A Christmas in a christmas movie poster, movie-poster "
+                    "depth of field, dramatic lighting ratio...\"\n\n"
+                    "That is an adjective in a format, shot dark. The result was a "
+                    "lone tree in green fog - technically Christmas, not remotely "
+                    "festive."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+            {
+                "title": "Worked example - the fix",
+                "content": (
+                    "Mode: empty. Subject: snowman. Setting: snowy village at "
+                    "night. Style: claymation. Lighting: candlelight. Color "
+                    "Palette: golden mist. Mood: cozy. Atmosphere: snow.\n\n"
+                    "That composes to \"A snowman in a snowy village at night, "
+                    "claymation style, candlelight lighting, golden mist tones, "
+                    "cozy mood, snow\" - subject, place, look and feeling.\n\n"
+                    "Swap the subject for \"frog in a Santa hat\" and keep the "
+                    "rest. That is the whole trick."
+                ),
+                "highlight": None,
+                "action": None,
+            },
+        ]
+
     def start_tutorial(self, tutorial_id: str):
         """Start a specific tutorial."""
         if tutorial_id not in self.tutorials:
@@ -609,6 +732,7 @@ class TutorialManager:
             ("quick_start", "🚀 Quick Start Guide", "Learn the basics in 5 minutes"),
             ("feature_tour", "🗺️ Feature Tour", "Explore all major features"),
             ("interactive_practice", "🎨 Interactive Practice", "Guided wallpaper generation"),
+            ("prompt_guide", "📝 How to Build a Prompt", "What to put in each row"),
         ]
 
         # Centering wrapper — constrains card width and centers content

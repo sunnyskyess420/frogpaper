@@ -8,7 +8,7 @@ from theme import COLOR_DIM_GRAY, COLOR_NEAR_BLACK, COLOR_WHITE  # shared color 
 
 # App version - single source of truth for version string
 # Must match the AppVersion in build_installer.bat and the GitHub release tag.
-APP_VERSION = "1.9.0"
+APP_VERSION = "1.9.1"
 
 # Edition label. Empty for a normal release; About then shows just the
 # version. Set it for seasonal builds ("Halloween Edition").
@@ -18,6 +18,7 @@ APP_EDITION = "Christmas Edition"
 # first, last three releases: adding a release means editing this one list,
 # not hunting for a stale sentence in the dialog code.
 RELEASE_HISTORY = (
+    ("1.9.1", "How to Build a Prompt guide in Settings > Help"),
     ("1.9.0", "Blush Light Christmas theme, new logo, honest Frog Dial"),
     ("1.8.0", "Painterly styles, smarter Ctrl+N, Halloween defaults gone"),
     ("1.7.12", "Update check fixed, splash screen"),

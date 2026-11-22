@@ -309,13 +309,13 @@ class TutorialManager:
             {
                 "title": "Worked example - what went wrong",
                 "content": (
-                    "Subject \"Christmas\", Setting \"Christmas movie poster\", "
-                    "Mode Cinematic. The builder glued it into:\n\n"
-                    "\"A Christmas in a christmas movie poster, movie-poster "
-                    "depth of field, dramatic lighting ratio...\"\n\n"
-                    "That is an adjective in a format, shot dark. The result was a "
-                    "lone tree in green fog - technically Christmas, not remotely "
-                    "festive."
+                    "Subject \"Cozy\", Setting \"cozy movie poster\", Mode "
+                    "Cinematic. The builder glued it into:\n\n"
+                    "\"A cozy in a cozy movie poster, movie-poster depth of "
+                    "field, dramatic lighting ratio...\"\n\n"
+                    "That is a feeling used as the subject and a format used as "
+                    "the place, then graded dark by the mode. The model has "
+                    "nothing to draw, so it invents a scene you did not ask for."
                 ),
                 "highlight": None,
                 "action": None,
@@ -323,14 +323,16 @@ class TutorialManager:
             {
                 "title": "Worked example - the fix",
                 "content": (
-                    "Mode: empty. Subject: snowman. Setting: snowy village at "
-                    "night. Style: claymation. Lighting: candlelight. Color "
-                    "Palette: golden mist. Mood: cozy. Atmosphere: snow.\n\n"
-                    "That composes to \"A snowman in a snowy village at night, "
-                    "claymation style, candlelight lighting, golden mist tones, "
-                    "cozy mood, snow\" - subject, place, look and feeling.\n\n"
-                    "Swap the subject for \"frog in a Santa hat\" and keep the "
-                    "rest. That is the whole trick."
+                    "Move the feeling to Mood, and give it a thing and a place.\n\n"
+                    "Mode: empty. Subject: sleeping cat. Setting: cabin window seat "
+                    "at dusk. Style: watercolor storybook. Lighting: candlelight. "
+                    "Color Palette: golden mist. Mood: cozy. Atmosphere: rain.\n\n"
+                    "That composes to \"A sleeping cat in a cabin window seat at "
+                    "dusk, watercolor storybook style, candlelight lighting, golden "
+                    "mist tones, cozy mood, rain\" - subject, place, look and "
+                    "feeling.\n\n"
+                    "The word \"cozy\" did not disappear; it just stopped being "
+                    "the subject. That is the whole trick."
                 ),
                 "highlight": None,
                 "action": None,

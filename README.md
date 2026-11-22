@@ -10,14 +10,14 @@ Pip is the official mascot of FROGPAPER. While he might look like he’s about t
 
 **FrogPaper** is a two-app wallpaper studio.
 
-- **FrogPaper Desktop — v1.9.0** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
+- **FrogPaper Desktop — v1.9.1** (Windows 10/11). Built with Python and Tkinter. Connects to 6 AI image generation providers (Pollinations.ai, Cloudflare Workers AI, Hugging Face, Prodia, Replicate, Fal.ai) and gives you a complete creative workflow — structured prompt building with negative prompt presets, a visual gallery with tagging and style filters, slideshow automation, text overlays, and native Windows wallpaper integration.
 - **FrogPaper Mobile — v1.12.0** (Android 7.0+). Built with Expo / React Native. Generates phone wallpapers from a prompt or the Build screen, keeps them on the phone, and rotates them as your wallpaper.
 
 No browser. No account. Just the apps and your imagination.
 
 | App | Current version | Platform | Stack |
 |---|---|---|---|
-| **FrogPaper Desktop** | 1.9.0 | Windows 10 / 11 | Python 3.11+, Tkinter |
+| **FrogPaper Desktop** | 1.9.1 | Windows 10 / 11 | Python 3.11+, Tkinter |
 | **FrogPaper Mobile** | 1.12.0 | Android 7.0+ | Expo / React Native |
 
 ---
@@ -470,6 +470,13 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## Desktop Changelog
 
+### v1.9.1 - How to Build a Prompt
+
+**Help**
+- New **How to Build a Prompt** guide, in Settings -> Help and in the tutorial menu: eight steps that walk the builder rows in order, explain what the buttons do, list the four habits that make a prompt work, and finish on a real worked example.
+- The example is worth the read on its own: Subject "Christmas" plus Setting "Christmas movie poster" plus Cinematic composes "a Christmas in a christmas movie poster, movie-poster depth of field, dramatic lighting ratio..." - an adjective in a format, shot dark. The guide shows the row-by-row fix.
+- Same content as the mobile 1.14.1 guide, written with the desktop's own labels (Color Palette, the rows on the left, the Avoid field).
+
 ### v1.9.0 - Blush Light Christmas Theme, New Logo, Honest Frog Dial
 
 **Theme**
@@ -837,7 +844,7 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 ## System Requirements
 
-### Desktop (v1.9.0)
+### Desktop (v1.9.1)
 
 | Requirement | Minimum | Recommended |
 |---|---|---|

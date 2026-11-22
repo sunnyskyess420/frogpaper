@@ -240,9 +240,9 @@ class TutorialManager:
                 "title": "Subject - a thing, not a feeling",
                 "content": (
                     "The Subject row is the one thing in the picture. Put a thing "
-                    "there: snowman, tree frog, gingerbread house, reindeer.\n\n"
-                    "One subject is enough. Two compete for the frame, and an "
-                    "adjective such as \"Christmas\" is not something the model "
+                    "there: tree frog, paper boat, cabin, sleeping cat.\n\n"
+                    "One subject is enough. Two compete for the frame, and a "
+                    "feeling such as \"cozy\" is not something the model "
                     "can draw - it will invent a scene for you, and usually not "
                     "the one you pictured."
                 ),
@@ -295,13 +295,13 @@ class TutorialManager:
                 "title": "Four rules that do most of the work",
                 "content": (
                     "1. Say what you want to see, not what it is for. "
-                    "\"Christmas\" is a feeling; \"a snowman in a snowy "
-                    "village\" is a picture.\n\n"
+                    "\"Cozy\" is a feeling; \"a sleeping cat by a cabin "
+                    "window\" is a picture.\n\n"
                     "2. One subject, one place. Fill those two first.\n\n"
                     "3. Two or three rows beat eight.\n\n"
-                    "4. Warm light beats sparkle: candlelight + cozy + snow makes "
-                    "a Christmas card; \"movie poster\" + Cinematic makes a dark "
-                    "forest."
+                    "4. Light carries the mood: candlelight + cozy reads warm and "
+                    "inviting; the same scene with \"movie poster\" + Cinematic "
+                    "reads dark."
                 ),
                 "highlight": None,
                 "action": None,

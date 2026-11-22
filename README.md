@@ -474,7 +474,7 @@ Earlier Android releases: see the [frogpaper-mobile releases](https://github.com
 
 **Help**
 - New **How to Build a Prompt** guide, in Settings -> Help and in the tutorial menu: eight steps that walk the builder rows in order, explain what the buttons do, list the four habits that make a prompt work, and finish on a real worked example.
-- The example is worth the read on its own: Subject "Christmas" plus Setting "Christmas movie poster" plus Cinematic composes "a Christmas in a christmas movie poster, movie-poster depth of field, dramatic lighting ratio..." - an adjective in a format, shot dark. The guide shows the row-by-row fix.
+- The example is worth the read on its own: Subject "Cozy" plus Setting "cozy movie poster" plus Cinematic composes "a cozy in a cozy movie poster, movie-poster depth of field, dramatic lighting ratio..." - a feeling in a format, shot dark. The guide shows the row-by-row fix, which moves "cozy" to Mood and gives the model a thing and a place.
 - Same content as the mobile 1.14.1 guide, written with the desktop's own labels (Color Palette, the rows on the left, the Avoid field).
 
 ### v1.9.0 - Blush Light Christmas Theme, New Logo, Honest Frog Dial

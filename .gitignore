@@ -97,3 +97,6 @@ config.json.corrupt
 
 # Keyword-expander caches (rebuilt on demand)
 cache/
+
+# build logs
+build-*.log
